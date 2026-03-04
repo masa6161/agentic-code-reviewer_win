@@ -85,10 +85,14 @@ func checkPRAvailable(pr prContext, opts ReviewOpts, logger *terminal.Logger) (b
 	return true, nil
 }
 
+// stdinReader is a shared buffered reader for all interactive stdin prompts.
+// Using a single reader avoids data loss when multiple prompts read from stdin
+// in the same session.
+var stdinReader = bufio.NewReader(os.Stdin)
+
 // readUserInput reads a line from stdin, returning empty string on error.
 func readUserInput() string {
-	reader := bufio.NewReader(os.Stdin)
-	response, err := reader.ReadString('\n')
+	response, err := stdinReader.ReadString('\n')
 	if err != nil {
 		return ""
 	}
@@ -98,8 +102,7 @@ func readUserInput() string {
 // promptOptionalMessage prompts for an optional reviewer note to prepend to the review.
 func promptOptionalMessage() string {
 	fmt.Print(formatPrompt("Add a note to the review?", "(press Enter to skip):"))
-	reader := bufio.NewReader(os.Stdin)
-	msg, err := reader.ReadString('\n')
+	msg, err := stdinReader.ReadString('\n')
 	if err != nil {
 		return ""
 	}
