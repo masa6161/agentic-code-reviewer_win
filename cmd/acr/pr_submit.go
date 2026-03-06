@@ -93,7 +93,7 @@ var stdinReader = bufio.NewReader(os.Stdin)
 // readUserInput reads a line from stdin, returning empty string on error.
 func readUserInput() string {
 	response, err := stdinReader.ReadString('\n')
-	if err != nil {
+	if err != nil && len(strings.TrimSpace(response)) == 0 {
 		return ""
 	}
 	return strings.ToLower(strings.TrimSpace(response))
@@ -103,7 +103,7 @@ func readUserInput() string {
 func promptOptionalMessage() string {
 	fmt.Print(formatPrompt("Add a note to the review?", "(press Enter to skip):"))
 	msg, err := stdinReader.ReadString('\n')
-	if err != nil {
+	if err != nil && len(strings.TrimSpace(msg)) == 0 {
 		return ""
 	}
 	return strings.TrimSpace(msg)

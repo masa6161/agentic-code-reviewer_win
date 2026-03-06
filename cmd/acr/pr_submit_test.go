@@ -44,7 +44,7 @@ func TestPrependUserNote(t *testing.T) {
 		}
 	})
 
-	t.Run("empty note returns body unchanged", func(t *testing.T) {
+	t.Run("empty note still wraps body with prefix", func(t *testing.T) {
 		// prependUserNote is only called with non-empty notes,
 		// but verify the format is still valid
 		got := prependUserNote(body, "")
