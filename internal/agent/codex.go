@@ -37,26 +37,28 @@ func (c *CodexAgent) IsAvailable() error {
 // ExecuteReview runs a code review using the codex CLI.
 // Returns an ExecutionResult for streaming the JSONL output.
 //
-// Always uses 'codex exec review --base X' for the built-in review behavior.
-// When guidance is provided, it is piped via stdin using the '-' flag.
+// Without guidance, uses 'codex exec review --base X' for the built-in review behavior.
+// With guidance, falls back to the diff-based review path because codex's --base flag
+// and stdin prompt (-) are mutually exclusive (see #170).
 func (c *CodexAgent) ExecuteReview(ctx context.Context, config *ReviewConfig) (*ExecutionResult, error) {
 	if err := c.IsAvailable(); err != nil {
 		return nil, err
 	}
 
-	var stdin io.Reader
-	args := []string{"exec", "--json", "--color", "never", "review", "--base", config.BaseRef}
-
 	if config.Guidance != "" {
-		// Pipe guidance via stdin to codex exec review
-		args = append(args, "-")
-		stdin = bytes.NewReader([]byte(config.Guidance))
+		return executeDiffBasedReview(ctx, config, diffReviewConfig{
+			Command:       "codex",
+			Args:          []string{"exec", "--json", "--color", "never", "-"},
+			DefaultPrompt: DefaultCodexPrompt,
+			RefFilePrompt: DefaultCodexRefFilePrompt,
+		})
 	}
+
+	args := []string{"exec", "--json", "--color", "never", "review", "--base", config.BaseRef}
 
 	return executeCommand(ctx, executeOptions{
 		Command: "codex",
 		Args:    args,
-		Stdin:   stdin,
 		WorkDir: config.WorkDir,
 	})
 }

@@ -113,3 +113,47 @@ Example findings:
 
 Review the changes now and output your findings.
 {{guidance}}`
+
+// DefaultCodexPrompt is the default review prompt for Codex-based agents.
+// Used when guidance is provided and we fall back to diff-based review
+// because codex's --base flag and stdin prompt (-) are mutually exclusive (#170).
+const DefaultCodexPrompt = `Review this git diff for bugs.
+
+Look for:
+- Logic errors, wrong behavior, crashes
+- Security issues (injection, auth bypass, exposure)
+- Silent failures, swallowed errors
+- Wrong type conversions
+- Missing operations (data not passed, steps skipped)
+
+Skip:
+- Style/formatting
+- Performance unless severe
+- Test files
+- Suggestions
+
+Output format: file:line: description
+{{guidance}}`
+
+// DefaultCodexRefFilePrompt is the review prompt used when the diff is passed via
+// a reference file instead of being embedded in the prompt.
+const DefaultCodexRefFilePrompt = `Review this git diff for bugs.
+
+The diff to review is in file: %s
+Read the file contents to examine the changes.
+
+Look for:
+- Logic errors, wrong behavior, crashes
+- Security issues (injection, auth bypass, exposure)
+- Silent failures, swallowed errors
+- Wrong type conversions
+- Missing operations (data not passed, steps skipped)
+
+Skip:
+- Style/formatting
+- Performance unless severe
+- Test files
+- Suggestions
+
+Output format: file:line: description
+{{guidance}}`
