@@ -13,7 +13,7 @@ import (
 func TestNewGeminiAgent(t *testing.T) {
 	agent := NewGeminiAgent("")
 	if agent == nil {
-		t.Fatal("NewGeminiAgent("") returned nil")
+		t.Fatal("NewGeminiAgent() returned nil")
 	}
 }
 

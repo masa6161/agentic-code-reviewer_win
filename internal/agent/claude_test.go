@@ -13,7 +13,7 @@ import (
 func TestNewClaudeAgent(t *testing.T) {
 	agent := NewClaudeAgent("")
 	if agent == nil {
-		t.Fatal("NewClaudeAgent("") returned nil")
+		t.Fatal("NewClaudeAgent() returned nil")
 	}
 }
 

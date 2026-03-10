@@ -13,7 +13,7 @@ import (
 func TestNewCodexAgent(t *testing.T) {
 	agent := NewCodexAgent("")
 	if agent == nil {
-		t.Fatal("NewCodexAgent("") returned nil")
+		t.Fatal("NewCodexAgent() returned nil")
 	}
 }
 
