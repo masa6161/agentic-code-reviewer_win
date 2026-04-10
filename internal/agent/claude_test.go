@@ -27,26 +27,26 @@ func TestClaudeAgent_Name(t *testing.T) {
 }
 
 func TestClaudeAgent_IsAvailable(t *testing.T) {
-	agent := NewClaudeAgent("")
-	err := agent.IsAvailable()
+	t.Run("available", func(t *testing.T) {
+		prepareMockCLI(t, "claude", "args")
+		agent := NewClaudeAgent("")
+		if err := agent.IsAvailable(); err != nil {
+			t.Errorf("IsAvailable() unexpected error = %v", err)
+		}
+	})
 
-	// Check if claude is in PATH
-	_, lookPathErr := exec.LookPath("claude")
-
-	if lookPathErr != nil {
-		// Claude not in PATH - should return error
+	t.Run("missing", func(t *testing.T) {
+		t.Setenv("PATH", "")
+		agent := NewClaudeAgent("")
+		err := agent.IsAvailable()
 		if err == nil {
 			t.Error("IsAvailable() should return error when claude is not in PATH")
+			return
 		}
 		if !strings.Contains(err.Error(), "claude CLI not found") {
 			t.Errorf("IsAvailable() error = %v, want error containing 'claude CLI not found'", err)
 		}
-	} else {
-		// Claude is in PATH - should return nil
-		if err != nil {
-			t.Errorf("IsAvailable() unexpected error = %v", err)
-		}
-	}
+	})
 }
 
 func TestClaudeAgent_ExecuteReview_ClaudeNotAvailable(t *testing.T) {
@@ -135,14 +135,7 @@ func TestClaudeAgent_ExecuteReview_Args(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	mockScript := filepath.Join(tmpDir, "claude")
-	if err := os.WriteFile(mockScript, []byte("#!/bin/sh\nfor arg in \"$@\"; do echo \"ARG:$arg\"; done\n"), 0755); err != nil {
-		t.Fatal(err)
-	}
-
-	originalPath := os.Getenv("PATH")
-	defer os.Setenv("PATH", originalPath)
-	os.Setenv("PATH", tmpDir+":"+originalPath)
+	prepareMockCLI(t, "claude", "args-prefix-stdin")
 
 	agent := NewClaudeAgent("")
 	ctx := context.Background()
@@ -206,14 +199,7 @@ func TestClaudeAgent_ExecuteReview_RefFileMode(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	mockScript := filepath.Join(tmpDir, "claude")
-	if err := os.WriteFile(mockScript, []byte("#!/bin/sh\ncat\n"), 0755); err != nil {
-		t.Fatal(err)
-	}
-
-	originalPath := os.Getenv("PATH")
-	defer os.Setenv("PATH", originalPath)
-	os.Setenv("PATH", tmpDir+":"+originalPath)
+	prepareMockCLI(t, "claude", "stdin")
 
 	agent := NewClaudeAgent("")
 	ctx := context.Background()
@@ -282,14 +268,7 @@ func TestClaudeAgent_ExecuteReview_ExplicitRefFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	mockScript := filepath.Join(tmpDir, "claude")
-	if err := os.WriteFile(mockScript, []byte("#!/bin/sh\ncat\n"), 0755); err != nil {
-		t.Fatal(err)
-	}
-
-	originalPath := os.Getenv("PATH")
-	defer os.Setenv("PATH", originalPath)
-	os.Setenv("PATH", tmpDir+":"+originalPath)
+	prepareMockCLI(t, "claude", "stdin")
 
 	agent := NewClaudeAgent("")
 	ctx := context.Background()
@@ -317,15 +296,7 @@ func TestClaudeAgent_ExecuteReview_ExplicitRefFile(t *testing.T) {
 }
 
 func TestClaudeAgent_ExecuteSummary_Args(t *testing.T) {
-	tmpDir := t.TempDir()
-	mockScript := filepath.Join(tmpDir, "claude")
-	if err := os.WriteFile(mockScript, []byte("#!/bin/sh\nfor arg in \"$@\"; do echo \"ARG:$arg\"; done\n"), 0755); err != nil {
-		t.Fatal(err)
-	}
-
-	originalPath := os.Getenv("PATH")
-	defer os.Setenv("PATH", originalPath)
-	os.Setenv("PATH", tmpDir+":"+originalPath)
+	prepareMockCLI(t, "claude", "args-prefix-stdin")
 
 	agent := NewClaudeAgent("")
 	ctx := context.Background()

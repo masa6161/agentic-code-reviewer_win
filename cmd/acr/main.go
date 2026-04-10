@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -467,12 +466,16 @@ func runReview(cmd *cobra.Command, _ []string) error {
 
 	// Handle signals
 	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	signal.Notify(sigCh, interruptSignals()...)
+	defer signal.Stop(sigCh)
 	go func() {
-		<-sigCh
-		fmt.Fprintln(os.Stderr)
-		logger.Log("Interrupted, shutting down...", terminal.StyleWarning)
-		cancel()
+		select {
+		case <-sigCh:
+			fmt.Fprintln(os.Stderr)
+			logger.Log("Interrupted, shutting down...", terminal.StyleWarning)
+			cancel()
+		case <-ctx.Done():
+		}
 	}()
 
 	// Set up worktree (--pr or --worktree-branch)

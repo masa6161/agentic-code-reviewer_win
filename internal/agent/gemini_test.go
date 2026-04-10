@@ -27,26 +27,26 @@ func TestGeminiAgent_Name(t *testing.T) {
 }
 
 func TestGeminiAgent_IsAvailable(t *testing.T) {
-	agent := NewGeminiAgent("")
-	err := agent.IsAvailable()
+	t.Run("available", func(t *testing.T) {
+		prepareMockCLI(t, "gemini", "args")
+		agent := NewGeminiAgent("")
+		if err := agent.IsAvailable(); err != nil {
+			t.Errorf("IsAvailable() unexpected error = %v", err)
+		}
+	})
 
-	// Check if gemini is in PATH
-	_, lookPathErr := exec.LookPath("gemini")
-
-	if lookPathErr != nil {
-		// Gemini not in PATH - should return error
+	t.Run("missing", func(t *testing.T) {
+		t.Setenv("PATH", "")
+		agent := NewGeminiAgent("")
+		err := agent.IsAvailable()
 		if err == nil {
 			t.Error("IsAvailable() should return error when gemini is not in PATH")
+			return
 		}
 		if !strings.Contains(err.Error(), "gemini CLI not found") {
 			t.Errorf("IsAvailable() error = %v, want error containing 'gemini CLI not found'", err)
 		}
-	} else {
-		// Gemini is in PATH - should return nil
-		if err != nil {
-			t.Errorf("IsAvailable() unexpected error = %v", err)
-		}
-	}
+	})
 }
 
 func TestGeminiAgent_ExecuteReview_GeminiNotAvailable(t *testing.T) {
@@ -135,14 +135,7 @@ func TestGeminiAgent_ExecuteReview_Args(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	mockScript := filepath.Join(tmpDir, "gemini")
-	if err := os.WriteFile(mockScript, []byte("#!/bin/sh\nfor arg in \"$@\"; do echo \"ARG:$arg\"; done\n"), 0755); err != nil {
-		t.Fatal(err)
-	}
-
-	originalPath := os.Getenv("PATH")
-	defer os.Setenv("PATH", originalPath)
-	os.Setenv("PATH", tmpDir+":"+originalPath)
+	prepareMockCLI(t, "gemini", "args-prefix-stdin")
 
 	agent := NewGeminiAgent("")
 	ctx := context.Background()
@@ -209,14 +202,7 @@ func TestGeminiAgent_ExecuteReview_RefFileMode(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	mockScript := filepath.Join(tmpDir, "gemini")
-	if err := os.WriteFile(mockScript, []byte("#!/bin/sh\ncat\n"), 0755); err != nil {
-		t.Fatal(err)
-	}
-
-	originalPath := os.Getenv("PATH")
-	defer os.Setenv("PATH", originalPath)
-	os.Setenv("PATH", tmpDir+":"+originalPath)
+	prepareMockCLI(t, "gemini", "stdin")
 
 	agent := NewGeminiAgent("")
 	ctx := context.Background()
@@ -249,15 +235,7 @@ func TestGeminiAgent_ExecuteReview_RefFileMode(t *testing.T) {
 }
 
 func TestGeminiAgent_ExecuteSummary_Args(t *testing.T) {
-	tmpDir := t.TempDir()
-	mockScript := filepath.Join(tmpDir, "gemini")
-	if err := os.WriteFile(mockScript, []byte("#!/bin/sh\nfor arg in \"$@\"; do echo \"ARG:$arg\"; done\n"), 0755); err != nil {
-		t.Fatal(err)
-	}
-
-	originalPath := os.Getenv("PATH")
-	defer os.Setenv("PATH", originalPath)
-	os.Setenv("PATH", tmpDir+":"+originalPath)
+	prepareMockCLI(t, "gemini", "args-prefix-stdin")
 
 	agent := NewGeminiAgent("")
 	ctx := context.Background()

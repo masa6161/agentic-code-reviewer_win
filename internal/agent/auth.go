@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"runtime"
 	"slices"
 	"strings"
 )
@@ -27,6 +28,34 @@ var authHints = map[string]string{
 	"codex":  "Set OPENAI_API_KEY or run 'codex auth' to authenticate.",
 }
 
+var nonAuthStartupPatterns = []string{
+	"spawn eperm",
+	"uv_spawn",
+	"failed to relaunch",
+	"operation not permitted",
+	"access is denied",
+}
+
+func containsAuthSignal(stderr string) bool {
+	lower := strings.ToLower(stderr)
+	for _, pattern := range authStderrPatterns {
+		if strings.Contains(lower, pattern) {
+			return true
+		}
+	}
+	return false
+}
+
+func containsNonAuthStartupSignal(stderr string) bool {
+	lower := strings.ToLower(stderr)
+	for _, pattern := range nonAuthStartupPatterns {
+		if strings.Contains(lower, pattern) {
+			return true
+		}
+	}
+	return false
+}
+
 // IsAuthFailure returns true if the given exit code and stderr indicate
 // an authentication failure for the named agent. Exit code 0 is never
 // considered an auth failure.
@@ -37,18 +66,20 @@ func IsAuthFailure(agentName string, exitCode int, stderr string) bool {
 
 	if codes, ok := authExitCodes[agentName]; ok {
 		if slices.Contains(codes, exitCode) {
+			// Some Windows CLI launch failures reuse the same exit code as auth errors.
+			// Preserve known auth exit codes unless stderr clearly indicates a
+			// startup/spawn failure unrelated to authentication.
+			if runtime.GOOS == "windows" {
+				if containsAuthSignal(stderr) {
+					return true
+				}
+				return !containsNonAuthStartupSignal(stderr)
+			}
 			return true
 		}
 	}
 
-	lower := strings.ToLower(stderr)
-	for _, pattern := range authStderrPatterns {
-		if strings.Contains(lower, pattern) {
-			return true
-		}
-	}
-
-	return false
+	return containsAuthSignal(stderr)
 }
 
 // AuthHint returns an actionable error message for the named agent.

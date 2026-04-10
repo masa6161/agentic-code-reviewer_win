@@ -6,12 +6,16 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
-	"syscall"
+	"time"
 )
 
 // maxStderrSize is the maximum bytes captured from agent subprocess stderr.
 // Prevents unbounded memory growth from misbehaving CLI tools.
 const maxStderrSize = 1 << 20 // 1MB
+
+// cmdWaitDelay bounds how long Wait may block after cancellation before the
+// standard library closes pipes and force-kills the root process.
+const cmdWaitDelay = 5 * time.Second
 
 // stderrBuffer is the interface for stderr capture buffers.
 type stderrBuffer interface {
@@ -66,11 +70,12 @@ type executeOptions struct {
 	TempFilePath string
 }
 
-// executeCommand runs a CLI command with proper process group setup and resource management.
+// executeCommand runs a CLI command with platform-specific process handling.
 // This is the shared implementation used by all agent ExecuteReview/ExecuteSummary methods.
 //
 // It handles:
-//   - Setting process group for proper signal handling (Setpgid)
+//   - Applying platform-specific process configuration
+//   - Installing cancellation hooks for process tree cleanup
 //   - Capturing stderr for error diagnostics
 //   - Creating stdout pipe for streaming output
 //   - Starting the command and returning a managed ExecutionResult
@@ -88,8 +93,11 @@ func executeCommand(ctx context.Context, opts executeOptions) (*ExecutionResult,
 		cmd.Dir = opts.WorkDir
 	}
 
-	// Set process group for proper signal handling
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	configureCmdForPlatform(cmd)
+	cmd.Cancel = func() error {
+		return terminateProcessTree(cmd)
+	}
+	cmd.WaitDelay = cmdWaitDelay
 
 	// Capture stderr for error diagnostics (capped to prevent unbounded memory)
 	stderr := newCappedBuffer(maxStderrSize)
