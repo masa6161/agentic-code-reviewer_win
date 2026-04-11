@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"runtime"
 	"testing"
 )
 
@@ -13,6 +14,9 @@ func TestIsAuthFailure(t *testing.T) {
 		want     bool
 	}{
 		{"gemini exit 41", "gemini", 41, "", true},
+		{"gemini exit 41 with spawn EPERM follows platform behavior", "gemini", 41, "spawn EPERM", runtime.GOOS != "windows"},
+		{"gemini exit 41 with relaunch failure follows platform behavior", "gemini", 41, "Failed to relaunch the CLI process", runtime.GOOS != "windows"},
+		{"gemini exit 41 with auth stderr remains auth failure", "gemini", 41, "authentication required", true},
 		{"gemini exit 0 is never auth failure", "gemini", 0, "", false},
 		{"gemini other exit code", "gemini", 1, "", false},
 		{"unknown agent with auth stderr", "unknown", 1, "api_key not set", true},

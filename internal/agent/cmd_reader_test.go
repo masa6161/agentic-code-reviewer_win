@@ -2,16 +2,16 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"io"
+	"os"
 	"os/exec"
 	"strings"
-	"syscall"
 	"testing"
 )
 
 func TestCmdReader_Close(t *testing.T) {
-	// Create a simple command that we can close
-	cmd := exec.Command("echo", "test")
+	cmd := newHelperCommand(t, "exit")
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		t.Fatalf("Failed to create stdout pipe: %v", err)
@@ -49,7 +49,7 @@ func TestCmdReader_Close_NilCommand(t *testing.T) {
 }
 
 func TestCmdReader_Close_CommandNotStarted(t *testing.T) {
-	cmd := exec.Command("echo", "test")
+	cmd := newHelperCommand(t, "exit")
 
 	reader := &cmdReader{
 		Reader: strings.NewReader("test"),
@@ -63,7 +63,8 @@ func TestCmdReader_Close_CommandNotStarted(t *testing.T) {
 }
 
 func TestCmdReader_ExitCode_Success(t *testing.T) {
-	cmd := exec.Command("true")
+	cmd := newHelperCommand(t, "exit")
+	cmd.Env = append(cmd.Env, agentTestHelperExitEnv+"=0")
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		t.Fatalf("Failed to create stdout pipe: %v", err)
@@ -87,7 +88,8 @@ func TestCmdReader_ExitCode_Success(t *testing.T) {
 }
 
 func TestCmdReader_ExitCode_Failure(t *testing.T) {
-	cmd := exec.Command("false")
+	cmd := newHelperCommand(t, "exit")
+	cmd.Env = append(cmd.Env, agentTestHelperExitEnv+"=3")
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		t.Fatalf("Failed to create stdout pipe: %v", err)
@@ -111,7 +113,7 @@ func TestCmdReader_ExitCode_Failure(t *testing.T) {
 }
 
 func TestCmdReader_Close_Idempotent(t *testing.T) {
-	cmd := exec.Command("echo", "test")
+	cmd := newHelperCommand(t, "exit")
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		t.Fatalf("Failed to create stdout pipe: %v", err)
@@ -139,7 +141,7 @@ func TestCmdReader_Close_Idempotent(t *testing.T) {
 
 func TestCmdReader_CloseWithNilProcess(t *testing.T) {
 	// cmdReader with cmd set but Process is nil (Start() was never called)
-	cmd := exec.Command("true") // Don't start it
+	cmd := newHelperCommand(t, "exit") // Don't start it
 
 	reader := &cmdReader{
 		Reader: strings.NewReader(""),
@@ -156,14 +158,16 @@ func TestCmdReader_CloseWithNilProcess(t *testing.T) {
 
 func TestCmdReader_CloseWithContextCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
-	cancel() // Cancel immediately
+	cmd := newHelperCommand(t, "sleep")
+	cmd.Env = append(cmd.Env, agentTestHelperSleepEnv+"=30s")
 
-	// Create a long-running command
-	cmd := exec.CommandContext(ctx, "sleep", "10")
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-
-	stdout, _ := cmd.StdoutPipe()
-	_ = cmd.Start()
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatalf("Failed to create stdout pipe: %v", err)
+	}
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("Failed to start helper command: %v", err)
+	}
 
 	reader := &cmdReader{
 		Reader: stdout,
@@ -171,9 +175,79 @@ func TestCmdReader_CloseWithContextCancel(t *testing.T) {
 		ctx:    ctx,
 	}
 
-	// Should kill process group and not panic
-	err := reader.Close()
+	cancel()
+
+	// Should kill the helper process and not panic
+	err = reader.Close()
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestCmdReader_CloseAfterCancelOnCompletedProcess(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, helperBinaryPath(t))
+	cmd.Env = append(os.Environ(),
+		agentTestHelperEnv+"=1",
+		agentTestHelperModeEnv+"=exit",
+	)
+	configureCmdForPlatform(cmd)
+	cmd.Cancel = func() error {
+		return terminateProcessTree(cmd)
+	}
+	cmd.WaitDelay = cmdWaitDelay
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatalf("Failed to create stdout pipe: %v", err)
+	}
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("Failed to start helper command: %v", err)
+	}
+
+	reader := &cmdReader{
+		Reader: stdout,
+		cmd:    cmd,
+		ctx:    ctx,
+	}
+
+	if _, err := io.ReadAll(reader); err != nil {
+		t.Fatalf("ReadAll() error = %v", err)
+	}
+
+	cancel()
+
+	if err := reader.Close(); err != nil {
+		t.Fatalf("Close() error = %v, want nil", err)
+	}
+	if got := reader.ExitCode(); got != 0 {
+		t.Fatalf("ExitCode() = %d, want 0", got)
+	}
+}
+
+func TestTerminateProcessTree_ReturnsErrProcessDoneForCompletedProcess(t *testing.T) {
+	cmd := newHelperCommand(t, "exit")
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatalf("Failed to create stdout pipe: %v", err)
+	}
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("Failed to start helper command: %v", err)
+	}
+
+	if _, err := io.ReadAll(stdout); err != nil {
+		t.Fatalf("ReadAll() error = %v", err)
+	}
+
+	if err := cmd.Wait(); err != nil {
+		t.Fatalf("Wait() error = %v, want nil", err)
+	}
+
+	err = terminateProcessTree(cmd)
+	if !errors.Is(err, os.ErrProcessDone) {
+		t.Fatalf("terminateProcessTree() error = %v, want os.ErrProcessDone", err)
 	}
 }

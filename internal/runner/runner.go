@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -213,6 +214,9 @@ func (r *Runner) runReviewer(ctx context.Context, reviewerID int) domain.Reviewe
 	// Execute the review
 	execResult, err := selectedAgent.ExecuteReview(timeoutCtx, reviewConfig)
 	if err != nil {
+		if r.verbose() {
+			r.logger.Logf(terminal.StyleWarning, "Reviewer #%d: execute error: %v", reviewerID, err)
+		}
 		result.ExitCode = -1
 		result.Duration = time.Since(start)
 		return result
@@ -292,6 +296,13 @@ func (r *Runner) runReviewer(ctx context.Context, reviewerID int) domain.Reviewe
 
 	// Detect auth failure from exit code and stderr
 	if result.ExitCode != 0 {
+		if r.verbose() {
+			stderr := strings.TrimSpace(execResult.Stderr())
+			if stderr != "" {
+				r.logger.Logf(terminal.StyleWarning, "Reviewer #%d stderr:%s\n%s",
+					reviewerID, terminal.Color(terminal.Reset), stderr)
+			}
+		}
 		result.AuthFailed = agent.IsAuthFailure(selectedAgent.Name(), result.ExitCode, execResult.Stderr())
 	}
 

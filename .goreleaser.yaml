@@ -18,9 +18,13 @@ builds:
     goos:
       - linux
       - darwin
+      - windows
     goarch:
       - amd64
       - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
     # Custom ldflags for version info
     ldflags:
       - -s -w
@@ -40,6 +44,10 @@ archives:
       {{- else }}{{ .Arch }}{{ end }}
     formats:
       - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
     files:
       - README.md
       - LICENSE
@@ -92,13 +100,14 @@ release:
 
     ## Installation
 
-    ### Homebrew (Recommended)
+    ### Homebrew (macOS)
     ```bash
     brew install --cask richhaase/tap/acr
     ```
 
     ### Direct Download
     Download the appropriate archive from the assets below and extract the `acr` binary.
+    Windows releases are published as `zip` archives containing `acr.exe`.
 
     ### From Source
     ```bash

@@ -1,7 +1,7 @@
 // Package integration provides end-to-end tests for the acr binary using mock agent CLIs.
 //
 // These tests replace the BATS integration tests with Go tests that:
-//   - Use mock CLI scripts instead of real LLM backends (zero cost, fast, deterministic)
+//   - Use mock CLI binaries instead of real LLM backends (zero cost, fast, deterministic)
 //   - Test the full binary (build → exec → assert output + exit code)
 //   - Cover success paths, error paths, output format, and flag handling
 //
@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -42,7 +43,11 @@ func ensureBinary(t *testing.T) string {
 	buildOnce.Do(func() {
 		builtAcrRoot = findRepoRoot(t)
 		// Use a stable path under the build dir so it persists across tests
-		builtAcrBin = filepath.Join(builtAcrRoot, "bin", "acr-test")
+		name := "acr-test"
+		if runtime.GOOS == "windows" {
+			name += ".exe"
+		}
+		builtAcrBin = filepath.Join(builtAcrRoot, "bin", name)
 		build := exec.Command("go", "build", "-o", builtAcrBin, "./cmd/acr")
 		build.Dir = builtAcrRoot
 		out, err := build.CombinedOutput()
@@ -82,15 +87,47 @@ func setupTestEnv(t *testing.T) *testEnv {
 // withMockAgents prepends the mock directory to PATH so mock CLIs are found first.
 func (e *testEnv) withMockAgents() []string {
 	env := os.Environ()
-	newPath := e.mockDir + ":" + e.origPath
+	newPath := e.mockDir
+	if e.origPath != "" {
+		newPath += string(os.PathListSeparator) + e.origPath
+	}
 	// Replace PATH in env slice
-	for i, v := range env {
-		if strings.HasPrefix(v, "PATH=") {
-			env[i] = "PATH=" + newPath
-			return env
+	if env, ok := replaceEnvVar(env, "PATH", newPath); ok {
+		env = append(env, integrationMockEnv+"=1")
+		return env
+	}
+	env = append(env, "PATH="+newPath)
+	env = append(env, integrationMockEnv+"=1")
+	return env
+}
+
+func replaceEnvVar(env []string, key, value string) ([]string, bool) {
+	lastMatch := -1
+
+	for i, entry := range env {
+		name, _, ok := strings.Cut(entry, "=")
+		if !ok {
+			continue
+		}
+
+		if runtime.GOOS == "windows" {
+			if strings.EqualFold(name, key) {
+				lastMatch = i
+			}
+			continue
+		}
+
+		if name == key {
+			lastMatch = i
 		}
 	}
-	return append(env, "PATH="+newPath)
+
+	if lastMatch == -1 {
+		return env, false
+	}
+
+	env[lastMatch] = key + "=" + value
+	return env, true
 }
 
 // run executes acr with the given args and returns stdout, stderr, and exit code.
@@ -232,107 +269,39 @@ func geminiLGTMSummary() string {
 	return `{"response":"{\"findings\":[],\"info\":[]}"}`
 }
 
-// --- Mock CLI Script Generators ---
-
-// writeMockCLI writes a shell script that returns canned responses.
-// The script examines its arguments to determine if it's being called as
-// a reviewer (--print without --output-format) or summarizer/fp-filter (--output-format json).
+// writeMock* copies the current test binary into the mock directory using the
+// requested command name. The binary itself switches into mock-CLI mode when
+// the integrationMockEnv environment variable is present.
 func writeMockCodex(t *testing.T, dir string, reviewResponse, summaryResponse string) {
 	t.Helper()
-	// Codex uses --json for structured output (summarizer) vs no --json (reviewer)
-	script := fmt.Sprintf(`#!/bin/sh
-# Consume stdin to prevent broken pipe on large diffs
-cat /dev/stdin >/dev/null 2>&1
-
-has_json=false
-for arg in "$@"; do
-    if [ "$arg" = "--json" ]; then
-        has_json=true
-    fi
-done
-
-if [ "$has_json" = "true" ]; then
-    printf '%%s\n' '%s'
-else
-    cat <<'REVIEW_EOF'
-%s
-REVIEW_EOF
-fi
-`, escape(summaryResponse), reviewResponse)
-
-	writeMock(t, dir, "codex", script)
+	t.Setenv(integrationCodexReviewEnv, reviewResponse)
+	t.Setenv(integrationCodexSummaryEnv, summaryResponse)
+	writeMock(t, dir, "codex")
 }
 
 func writeMockClaude(t *testing.T, dir string, reviewResponse, summaryResponse string) {
 	t.Helper()
-	// Claude uses --output-format json for structured output (summarizer) vs --print only (reviewer)
-	script := fmt.Sprintf(`#!/bin/sh
-has_json=false
-for arg in "$@"; do
-    if [ "$arg" = "json" ]; then
-        has_json=true
-    fi
-done
-
-if [ "$has_json" = "true" ]; then
-    cat /dev/stdin >/dev/null 2>&1
-    printf '%%s\n' '%s'
-else
-    cat /dev/stdin >/dev/null 2>&1
-    cat <<'REVIEW_EOF'
-%s
-REVIEW_EOF
-fi
-`, escape(summaryResponse), reviewResponse)
-
-	writeMock(t, dir, "claude", script)
+	t.Setenv(integrationClaudeReviewEnv, reviewResponse)
+	t.Setenv(integrationClaudeSummaryEnv, summaryResponse)
+	writeMock(t, dir, "claude")
 }
 
 func writeMockGemini(t *testing.T, dir string, reviewResponse, summaryResponse string) {
 	t.Helper()
-	// Gemini uses -o json for structured output (summarizer) vs no -o (reviewer)
-	script := fmt.Sprintf(`#!/bin/sh
-has_json=false
-for arg in "$@"; do
-    if [ "$arg" = "json" ]; then
-        has_json=true
-    fi
-done
-
-if [ "$has_json" = "true" ]; then
-    cat /dev/stdin >/dev/null 2>&1
-    printf '%%s\n' '%s'
-else
-    cat /dev/stdin >/dev/null 2>&1
-    cat <<'REVIEW_EOF'
-%s
-REVIEW_EOF
-fi
-`, escape(summaryResponse), reviewResponse)
-
-	writeMock(t, dir, "gemini", script)
+	t.Setenv(integrationGeminiReviewEnv, reviewResponse)
+	t.Setenv(integrationGeminiSummaryEnv, summaryResponse)
+	writeMock(t, dir, "gemini")
 }
 
-func writeMock(t *testing.T, dir, name, script string) {
+func writeMock(t *testing.T, dir, name string) {
 	t.Helper()
-	path := filepath.Join(dir, name)
-	if err := os.WriteFile(path, []byte(script), 0755); err != nil {
-		t.Fatalf("failed to write mock %s: %v", name, err)
-	}
+	copyIntegrationHelperBinary(t, dir, name)
 }
 
 // Also mock gh CLI to prevent real GitHub API calls
 func writeMockGH(t *testing.T, dir string) {
 	t.Helper()
-	script := `#!/bin/sh
-# Mock gh - return empty/error for all commands
-exit 1
-`
-	writeMock(t, dir, "gh", script)
-}
-
-func escape(s string) string {
-	return strings.ReplaceAll(s, "'", "'\"'\"'")
+	writeMock(t, dir, "gh")
 }
 
 // --- Tests ---
@@ -345,6 +314,37 @@ func TestVersion(t *testing.T) {
 	}
 	if !strings.Contains(stdout, "acr v") {
 		t.Errorf("expected 'acr v' in output, got: %s", stdout)
+	}
+}
+
+func TestReplaceEnvVar_PathCaseInsensitiveOnWindows(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("windows-specific PATH casing behavior")
+	}
+
+	env, ok := replaceEnvVar([]string{"Path=C:\\Windows\\System32"}, "PATH", "C:\\tmp")
+	if !ok {
+		t.Fatal("replaceEnvVar did not find Path entry")
+	}
+	if env[0] != "PATH=C:\\tmp" {
+		t.Fatalf("replaceEnvVar() = %q, want %q", env[0], "PATH=C:\\tmp")
+	}
+}
+
+func TestReplaceEnvVar_ReplacesLastMatch(t *testing.T) {
+	env, ok := replaceEnvVar([]string{
+		"PATH=C:\\first",
+		"OTHER=1",
+		"PATH=C:\\second",
+	}, "PATH", "C:\\tmp")
+	if !ok {
+		t.Fatal("replaceEnvVar did not find PATH entry")
+	}
+	if env[0] != "PATH=C:\\first" {
+		t.Fatalf("first PATH entry = %q, want unchanged", env[0])
+	}
+	if env[2] != "PATH=C:\\tmp" {
+		t.Fatalf("last PATH entry = %q, want %q", env[2], "PATH=C:\\tmp")
 	}
 }
 
@@ -666,32 +666,27 @@ func TestInvalidAgentName(t *testing.T) {
 
 func TestMissingAgentCLI(t *testing.T) {
 	env := setupTestEnv(t)
-	// Create a dir with gh mock but no agent CLIs
-	// Prepend it to PATH so it shadows any real agent CLIs
 	noAgentDir := t.TempDir()
-	writeMockGH(t, noAgentDir)
-
-	// Write dummy scripts that shadow real agent CLIs but exit with "not found"
-	for _, name := range []string{"codex", "claude", "gemini"} {
-		script := "#!/bin/sh\nexit 127\n"
-		if err := os.WriteFile(filepath.Join(noAgentDir, name), []byte(script), 0755); err != nil {
-			t.Fatal(err)
-		}
-	}
+	copyIntegrationHelperBinary(t, noAgentDir, "codex")
+	copyIntegrationHelperBinary(t, noAgentDir, "claude")
+	copyIntegrationHelperBinary(t, noAgentDir, "gemini")
+	copyIntegrationHelperBinary(t, noAgentDir, "gh")
 
 	cmd := exec.Command(env.acrBin, "--local", "--reviewer-agent", "codex",
 		"--summarizer-agent", "codex", "--base", "HEAD~1")
 	cmd.Dir = env.repoDir
-	// Prepend noAgentDir to PATH (keeps system tools like git available)
-	// Replace PATH in env slice to avoid duplicate entries
+	// Prepend noAgentDir to PATH so the helper binaries shadow any real CLIs.
 	sysEnv := os.Environ()
-	newPath := noAgentDir + ":" + env.origPath
-	for i, v := range sysEnv {
-		if strings.HasPrefix(v, "PATH=") {
-			sysEnv[i] = "PATH=" + newPath
-			break
-		}
+	newPath := noAgentDir
+	if env.origPath != "" {
+		newPath += string(os.PathListSeparator) + env.origPath
 	}
+	var replaced bool
+	sysEnv, replaced = replaceEnvVar(sysEnv, "PATH", newPath)
+	if !replaced {
+		sysEnv = append(sysEnv, "PATH="+newPath)
+	}
+	sysEnv = append(sysEnv, integrationMockEnv+"=1", integrationMockModeEnv+"=missing")
 	cmd.Env = sysEnv
 
 	out, err := cmd.CombinedOutput()

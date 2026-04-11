@@ -30,8 +30,12 @@ jobs:
         fi
 
   test:
-    name: Test
-    runs-on: ubuntu-latest
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
 
     steps:
     - name: Checkout code
@@ -42,14 +46,52 @@ jobs:
       with:
         go-version-file: 'go.mod'
 
-    - name: Run tests with coverage
-      run: go test -coverprofile=coverage.out ./...
+    - name: Run tests
+      run: go test ${{ runner.os != 'Windows' && '-coverprofile=coverage.out' || '' }} ./...
+      shell: bash
 
     - name: Upload coverage
-      uses: actions/upload-artifact@v7
+      if: matrix.os == 'ubuntu-latest'
+      uses: actions/upload-artifact@v6
       with:
         name: coverage
         path: coverage.out
+
+  build:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v6
+
+    - name: Setup Go
+      uses: actions/setup-go@v6
+      with:
+        go-version-file: 'go.mod'
+
+    - name: Build acr
+      run: go build ./cmd/acr
+
+  install:
+    name: Install (windows-latest)
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v6
+
+    - name: Setup Go
+      uses: actions/setup-go@v6
+      with:
+        go-version-file: 'go.mod'
+
+    - name: Install acr from source
+      run: go install ./cmd/acr
 
   test-race:
     name: Test (Race Detection)

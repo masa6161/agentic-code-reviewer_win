@@ -22,6 +22,8 @@ cd your-repo
 acr
 ```
 
+On Windows, use the source install or the release ZIP described below.
+
 ## Prerequisites
 
 You need **at least one** of the following LLM CLIs installed and authenticated:
@@ -71,7 +73,22 @@ graph TD
 brew install richhaase/tap/acr
 ```
 
-### From Source
+### Windows
+
+ACR works on Windows native with `codex`, `claude`, or `gemini` as the review backend.
+
+#### From Source
+
+```powershell
+go install github.com/richhaase/agentic-code-reviewer/cmd/acr@latest
+acr --help
+```
+
+#### Direct Download
+
+Download the Windows release ZIP from GitHub Releases and extract `acr.exe`.
+
+### From Source (macOS / Linux)
 
 ```bash
 go install github.com/richhaase/agentic-code-reviewer/cmd/acr@latest
@@ -363,6 +380,8 @@ Requires the `gh` CLI to be authenticated.
 
 ## Development
 
+### Unix / macOS
+
 ```bash
 # List available targets
 make help
@@ -387,6 +406,14 @@ make fmt
 
 # Clean build artifacts
 make clean
+```
+
+### Windows (PowerShell)
+
+```powershell
+go test ./...
+go build ./cmd/acr
+go install ./cmd/acr
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines.

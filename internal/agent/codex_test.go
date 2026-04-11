@@ -27,26 +27,26 @@ func TestCodexAgent_Name(t *testing.T) {
 }
 
 func TestCodexAgent_IsAvailable(t *testing.T) {
-	agent := NewCodexAgent("")
-	err := agent.IsAvailable()
+	t.Run("available", func(t *testing.T) {
+		prepareMockCLI(t, "codex", "args")
+		agent := NewCodexAgent("")
+		if err := agent.IsAvailable(); err != nil {
+			t.Errorf("IsAvailable() unexpected error = %v", err)
+		}
+	})
 
-	// Check if codex is in PATH
-	_, lookPathErr := exec.LookPath("codex")
-
-	if lookPathErr != nil {
-		// Codex not in PATH - should return error
+	t.Run("missing", func(t *testing.T) {
+		t.Setenv("PATH", "")
+		agent := NewCodexAgent("")
+		err := agent.IsAvailable()
 		if err == nil {
 			t.Error("IsAvailable() should return error when codex is not in PATH")
+			return
 		}
 		if !strings.Contains(err.Error(), "codex CLI not found") {
 			t.Errorf("IsAvailable() error = %v, want error containing 'codex CLI not found'", err)
 		}
-	} else {
-		// Codex is in PATH - should return nil
-		if err != nil {
-			t.Errorf("IsAvailable() unexpected error = %v", err)
-		}
-	}
+	})
 }
 
 func TestCodexAgent_ExecuteReview_CodexNotAvailable(t *testing.T) {
@@ -102,22 +102,13 @@ func TestCodexAgent_ExecuteSummary_CodexNotAvailable(t *testing.T) {
 }
 
 func TestCodexAgent_ExecuteReview_ArgsWithoutGuidance(t *testing.T) {
-	tmpDir := t.TempDir()
-	mockScript := filepath.Join(tmpDir, "codex")
-	err := os.WriteFile(mockScript, []byte("#!/bin/sh\nfor arg in \"$@\"; do echo \"$arg\"; done\n"), 0755)
-	if err != nil {
-		t.Fatalf("failed to write mock script: %v", err)
-	}
-
-	originalPath := os.Getenv("PATH")
-	defer os.Setenv("PATH", originalPath)
-	os.Setenv("PATH", tmpDir)
+	prepareMockCLI(t, "codex", "args")
 
 	agent := NewCodexAgent("")
 	ctx := context.Background()
 	config := &ReviewConfig{
 		BaseRef: "main",
-		WorkDir: tmpDir,
+		WorkDir: t.TempDir(),
 	}
 
 	result, err := agent.ExecuteReview(ctx, config)
@@ -178,16 +169,7 @@ func TestCodexAgent_ExecuteReview_ArgsWithGuidance(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Mock codex that prints args and stdin
-	mockScript := filepath.Join(tmpDir, "codex")
-	err := os.WriteFile(mockScript, []byte("#!/bin/sh\nfor arg in \"$@\"; do echo \"ARG:$arg\"; done\ncat\n"), 0755)
-	if err != nil {
-		t.Fatalf("failed to write mock script: %v", err)
-	}
-
-	originalPath := os.Getenv("PATH")
-	defer os.Setenv("PATH", originalPath)
-	os.Setenv("PATH", tmpDir+":"+originalPath)
+	prepareMockCLI(t, "codex", "args-prefix-stdin")
 
 	agent := NewCodexAgent("")
 	ctx := context.Background()
@@ -228,16 +210,7 @@ func TestCodexAgent_ExecuteReview_ArgsWithGuidance(t *testing.T) {
 }
 
 func TestCodexAgent_ExecuteSummary_Args(t *testing.T) {
-	tmpDir := t.TempDir()
-	mockScript := filepath.Join(tmpDir, "codex")
-	err := os.WriteFile(mockScript, []byte("#!/bin/sh\nfor arg in \"$@\"; do echo \"$arg\"; done\n"), 0755)
-	if err != nil {
-		t.Fatalf("failed to write mock script: %v", err)
-	}
-
-	originalPath := os.Getenv("PATH")
-	defer os.Setenv("PATH", originalPath)
-	os.Setenv("PATH", tmpDir)
+	prepareMockCLI(t, "codex", "args")
 
 	agent := NewCodexAgent("")
 	ctx := context.Background()

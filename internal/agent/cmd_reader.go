@@ -5,7 +5,6 @@ import (
 	"io"
 	"os/exec"
 	"sync"
-	"syscall"
 )
 
 // Compile-time interface check
@@ -28,8 +27,8 @@ type cmdReader struct {
 
 // Close implements io.Closer and waits for the command to complete.
 // After Close returns, ExitCode() will return the process exit code.
-// If the context was canceled or timed out, it kills the entire process group
-// to ensure no orphaned processes are left behind.
+// If the context was canceled or timed out, exec.Cmd.Wait handles cancellation
+// via the command's configured Cancel hook and WaitDelay.
 // Close is safe for concurrent calls - only the first call performs cleanup.
 func (r *cmdReader) Close() error {
 	r.closeOnce.Do(func() {
@@ -38,22 +37,21 @@ func (r *cmdReader) Close() error {
 			_ = closer.Close()
 		}
 
-		// Kill the process group if context was canceled or timed out
+		// Preserve cancellation for callers using plain exec.Command without a
+		// custom Cancel hook. executeCommand installs cmd.Cancel, so this fallback
+		// does not double-terminate normal reviewer processes.
 		if r.cmd != nil && r.cmd.Process != nil {
-			// Capture PID before any state changes to prevent race condition
-			pid := r.cmd.Process.Pid
-
-			if r.ctx != nil && r.ctx.Err() != nil {
-				// Kill the entire process group (negative PID)
-				// Ignore errors - process may have already exited
-				_ = syscall.Kill(-pid, syscall.SIGKILL)
+			if r.ctx != nil && r.ctx.Err() != nil && r.cmd.Cancel == nil {
+				_ = terminateProcessTree(r.cmd)
 			}
 
-			// Wait for command to complete and capture exit code
+			// Wait for command completion and capture exit status.
 			err := r.cmd.Wait()
 			if err != nil {
 				if exitErr, ok := err.(*exec.ExitError); ok {
 					r.exitCode = exitErr.ExitCode()
+				} else if r.cmd.ProcessState != nil {
+					r.exitCode = r.cmd.ProcessState.ExitCode()
 				} else {
 					r.exitCode = -1
 				}

@@ -2,9 +2,7 @@ package summarizer
 
 import (
 	"context"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -71,26 +69,11 @@ func isCodexNotFound(stderr string) bool {
 }
 
 func TestSummarize_WithMockCodex(t *testing.T) {
-	// Create a temporary directory for our mock codex
-	tmpDir := t.TempDir()
-
-	// Create a mock codex script that returns valid JSONL (codex --json format)
-	mockCodex := filepath.Join(tmpDir, "codex")
-	mockScript := `#!/bin/sh
-cat << 'EOF'
-{"type":"thread.started","thread_id":"test"}
+	mockCodex := prepareMockCodex(t, `{"type":"thread.started","thread_id":"test"}
 {"type":"turn.started"}
 {"type":"item.completed","item":{"type":"agent_message","text":"{\"findings\": [{\"title\": \"Test Issue\", \"summary\": \"A test issue summary.\", \"messages\": [\"test message\"], \"reviewer_count\": 1, \"sources\": [0]}], \"info\": []}"}}
 {"type":"turn.completed","usage":{"input_tokens":100,"output_tokens":50}}
-EOF
-`
-	if err := os.WriteFile(mockCodex, []byte(mockScript), 0755); err != nil {
-		t.Fatalf("failed to create mock codex: %v", err)
-	}
-
-	// Save original PATH and restore after test
-	origPath := os.Getenv("PATH")
-	t.Setenv("PATH", tmpDir+":"+origPath)
+`, "", 0)
 
 	// Verify our mock is being used
 	path, err := exec.LookPath("codex")
@@ -127,19 +110,7 @@ EOF
 }
 
 func TestSummarize_InvalidJSONOutput(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	// Create a mock codex that returns invalid JSON
-	mockCodex := filepath.Join(tmpDir, "codex")
-	mockScript := `#!/bin/sh
-echo "this is not valid JSON"
-`
-	if err := os.WriteFile(mockCodex, []byte(mockScript), 0755); err != nil {
-		t.Fatalf("failed to create mock codex: %v", err)
-	}
-
-	origPath := os.Getenv("PATH")
-	t.Setenv("PATH", tmpDir+":"+origPath)
+	prepareMockCodex(t, "this is not valid JSON\n", "", 0)
 
 	findings := []domain.AggregatedFinding{
 		{Text: "Test finding", Reviewers: []int{1}},
@@ -168,19 +139,7 @@ echo "this is not valid JSON"
 }
 
 func TestSummarize_EmptyOutput(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	// Create a mock codex that returns empty output
-	mockCodex := filepath.Join(tmpDir, "codex")
-	mockScript := `#!/bin/sh
-# Return nothing
-`
-	if err := os.WriteFile(mockCodex, []byte(mockScript), 0755); err != nil {
-		t.Fatalf("failed to create mock codex: %v", err)
-	}
-
-	origPath := os.Getenv("PATH")
-	t.Setenv("PATH", tmpDir+":"+origPath)
+	prepareMockCodex(t, "", "", 0)
 
 	findings := []domain.AggregatedFinding{
 		{Text: "Test finding", Reviewers: []int{1}},
@@ -203,20 +162,7 @@ func TestSummarize_EmptyOutput(t *testing.T) {
 }
 
 func TestSummarize_CodexFailure(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	// Create a mock codex that exits with error
-	mockCodex := filepath.Join(tmpDir, "codex")
-	mockScript := `#!/bin/sh
-echo "error message" >&2
-exit 42
-`
-	if err := os.WriteFile(mockCodex, []byte(mockScript), 0755); err != nil {
-		t.Fatalf("failed to create mock codex: %v", err)
-	}
-
-	origPath := os.Getenv("PATH")
-	t.Setenv("PATH", tmpDir+":"+origPath)
+	prepareMockCodex(t, "", "error message\n", 42)
 
 	findings := []domain.AggregatedFinding{
 		{Text: "Test finding", Reviewers: []int{1}},
@@ -238,23 +184,11 @@ exit 42
 }
 
 func TestSummarize_MultipleFindings(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	mockCodex := filepath.Join(tmpDir, "codex")
-	mockScript := `#!/bin/sh
-cat << 'EOF'
-{"type":"thread.started","thread_id":"test"}
+	prepareMockCodex(t, `{"type":"thread.started","thread_id":"test"}
 {"type":"turn.started"}
 {"type":"item.completed","item":{"type":"agent_message","text":"{\"findings\": [{\"title\": \"Issue 1\", \"summary\": \"First issue.\", \"messages\": [\"msg1\"], \"reviewer_count\": 2, \"sources\": [0, 1]}, {\"title\": \"Issue 2\", \"summary\": \"Second issue.\", \"messages\": [\"msg2\"], \"reviewer_count\": 1, \"sources\": [2]}], \"info\": [{\"title\": \"Info 1\", \"summary\": \"Some info.\", \"messages\": [\"info msg\"], \"reviewer_count\": 1, \"sources\": [3]}]}"}}
 {"type":"turn.completed","usage":{"input_tokens":100,"output_tokens":50}}
-EOF
-`
-	if err := os.WriteFile(mockCodex, []byte(mockScript), 0755); err != nil {
-		t.Fatalf("failed to create mock codex: %v", err)
-	}
-
-	origPath := os.Getenv("PATH")
-	t.Setenv("PATH", tmpDir+":"+origPath)
+`, "", 0)
 
 	findings := []domain.AggregatedFinding{
 		{Text: "Finding 1", Reviewers: []int{1, 2}},
