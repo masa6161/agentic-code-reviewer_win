@@ -47,7 +47,8 @@ jobs:
         go-version-file: 'go.mod'
 
     - name: Run tests
-      run: go test -coverprofile=coverage.out ./...
+      run: go test ${{ runner.os != 'Windows' && '-coverprofile=coverage.out' || '' }} ./...
+      shell: bash
 
     - name: Upload coverage
       if: matrix.os == 'ubuntu-latest'

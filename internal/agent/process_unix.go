@@ -20,9 +20,6 @@ func terminateProcessTree(cmd *exec.Cmd) error {
 	if cmd.Process == nil {
 		return os.ErrProcessDone
 	}
-	if cmd.ProcessState != nil && cmd.ProcessState.Exited() {
-		return os.ErrProcessDone
-	}
 
 	pid := cmd.Process.Pid
 	pgid, err := syscall.Getpgid(pid)

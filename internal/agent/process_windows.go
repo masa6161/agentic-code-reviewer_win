@@ -21,9 +21,6 @@ func terminateProcessTree(cmd *exec.Cmd) error {
 	if cmd.Process == nil {
 		return os.ErrProcessDone
 	}
-	if cmd.ProcessState != nil && cmd.ProcessState.Exited() {
-		return os.ErrProcessDone
-	}
 
 	pid := strconv.Itoa(cmd.Process.Pid)
 	taskkill := exec.Command("taskkill", "/T", "/F", "/PID", pid)

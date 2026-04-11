@@ -50,6 +50,8 @@ func (r *cmdReader) Close() error {
 			if err != nil {
 				if exitErr, ok := err.(*exec.ExitError); ok {
 					r.exitCode = exitErr.ExitCode()
+				} else if r.cmd.ProcessState != nil {
+					r.exitCode = r.cmd.ProcessState.ExitCode()
 				} else {
 					r.exitCode = -1
 				}

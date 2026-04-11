@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	summarizerHelperEnv      = "ACR_SUMMARIZER_TEST_HELPER"
+	summarizerHelperEnv       = "ACR_SUMMARIZER_TEST_HELPER"
 	summarizerHelperStdoutEnv = "ACR_SUMMARIZER_TEST_STDOUT"
 	summarizerHelperStderrEnv = "ACR_SUMMARIZER_TEST_STDERR"
 	summarizerHelperExitEnv   = "ACR_SUMMARIZER_TEST_EXIT_CODE"

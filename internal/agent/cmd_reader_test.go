@@ -242,12 +242,12 @@ func TestTerminateProcessTree_ReturnsErrProcessDoneForCompletedProcess(t *testin
 		t.Fatalf("ReadAll() error = %v", err)
 	}
 
+	if err := cmd.Wait(); err != nil {
+		t.Fatalf("Wait() error = %v, want nil", err)
+	}
+
 	err = terminateProcessTree(cmd)
 	if !errors.Is(err, os.ErrProcessDone) {
 		t.Fatalf("terminateProcessTree() error = %v, want os.ErrProcessDone", err)
-	}
-
-	if err := cmd.Wait(); err != nil {
-		t.Fatalf("Wait() error = %v, want nil", err)
 	}
 }
