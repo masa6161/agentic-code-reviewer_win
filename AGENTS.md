@@ -44,14 +44,28 @@ go test ./internal/agent ./internal/runner ./integration
 go build -o .\acr.exe .\cmd\acr
 ```
 
-## Windows のローカルバイナリ運用
+## ACR バイナリの使い分け
 
-重要:
+ACR 開発中は **2 つのバイナリ** を目的別に使い分ける。混同するとレビュー結果が不正確になるか、テストが古いコードに対して実行される。
 
-- Windows で動作確認するときは、`PATH` 上の古い `acr.exe` を使わない。
-- `acr` ではなく、必ずリポジトリ直下の `.\acr.exe` を明示実行する。
+### 1. レビューゲート用（安定バイナリ）
 
-推奨手順:
+開発中のコードレビューには `go install` 済みの安定バイナリを使用する。
+
+- パス: `C:\Users\kondo\go\bin\acr.exe`
+- インストール方法: `go install ./cmd/acr`（main ブランチの安定状態で実行）
+- 呼び出し: フルパス `C:\Users\kondo\go\bin\acr.exe` を明示指定する
+- 更新タイミング: ACR 自体の機能変更がマージされた後に再インストール
+
+レビュー実行例:
+
+```powershell
+C:\Users\kondo\go\bin\acr.exe --local --reviewers 3 --base HEAD~1 --reviewer-agent codex,claude,gemini --verbose
+```
+
+### 2. ACR 開発テスト用（テストビルド）
+
+ACR のソースコード自体を変更したとき、動作確認にはリポジトリ直下にビルドした `.\acr.exe` を使う。
 
 ```powershell
 $env:GOCACHE="$PWD\.cache\go-build"
@@ -60,16 +74,17 @@ go build -o .\acr.exe .\cmd\acr
 .\acr.exe --help
 ```
 
-ローカルレビュー確認例:
+テストビルド動作確認例:
 
 ```powershell
 .\acr.exe --local --reviewers 3 --base HEAD~1 --reviewer-agent codex,claude,gemini --verbose
 ```
 
-理由:
+### なぜ分けるのか
 
-- `go install` 済みの `C:\Users\<user>\go\bin\acr.exe` が古いことがある。
-- PowerShell では `acr` と打つとカレントディレクトリの `acr.exe` ではなく `PATH` 上の別バイナリが選ばれることがある。
+- テストビルド `.\acr.exe` は開発中のコードを含むため、壊れている可能性がある
+- レビューゲートが壊れたバイナリを使うとレビュー結果が信頼できなくなる
+- `go install` 済みバイナリは main ブランチの安定コミットに基づくため信頼性が高い
 
 ## reviewer CLI 検証時の注意
 
@@ -82,10 +97,13 @@ go build -o .\acr.exe .\cmd\acr
 - `internal/agent/` を触ったら:
   - `go test ./internal/agent ./internal/runner ./integration`
 - `cmd/acr/` を触ったら:
-  - `go build -o .\acr.exe .\cmd\acr`
+  - `go build -o .\acr.exe .\cmd\acr`（テストビルド）
   - 必要なら `.\acr.exe --help`
 - reviewer 実行パスを触ったら:
-  - 可能なら `.\acr.exe --local ... --verbose` で実動作確認
+  - 可能なら `.\acr.exe --local ... --verbose` で実動作確認（テストビルド使用）
+- コードレビューを実行するとき:
+  - 必ず安定バイナリ `C:\Users\kondo\go\bin\acr.exe` を使用する
+  - テストビルド `.\acr.exe` をレビューゲートに使わない
 
 ## コミット方針
 
@@ -95,7 +113,7 @@ go build -o .\acr.exe .\cmd\acr
 
 ## 作業ログ
 
-- 長めの調査内容や次スレッドへの引継ぎは `back_log/` に Markdown で残す。
+- 長めの調査内容や次スレッドへの引継ぎは `backlog/` に Markdown で残す。
 - ファイル名は`{YYYY-MM-DD}_{XX}.md`とし，`XX`は01からカウントアップさせる．
 - 少なくとも次を含める:
   - 目的

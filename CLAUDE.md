@@ -124,6 +124,21 @@ rootCmd.Flags().StringVarP(&myFlag, "my-flag", "m", getEnvStr("ACR_MY_FLAG", "de
 4. Update summarizer prompt if the field should be considered in clustering
 5. Add tests
 
+## Development Workflow: Binary Separation
+
+During ACR feature development, two separate binaries are used:
+
+| Purpose | Binary | Path |
+|---|---|---|
+| **Code review gate** | Stable installed binary | `C:\Users\kondo\go\bin\acr.exe` |
+| **ACR dev testing** | Local test build | `.\acr.exe` (repo root) |
+
+- **Code review**: Always use the installed stable binary (`C:\Users\kondo\go\bin\acr.exe`). Never use a test build for reviewing code.
+- **Testing ACR changes**: Build with `go build -o .\acr.exe .\cmd\acr` and test locally.
+- **Updating the stable binary**: Run `go install ./cmd/acr` only after ACR changes are merged to main.
+
+See `AGENTS.md` section "ACR バイナリの使い分け" for detailed operational guidance.
+
 ## Release Process
 
 Releases are automated via GoReleaser when tags are pushed:

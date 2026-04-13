@@ -39,4 +39,6 @@ bin/acr
 bin/acr-test
 
 /.omc/
+/backlog/
 /back_log/
+/docs/cf_skills
