@@ -67,6 +67,8 @@ func NewWithSpecs(config Config, specs []ReviewerSpec, logger *terminal.Logger) 
 	if len(specs) == 0 {
 		return nil, fmt.Errorf("at least one reviewer spec is required")
 	}
+	// Ensure reviewer count matches spec count to prevent phantom failures
+	config.Reviewers = len(specs)
 	return &Runner{
 		config:    config,
 		specs:     specs,

@@ -24,6 +24,11 @@ type diffReviewConfig struct {
 // a git diff (Claude, Gemini). It handles diff retrieval (using pre-computed or fetching),
 // ref-file branching, prompt rendering, and command execution.
 func executeDiffBasedReview(ctx context.Context, config *ReviewConfig, dc diffReviewConfig) (*ExecutionResult, error) {
+	// Phase-based prompt override: use arch prompt when phase is "arch"
+	if config.Phase == "arch" {
+		dc.DefaultPrompt = DefaultArchPrompt
+	}
+
 	// Use pre-computed diff if available, otherwise fetch it
 	diff := config.Diff
 	if !config.DiffPrecomputed {
