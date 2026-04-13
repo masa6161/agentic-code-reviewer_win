@@ -48,10 +48,16 @@ func (c *CodexAgent) ExecuteReview(ctx context.Context, config *ReviewConfig) (*
 		return nil, err
 	}
 
+	// Per-reviewer model override
+	model := c.model
+	if config.Model != "" {
+		model = config.Model
+	}
+
 	if config.Guidance != "" {
 		args := []string{"exec", "--json", "--color", "never", "-"}
-		if c.model != "" {
-			args = append([]string{"--model", c.model}, args...)
+		if model != "" {
+			args = append([]string{"--model", model}, args...)
 		}
 		return executeDiffBasedReview(ctx, config, diffReviewConfig{
 			Command:       "codex",
@@ -62,8 +68,8 @@ func (c *CodexAgent) ExecuteReview(ctx context.Context, config *ReviewConfig) (*
 	}
 
 	args := []string{"exec", "--json", "--color", "never", "review", "--base", config.BaseRef}
-	if c.model != "" {
-		args = append([]string{"--model", c.model}, args...)
+	if model != "" {
+		args = append([]string{"--model", model}, args...)
 	}
 
 	return executeCommand(ctx, executeOptions{

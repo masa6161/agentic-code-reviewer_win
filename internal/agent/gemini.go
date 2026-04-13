@@ -47,9 +47,15 @@ func (g *GeminiAgent) ExecuteReview(ctx context.Context, config *ReviewConfig) (
 		return nil, err
 	}
 
+	// Per-reviewer model override
+	model := g.model
+	if config.Model != "" {
+		model = config.Model
+	}
+
 	args := []string{"-o", "json", "-"}
-	if g.model != "" {
-		args = append([]string{"--model", g.model}, args...)
+	if model != "" {
+		args = append([]string{"--model", model}, args...)
 	}
 
 	return executeDiffBasedReview(ctx, config, diffReviewConfig{
