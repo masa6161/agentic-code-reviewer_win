@@ -158,3 +158,31 @@ func TestRenderPrompt_DefaultPrompts_NoGuidance(t *testing.T) {
 		})
 	}
 }
+
+func TestRenderPrompt_ArchPrompt(t *testing.T) {
+	if DefaultArchPrompt == "" {
+		t.Fatal("DefaultArchPrompt should not be empty")
+	}
+
+	if !strings.Contains(DefaultArchPrompt, "{{guidance}}") {
+		t.Error("DefaultArchPrompt should contain {{guidance}} placeholder")
+	}
+
+	// Empty guidance: placeholder stripped
+	rendered := RenderPrompt(DefaultArchPrompt, "")
+	if strings.Contains(rendered, "{{guidance}}") {
+		t.Error("rendered prompt with empty guidance should not contain {{guidance}}")
+	}
+	if strings.Contains(rendered, "Additional context:") {
+		t.Error("rendered prompt with empty guidance should not contain 'Additional context:'")
+	}
+
+	// Non-empty guidance: injected correctly
+	rendered = RenderPrompt(DefaultArchPrompt, "Focus on the auth package only.")
+	if !strings.Contains(rendered, "Additional context:\nFocus on the auth package only.") {
+		t.Error("rendered prompt with guidance should contain 'Additional context:' section")
+	}
+	if strings.Contains(rendered, "{{guidance}}") {
+		t.Error("rendered prompt with guidance should not contain raw {{guidance}} placeholder")
+	}
+}
