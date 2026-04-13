@@ -39,7 +39,8 @@ type Config struct {
 // Runner executes parallel code reviews.
 type Runner struct {
 	config    Config
-	agents    []agent.Agent
+	agents    []agent.Agent    // Backward compat (New() callers)
+	specs     []ReviewerSpec   // Per-reviewer specs (Phase 0)
 	logger    *terminal.Logger
 	completed *atomic.Int32
 }
@@ -50,12 +51,42 @@ func New(config Config, agents []agent.Agent, logger *terminal.Logger) (*Runner,
 	if len(agents) == 0 {
 		return nil, fmt.Errorf("at least one agent is required")
 	}
-	return &Runner{
+	r := &Runner{
 		config:    config,
 		agents:    agents,
 		logger:    logger,
 		completed: &atomic.Int32{},
+	}
+	r.specs = buildSpecsFromAgents(agents, config)
+	return r, nil
+}
+
+// NewWithSpecs creates a Runner with explicit per-reviewer specs.
+// Used when callers need per-reviewer differentiation (phase-typed reviews).
+func NewWithSpecs(config Config, specs []ReviewerSpec, logger *terminal.Logger) (*Runner, error) {
+	if len(specs) == 0 {
+		return nil, fmt.Errorf("at least one reviewer spec is required")
+	}
+	return &Runner{
+		config:    config,
+		specs:     specs,
+		logger:    logger,
+		completed: &atomic.Int32{},
 	}, nil
+}
+
+// buildSpecsFromAgents converts a round-robin agent list into ReviewerSpecs
+// for backward compatibility with the existing New() constructor.
+func buildSpecsFromAgents(agents []agent.Agent, config Config) []ReviewerSpec {
+	specs := make([]ReviewerSpec, config.Reviewers)
+	for i := range specs {
+		specs[i] = ReviewerSpec{
+			Agent:    agent.AgentForReviewer(agents, i+1),
+			Guidance: config.Guidance,
+			Diff:     config.Diff,
+		}
+	}
+	return specs
 }
 
 // Run executes the review process and returns the results.
@@ -178,11 +209,18 @@ func (r *Runner) runReviewerWithRetry(ctx context.Context, reviewerID int) domai
 func (r *Runner) runReviewer(ctx context.Context, reviewerID int) domain.ReviewerResult {
 	start := time.Now()
 
-	// Select agent via round-robin
-	selectedAgent := agent.AgentForReviewer(r.agents, reviewerID)
+	// Select reviewer via spec (Phase 0: replaces round-robin)
+	specIdx := reviewerID - 1
+	if specIdx < 0 || specIdx >= len(r.specs) {
+		return domain.ReviewerResult{
+			ReviewerID: reviewerID,
+			ExitCode:   -1,
+			Duration:   time.Since(start),
+		}
+	}
+	spec := r.specs[specIdx]
+	selectedAgent := spec.Agent
 	if selectedAgent == nil {
-		// Should never happen: New() validates non-empty agents, IDs start at 1
-		// Defensive check prevents panic if invariants change
 		return domain.ReviewerResult{
 			ReviewerID: reviewerID,
 			ExitCode:   -1,
@@ -198,17 +236,20 @@ func (r *Runner) runReviewer(ctx context.Context, reviewerID int) domain.Reviewe
 	timeoutCtx, cancel := context.WithTimeout(ctx, r.config.Timeout)
 	defer cancel()
 
-	// Create review configuration
+	// Create review configuration from spec + runner config
 	reviewConfig := &agent.ReviewConfig{
 		BaseRef:         r.config.BaseRef,
 		Timeout:         r.config.Timeout,
 		WorkDir:         r.config.WorkDir,
 		Verbose:         r.config.Verbose,
-		Guidance:        r.config.Guidance,
+		Guidance:        orDefault(spec.Guidance, r.config.Guidance),
 		ReviewerID:      strconv.Itoa(reviewerID),
 		UseRefFile:      r.config.UseRefFile,
-		Diff:            r.config.Diff,
+		Diff:            orDefault(spec.Diff, r.config.Diff),
 		DiffPrecomputed: r.config.DiffPrecomputed,
+		Model:           spec.Model,
+		Phase:           spec.Phase,
+		TargetFiles:     spec.TargetFiles,
 	}
 
 	// Execute the review
@@ -284,6 +325,13 @@ func (r *Runner) runReviewer(ctx context.Context, reviewerID int) domain.Reviewe
 		}
 	}
 
+	// Stamp phase on all findings (parser has no access to ReviewConfig)
+	if reviewConfig.Phase != "" {
+		for i := range result.Findings {
+			result.Findings[i].Phase = reviewConfig.Phase
+		}
+	}
+
 	// Capture parse errors tracked by the parser
 	result.ParseErrors += parser.ParseErrors()
 
@@ -322,6 +370,14 @@ func (r *Runner) runReviewer(ctx context.Context, reviewerID int) domain.Reviewe
 
 func (r *Runner) verbose() bool {
 	return r.config.Verbose
+}
+
+// orDefault returns value if non-empty, otherwise fallback.
+func orDefault(value, fallback string) string {
+	if value != "" {
+		return value
+	}
+	return fallback
 }
 
 // BuildStats builds review statistics from results.

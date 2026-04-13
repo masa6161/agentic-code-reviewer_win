@@ -304,6 +304,7 @@ invalid json line here
 	r := &Runner{
 		config:    Config{Reviewers: 1, Timeout: 10 * time.Second},
 		agents:    []agent.Agent{mockAgent},
+		specs:     []ReviewerSpec{{Agent: mockAgent}},
 		logger:    terminal.NewLogger(),
 		completed: new(atomic.Int32),
 	}
@@ -330,6 +331,7 @@ func TestRunReviewer_RecoverableParseError(t *testing.T) {
 	r := &Runner{
 		config:    Config{Reviewers: 1, Timeout: 10 * time.Second},
 		agents:    []agent.Agent{mockAgent},
+		specs:     []ReviewerSpec{{Agent: mockAgent}},
 		logger:    terminal.NewLogger(),
 		completed: new(atomic.Int32),
 	}
@@ -405,6 +407,7 @@ func TestRunReviewerWithRetry_SkipsRetryOnAuthFailure(t *testing.T) {
 	r := &Runner{
 		config:    Config{Reviewers: 1, Retries: 2, Timeout: 10 * time.Second},
 		agents:    []agent.Agent{mock},
+		specs:     []ReviewerSpec{{Agent: mock}},
 		logger:    terminal.NewLogger(),
 		completed: new(atomic.Int32),
 	}
@@ -428,6 +431,7 @@ func TestRunReviewerWithRetry_RetriesNonAuthFailure(t *testing.T) {
 	r := &Runner{
 		config:    Config{Reviewers: 1, Retries: 1, Timeout: 10 * time.Second},
 		agents:    []agent.Agent{mock},
+		specs:     []ReviewerSpec{{Agent: mock}},
 		logger:    terminal.NewLogger(),
 		completed: new(atomic.Int32),
 	}
