@@ -354,8 +354,8 @@ func RenderDismissedLGTMMarkdown(findings []domain.FindingGroup, stats domain.Re
 	return strings.Join(lines, "\n")
 }
 
-// RenderJSON outputs the review results as structured JSON.
-// The grouped findings include the ok field derived from ComputeOk.
+// RenderJSON marshals the grouped findings as JSON with indentation.
+// Callers must set GroupedFindings.Ok before calling RenderJSON.
 func RenderJSON(grouped *domain.GroupedFindings) ([]byte, error) {
 	return json.MarshalIndent(grouped, "", "  ")
 }

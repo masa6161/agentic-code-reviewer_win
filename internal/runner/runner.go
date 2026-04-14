@@ -40,8 +40,8 @@ type Config struct {
 // Runner executes parallel code reviews.
 type Runner struct {
 	config    Config
-	agents    []agent.Agent    // Backward compat (New() callers)
-	specs     []ReviewerSpec   // Per-reviewer specs (Phase 0)
+	agents    []agent.Agent  // Backward compat (New() callers)
+	specs     []ReviewerSpec // Per-reviewer specs (Phase 0)
 	logger    *terminal.Logger
 	completed *atomic.Int32
 }

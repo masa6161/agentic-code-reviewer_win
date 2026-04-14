@@ -6,7 +6,7 @@ import "slices"
 type Finding struct {
 	Text       string
 	ReviewerID int
-	Severity   string // "blocking" | "advisory" (default: "advisory")
+	Severity   string // "blocking" | "advisory" | "" (empty implies advisory)
 	Prefix     string // "[must]" | "[imo]" | "[nits]" | "[fyi]" | "[ask]" | ""
 	Category   string // "correctness" | "security" | "perf" | "maintainability" | "testing" | "style" | ""
 	Phase      string // "arch" | "diff" | "" (populated from ReviewConfig.Phase)
@@ -158,6 +158,8 @@ func AggregateFindings(findings []Finding) []AggregatedFinding {
 			order = append(order, normalized)
 			reviewers = nil
 			severities[normalized] = f.Severity
+		} else if f.Severity == "blocking" {
+			severities[normalized] = "blocking"
 		}
 
 		found := false
@@ -185,16 +187,4 @@ func AggregateFindings(findings []Finding) []AggregatedFinding {
 	}
 
 	return result
-}
-
-// ComputeOk derives the Ok field from findings.
-// Ok is true when no blocking findings exist.
-func (g *GroupedFindings) ComputeOk(findings []Finding) {
-	g.Ok = true
-	for _, f := range findings {
-		if f.Severity == "blocking" {
-			g.Ok = false
-			return
-		}
-	}
 }

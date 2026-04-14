@@ -12,7 +12,7 @@ type PhaseConfig struct {
 	ReviewerCount int    // Number of reviewers for this phase
 	AgentName     string // Which agent to use (empty = default from caller)
 	Model         string // Model override (empty = agent default)
-	Prompt        string // Custom prompt (empty = phase default)
+	Prompt        string // Per-phase guidance override (empty = use global guidance; phase prompt template is selected by Phase)
 }
 
 // BuildReviewerSpecs creates ReviewerSpecs from PhaseConfigs.

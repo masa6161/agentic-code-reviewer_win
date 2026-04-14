@@ -12,7 +12,7 @@ type mockPhaseAgent struct {
 	name string
 }
 
-func (m *mockPhaseAgent) Name() string { return m.name }
+func (m *mockPhaseAgent) Name() string       { return m.name }
 func (m *mockPhaseAgent) IsAvailable() error { return nil }
 func (m *mockPhaseAgent) ExecuteReview(_ context.Context, _ *agent.ReviewConfig) (*agent.ExecutionResult, error) {
 	return nil, nil

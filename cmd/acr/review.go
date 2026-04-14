@@ -149,6 +149,7 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 	}
 
 	var r *runner.Runner
+	actualReviewers := opts.Reviewers
 	if phaseStr != "" {
 		phases, phaseErr := parsePhases(phaseStr, opts.Reviewers)
 		if phaseErr != nil {
@@ -165,6 +166,7 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 			logger.Logf(terminal.StyleError, "Phase config error: %v", specErr)
 			return domain.ExitError
 		}
+		actualReviewers = len(specs)
 		r, err = runner.NewWithSpecs(runnerConfig, specs, logger)
 	} else {
 		r, err = runner.New(runnerConfig, reviewAgents, logger)
@@ -228,7 +230,7 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 	}
 
 	// Build statistics
-	stats := runner.BuildStats(results, opts.Reviewers, wallClock)
+	stats := runner.BuildStats(results, actualReviewers, wallClock)
 
 	// Check if all reviewers failed
 	if stats.AllFailed() {

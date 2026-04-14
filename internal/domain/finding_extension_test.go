@@ -40,51 +40,48 @@ func TestAggregateFindings_PreservesSeverity(t *testing.T) {
 	}
 }
 
-func TestAggregateFindings_FirstSeenSeverityWins(t *testing.T) {
-	findings := []Finding{
-		{Text: "Issue", ReviewerID: 1, Severity: "blocking"},
-		{Text: "Issue", ReviewerID: 2, Severity: "advisory"}, // duplicate — first-seen wins
+func TestAggregateFindings_BlockingPreferredOnDuplicate(t *testing.T) {
+	tests := []struct {
+		name     string
+		findings []Finding
+		want     string
+	}{
+		{
+			name: "advisory then blocking upgrades to blocking",
+			findings: []Finding{
+				{Text: "Issue", ReviewerID: 1, Severity: "advisory"},
+				{Text: "Issue", ReviewerID: 2, Severity: "blocking"},
+			},
+			want: "blocking",
+		},
+		{
+			name: "blocking then advisory stays blocking",
+			findings: []Finding{
+				{Text: "Issue", ReviewerID: 1, Severity: "blocking"},
+				{Text: "Issue", ReviewerID: 2, Severity: "advisory"},
+			},
+			want: "blocking",
+		},
+		{
+			name: "advisory then advisory stays advisory",
+			findings: []Finding{
+				{Text: "Issue", ReviewerID: 1, Severity: "advisory"},
+				{Text: "Issue", ReviewerID: 2, Severity: "advisory"},
+			},
+			want: "advisory",
+		},
 	}
 
-	result := AggregateFindings(findings)
-
-	if len(result) != 1 {
-		t.Fatalf("expected 1 aggregated finding, got %d", len(result))
-	}
-	if result[0].Severity != "blocking" {
-		t.Errorf("expected first-seen Severity %q, got %q", "blocking", result[0].Severity)
-	}
-}
-
-func TestGroupedFindings_ComputeOk_NoBlockingFindings(t *testing.T) {
-	g := &GroupedFindings{}
-	g.ComputeOk(nil)
-	if !g.Ok {
-		t.Error("expected Ok=true when findings list is nil")
-	}
-}
-
-func TestGroupedFindings_ComputeOk_WithBlockingFinding(t *testing.T) {
-	findings := []Finding{
-		{Text: "advisory issue", ReviewerID: 1, Severity: "advisory"},
-		{Text: "blocking issue", ReviewerID: 2, Severity: "blocking"},
-	}
-	g := &GroupedFindings{}
-	g.ComputeOk(findings)
-	if g.Ok {
-		t.Error("expected Ok=false when a blocking finding exists")
-	}
-}
-
-func TestGroupedFindings_ComputeOk_AdvisoryOnly(t *testing.T) {
-	findings := []Finding{
-		{Text: "advisory issue 1", ReviewerID: 1, Severity: "advisory"},
-		{Text: "advisory issue 2", ReviewerID: 2, Severity: "advisory"},
-	}
-	g := &GroupedFindings{}
-	g.ComputeOk(findings)
-	if !g.Ok {
-		t.Error("expected Ok=true with advisory-only findings")
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result := AggregateFindings(tc.findings)
+			if len(result) != 1 {
+				t.Fatalf("expected 1 aggregated finding, got %d", len(result))
+			}
+			if result[0].Severity != tc.want {
+				t.Errorf("expected Severity %q, got %q", tc.want, result[0].Severity)
+			}
+		})
 	}
 }
 

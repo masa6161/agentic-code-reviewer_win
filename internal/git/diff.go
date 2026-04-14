@@ -286,6 +286,7 @@ func ClassifyDiffSize(ctx context.Context, baseRef, workDir string) (DiffSize, i
 	}
 
 	cmd := exec.CommandContext(ctx, "git", "diff", "--stat", baseRef, "--")
+	cmd.Env = append(os.Environ(), "LC_ALL=C")
 	if workDir != "" {
 		cmd.Dir = workDir
 	}
@@ -313,14 +314,14 @@ func parseDiffStat(output string) (fileCount, lineCount int) {
 	parts := strings.Fields(summary)
 	for i, p := range parts {
 		if strings.HasPrefix(p, "file") && i > 0 {
-			fmt.Sscanf(parts[i-1], "%d", &fileCount)
+			_, _ = fmt.Sscanf(parts[i-1], "%d", &fileCount)
 		}
 		if strings.HasPrefix(p, "insertion") && i > 0 {
-			fmt.Sscanf(parts[i-1], "%d", &lineCount)
+			_, _ = fmt.Sscanf(parts[i-1], "%d", &lineCount)
 		}
 		if strings.HasPrefix(p, "deletion") && i > 0 {
 			var deletions int
-			fmt.Sscanf(parts[i-1], "%d", &deletions)
+			_, _ = fmt.Sscanf(parts[i-1], "%d", &deletions)
 			lineCount += deletions
 		}
 	}
