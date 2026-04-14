@@ -1,6 +1,7 @@
 package runner
 
 import (
+	"encoding/json"
 	"fmt"
 	"slices"
 	"strings"
@@ -351,6 +352,12 @@ func RenderDismissedLGTMMarkdown(findings []domain.FindingGroup, stats domain.Re
 	lines = append(lines, renderFooter(version))
 
 	return strings.Join(lines, "\n")
+}
+
+// RenderJSON outputs the review results as structured JSON.
+// The grouped findings include the ok field derived from ComputeOk.
+func RenderJSON(grouped *domain.GroupedFindings) ([]byte, error) {
+	return json.MarshalIndent(grouped, "", "  ")
 }
 
 // renderFooter returns a small attribution line for GitHub comments.

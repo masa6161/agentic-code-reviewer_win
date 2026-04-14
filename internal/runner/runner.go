@@ -32,8 +32,9 @@ type Config struct {
 	WorkDir         string
 	Guidance        string
 	UseRefFile      bool
-	Diff            string // Pre-computed git diff (generated once, shared across reviewers)
-	DiffPrecomputed bool   // Whether Diff was pre-computed (true even if Diff is empty)
+	Diff            string        // Pre-computed git diff (generated once, shared across reviewers)
+	DiffPrecomputed bool          // Whether Diff was pre-computed (true even if Diff is empty)
+	Phases          []PhaseConfig // Phase-typed review configuration (empty = legacy mode)
 }
 
 // Runner executes parallel code reviews.
@@ -83,9 +84,10 @@ func buildSpecsFromAgents(agents []agent.Agent, config Config) []ReviewerSpec {
 	specs := make([]ReviewerSpec, config.Reviewers)
 	for i := range specs {
 		specs[i] = ReviewerSpec{
-			Agent:    agent.AgentForReviewer(agents, i+1),
-			Guidance: config.Guidance,
-			Diff:     config.Diff,
+			Agent:           agent.AgentForReviewer(agents, i+1),
+			Guidance:        config.Guidance,
+			Diff:            config.Diff,
+			DiffPrecomputed: config.DiffPrecomputed,
 		}
 	}
 	return specs
@@ -248,7 +250,7 @@ func (r *Runner) runReviewer(ctx context.Context, reviewerID int) domain.Reviewe
 		ReviewerID:      strconv.Itoa(reviewerID),
 		UseRefFile:      r.config.UseRefFile,
 		Diff:            orDefault(spec.Diff, r.config.Diff),
-		DiffPrecomputed: r.config.DiffPrecomputed,
+		DiffPrecomputed: spec.DiffPrecomputed || r.config.DiffPrecomputed,
 		Model:           spec.Model,
 		Phase:           spec.Phase,
 		TargetFiles:     spec.TargetFiles,
