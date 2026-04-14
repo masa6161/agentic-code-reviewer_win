@@ -250,3 +250,90 @@ func filterEnv(env []string, name string) []string {
 	}
 	return result
 }
+
+// DiffSize classifies the scale of a diff.
+type DiffSize int
+
+const (
+	DiffSizeSmall  DiffSize = iota // ≤3 files AND ≤100 changed lines
+	DiffSizeMedium                 // 4-10 files OR 101-500 changed lines
+	DiffSizeLarge                  // >10 files OR >500 changed lines
+)
+
+// String returns a human-readable label.
+func (d DiffSize) String() string {
+	switch d {
+	case DiffSizeSmall:
+		return "small"
+	case DiffSizeMedium:
+		return "medium"
+	case DiffSizeLarge:
+		return "large"
+	default:
+		return "unknown"
+	}
+}
+
+// ClassifyDiffSize determines the diff size between the working tree and baseRef.
+// It runs `git diff --stat <baseRef>` and parses the summary line.
+// Returns (size, fileCount, lineCount, error).
+func ClassifyDiffSize(ctx context.Context, baseRef, workDir string) (DiffSize, int, int, error) {
+	if baseRef == "" {
+		return DiffSizeSmall, 0, 0, fmt.Errorf("base ref cannot be empty")
+	}
+	if strings.HasPrefix(baseRef, "-") {
+		return DiffSizeSmall, 0, 0, fmt.Errorf("invalid base ref %q: must not start with -", baseRef)
+	}
+
+	cmd := exec.CommandContext(ctx, "git", "diff", "--stat", baseRef, "--")
+	if workDir != "" {
+		cmd.Dir = workDir
+	}
+	output, err := cmd.Output()
+	if err != nil {
+		return DiffSizeSmall, 0, 0, fmt.Errorf("failed to get diff stat: %w", err)
+	}
+
+	fileCount, lineCount := parseDiffStat(string(output))
+	size := classifySize(fileCount, lineCount)
+	return size, fileCount, lineCount, nil
+}
+
+// parseDiffStat extracts file count and total changed lines from git diff --stat output.
+// The summary line has format: " N files changed, M insertions(+), K deletions(-)"
+// or variations like " N file changed, M insertion(+)"
+func parseDiffStat(output string) (fileCount, lineCount int) {
+	lines := strings.Split(strings.TrimSpace(output), "\n")
+	if len(lines) == 0 {
+		return 0, 0
+	}
+	// Summary is always the last line
+	summary := lines[len(lines)-1]
+	// Use simple parsing: find numbers before "file" and "insertion"/"deletion"
+	parts := strings.Fields(summary)
+	for i, p := range parts {
+		if strings.HasPrefix(p, "file") && i > 0 {
+			fmt.Sscanf(parts[i-1], "%d", &fileCount)
+		}
+		if strings.HasPrefix(p, "insertion") && i > 0 {
+			fmt.Sscanf(parts[i-1], "%d", &lineCount)
+		}
+		if strings.HasPrefix(p, "deletion") && i > 0 {
+			var deletions int
+			fmt.Sscanf(parts[i-1], "%d", &deletions)
+			lineCount += deletions
+		}
+	}
+	return fileCount, lineCount
+}
+
+// classifySize applies size thresholds to file and line counts.
+func classifySize(fileCount, lineCount int) DiffSize {
+	if fileCount > 10 || lineCount > 500 {
+		return DiffSizeLarge
+	}
+	if fileCount > 3 || lineCount > 100 {
+		return DiffSizeMedium
+	}
+	return DiffSizeSmall
+}
