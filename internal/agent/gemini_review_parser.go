@@ -74,6 +74,8 @@ func (p *GeminiOutputParser) parseFullOutput(scanner *bufio.Scanner) error {
 			p.findings = append(p.findings, domain.Finding{
 				Text:       text,
 				ReviewerID: p.reviewerID,
+				Severity:   ExtractSeverity(text),
+				Prefix:     ExtractPrefix(text),
 			})
 		}
 		return nil
@@ -101,6 +103,8 @@ func (p *GeminiOutputParser) parseFullOutput(scanner *bufio.Scanner) error {
 		p.findings = append(p.findings, domain.Finding{
 			Text:       responseText,
 			ReviewerID: p.reviewerID,
+			Severity:   ExtractSeverity(responseText),
+			Prefix:     ExtractPrefix(responseText),
 		})
 	}
 

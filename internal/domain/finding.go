@@ -6,12 +6,17 @@ import "slices"
 type Finding struct {
 	Text       string
 	ReviewerID int
+	Severity   string // "blocking" | "advisory" | "" (empty implies advisory)
+	Prefix     string // "[must]" | "[imo]" | "[nits]" | "[fyi]" | "[ask]" | ""
+	Category   string // "correctness" | "security" | "perf" | "maintainability" | "testing" | "style" | ""
+	Phase      string // "arch" | "diff" | "" (populated from ReviewConfig.Phase)
 }
 
 // AggregatedFinding represents a finding with the list of reviewers who found it.
 type AggregatedFinding struct {
 	Text      string
 	Reviewers []int
+	Severity  string // first-seen severity from grouped findings
 }
 
 // FindingGroup represents a grouped/clustered finding from the summarizer.
@@ -25,8 +30,11 @@ type FindingGroup struct {
 
 // GroupedFindings represents the output from the summarizer.
 type GroupedFindings struct {
-	Findings []FindingGroup `json:"findings"`
-	Info     []FindingGroup `json:"info"`
+	Findings           []FindingGroup `json:"findings"`
+	Info               []FindingGroup `json:"info"`
+	Ok                 bool           `json:"ok"`
+	NotesForNextReview string         `json:"notes_for_next_review,omitempty"`
+	SkippedFiles       []string       `json:"skipped_files,omitempty"`
 }
 
 // HasFindings returns true if there are any findings.
@@ -136,6 +144,7 @@ func BuildDispositions(
 // AggregateFindings aggregates findings by text, tracking which reviewers found each.
 func AggregateFindings(findings []Finding) []AggregatedFinding {
 	seen := make(map[string][]int)
+	severities := make(map[string]string)
 	order := make([]string, 0)
 
 	for _, f := range findings {
@@ -148,6 +157,9 @@ func AggregateFindings(findings []Finding) []AggregatedFinding {
 		if !exists {
 			order = append(order, normalized)
 			reviewers = nil
+			severities[normalized] = f.Severity
+		} else if f.Severity == "blocking" {
+			severities[normalized] = "blocking"
 		}
 
 		found := false
@@ -170,6 +182,7 @@ func AggregateFindings(findings []Finding) []AggregatedFinding {
 		result = append(result, AggregatedFinding{
 			Text:      text,
 			Reviewers: sortedReviewers,
+			Severity:  severities[text],
 		})
 	}
 

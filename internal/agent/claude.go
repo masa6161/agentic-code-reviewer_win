@@ -52,9 +52,15 @@ func (c *ClaudeAgent) ExecuteReview(ctx context.Context, config *ReviewConfig) (
 		return nil, err
 	}
 
+	// Per-reviewer model override
+	model := c.model
+	if config.Model != "" {
+		model = config.Model
+	}
+
 	args := []string{"--print", "-"}
-	if c.model != "" {
-		args = append([]string{"--model", c.model}, args...)
+	if model != "" {
+		args = append([]string{"--model", model}, args...)
 	}
 
 	return executeDiffBasedReview(ctx, config, diffReviewConfig{

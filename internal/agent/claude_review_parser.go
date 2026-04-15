@@ -44,6 +44,8 @@ func (p *ClaudeOutputParser) ReadFinding(scanner *bufio.Scanner) (*domain.Findin
 		return &domain.Finding{
 			Text:       line,
 			ReviewerID: p.reviewerID,
+			Severity:   ExtractSeverity(line),
+			Prefix:     ExtractPrefix(line),
 		}, nil
 	}
 

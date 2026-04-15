@@ -36,4 +36,15 @@ type ReviewConfig struct {
 	// DiffPrecomputed indicates that Diff was pre-computed and should be used as-is,
 	// even if empty. When false, agents that need a diff will fetch it themselves.
 	DiffPrecomputed bool
+
+	// Model overrides the agent's default model for this review.
+	// If empty, the agent uses its construction-time default.
+	Model string
+
+	// Phase indicates the review phase: "arch", "diff", or "" (default = diff behavior).
+	Phase string
+
+	// TargetFiles restricts the review to specific files (for grouped diff).
+	// If empty, the full diff is reviewed.
+	TargetFiles []string
 }

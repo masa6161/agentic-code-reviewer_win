@@ -157,3 +157,24 @@ Skip:
 
 Output format: file:line: description
 {{guidance}}`
+
+// DefaultArchPrompt is the default prompt for architecture-phase reviews.
+// Used when ReviewConfig.Phase == "arch".
+const DefaultArchPrompt = `Review this code change for architectural concerns.
+
+Focus on:
+- Dependency direction violations (importing from wrong layer)
+- Responsibility misplacement (logic in wrong package/module)
+- Breaking changes to public interfaces or APIs
+- Security design issues (auth bypass paths, trust boundary violations)
+- Missing error propagation across module boundaries
+
+Output format:
+- Prefix each issue with [must] for blocking or [imo] for advisory
+- One issue per line
+
+Skip:
+- Implementation details within a single function
+- Style/formatting
+- Performance micro-optimizations
+{{guidance}}`
