@@ -19,14 +19,6 @@ import (
 )
 
 func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger) domain.ExitCode {
-	if opts.Concurrency < opts.Reviewers {
-		logger.Logf(terminal.StyleInfo, "Starting review %s(%d reviewers, %d concurrent, base=%s)%s",
-			terminal.Color(terminal.Dim), opts.Reviewers, opts.Concurrency, opts.Base, terminal.Color(terminal.Reset))
-	} else {
-		logger.Logf(terminal.StyleInfo, "Starting review %s(%d reviewers, base=%s)%s",
-			terminal.Color(terminal.Dim), opts.Reviewers, opts.Base, terminal.Color(terminal.Reset))
-	}
-
 	if err := agent.ValidateAgentNames(opts.ReviewerAgents); err != nil {
 		logger.Logf(terminal.StyleError, "Invalid agent: %v", err)
 		return domain.ExitError
@@ -126,36 +118,19 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 			if opts.Verbose {
 				logger.Logf(terminal.StyleDim, "Auto-phase: diff is %s (%d files, %d lines)", size, fileCount, lineCount)
 			}
-			switch size {
-			case git.DiffSizeSmall:
-				phaseStr = "diff"
-			case git.DiffSizeLarge:
-				if opts.Reviewers < 2 {
-					if opts.Verbose {
-						logger.Logf(terminal.StyleWarning, "Auto-phase: --reviewers=%d too low for grouped diff, falling back to arch,diff", opts.Reviewers)
-					}
-					phaseStr = "arch,diff"
-				} else {
-					maxDiffGroups := opts.Reviewers - 1
-					if maxDiffGroups > 4 {
-						maxDiffGroups = 4
-					}
-					specs, specErr := buildGroupedDiffSpecs(diff, opts.Guidance, diffPrecomputed, reviewAgents, maxDiffGroups)
-					if specErr != nil {
-						if opts.Verbose {
-							logger.Logf(terminal.StyleWarning, "Auto-phase: grouped diff setup failed: %v, falling back to arch,diff", specErr)
-						}
-						phaseStr = "arch,diff"
-					} else {
-						groupedSpecs = specs
-						useGroupedSpecs = true
-						if opts.Verbose {
-							logger.Logf(terminal.StyleDim, "Auto-phase: large diff — %d files in %d groups", fileCount, len(groupedSpecs)-1)
-						}
-					}
+			apr := resolveAutoPhase(size, opts.Reviewers, diff, opts.Guidance, diffPrecomputed, reviewAgents)
+			phaseStr = apr.PhaseStr
+			groupedSpecs = apr.GroupedSpecs
+			useGroupedSpecs = apr.UseGrouped
+			if opts.Verbose {
+				switch {
+				case apr.UseGrouped:
+					logger.Logf(terminal.StyleDim, "Auto-phase: large diff — %d files in %d groups", fileCount, len(groupedSpecs)-1)
+				case size == git.DiffSizeLarge && opts.Reviewers < 2:
+					logger.Logf(terminal.StyleWarning, "Auto-phase: --reviewers=%d too low for grouped diff, falling back to arch,diff", opts.Reviewers)
+				case size == git.DiffSizeLarge && !apr.UseGrouped:
+					logger.Logf(terminal.StyleWarning, "Auto-phase: grouped diff setup failed, falling back to arch,diff")
 				}
-			default: // medium
-				phaseStr = "arch,diff"
 			}
 		}
 	}
@@ -204,6 +179,14 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 	if err != nil {
 		logger.Logf(terminal.StyleError, "Runner initialization failed: %v", err)
 		return domain.ExitError
+	}
+
+	if opts.Concurrency < actualReviewers {
+		logger.Logf(terminal.StyleInfo, "Starting review %s(%d reviewers, %d concurrent, base=%s)%s",
+			terminal.Color(terminal.Dim), actualReviewers, opts.Concurrency, opts.Base, terminal.Color(terminal.Reset))
+	} else {
+		logger.Logf(terminal.StyleInfo, "Starting review %s(%d reviewers, base=%s)%s",
+			terminal.Color(terminal.Dim), actualReviewers, opts.Base, terminal.Color(terminal.Reset))
 	}
 
 	// Start PR feedback summarizer in parallel with reviewers (if enabled, reviewing a PR, and FP filter is on)
@@ -571,6 +554,36 @@ func groupedPtr(r *summarizer.Result) *domain.GroupedFindings {
 		return nil
 	}
 	return &r.Grouped
+}
+
+// autoPhaseResult holds the outcome of resolveAutoPhase.
+type autoPhaseResult struct {
+	PhaseStr     string              // non-empty → use legacy phase path
+	GroupedSpecs []runner.ReviewerSpec // non-nil → use grouped diff path
+	UseGrouped   bool
+}
+
+// resolveAutoPhase determines phase configuration based on diff size and reviewer budget.
+func resolveAutoPhase(size git.DiffSize, reviewers int, diff, guidance string, diffPrecomputed bool, agents []agent.Agent) autoPhaseResult {
+	switch size {
+	case git.DiffSizeSmall:
+		return autoPhaseResult{PhaseStr: "diff"}
+	case git.DiffSizeLarge:
+		if reviewers < 2 {
+			return autoPhaseResult{PhaseStr: "arch,diff"}
+		}
+		maxDiffGroups := reviewers - 1
+		if maxDiffGroups > 4 {
+			maxDiffGroups = 4
+		}
+		specs, err := buildGroupedDiffSpecs(diff, guidance, diffPrecomputed, agents, maxDiffGroups)
+		if err != nil {
+			return autoPhaseResult{PhaseStr: "arch,diff"}
+		}
+		return autoPhaseResult{GroupedSpecs: specs, UseGrouped: true}
+	default: // medium
+		return autoPhaseResult{PhaseStr: "arch,diff"}
+	}
 }
 
 // buildGroupedDiffSpecs creates ReviewerSpecs for grouped diff review.

@@ -263,6 +263,71 @@ func TestBuildGroupedDiffSpecs_FallbackOnError(t *testing.T) {
 	}
 }
 
+// --- resolveAutoPhase tests ---
+
+func TestAutoPhase_Large_GroupedSpecs(t *testing.T) {
+	// Large diff with enough reviewers → grouped specs
+	sections := makeSectionsForReview(12, 10)
+	fullDiff := git.JoinDiffSections(sections)
+	agents := []agent.Agent{agent.NewCodexAgent("")}
+
+	apr := resolveAutoPhase(git.DiffSizeLarge, 3, fullDiff, "", true, agents)
+
+	if !apr.UseGrouped {
+		t.Fatal("expected UseGrouped=true for large diff with 3 reviewers")
+	}
+	if apr.PhaseStr != "" {
+		t.Errorf("expected empty PhaseStr, got %q", apr.PhaseStr)
+	}
+	if len(apr.GroupedSpecs) < 2 {
+		t.Errorf("expected at least 2 specs (1 arch + 1+ diff), got %d", len(apr.GroupedSpecs))
+	}
+}
+
+func TestAutoPhase_Large_FallbackTooFewReviewers(t *testing.T) {
+	// Large diff with reviewers=1 → fallback to arch,diff
+	apr := resolveAutoPhase(git.DiffSizeLarge, 1, "irrelevant", "", true, nil)
+
+	if apr.UseGrouped {
+		t.Fatal("expected UseGrouped=false for reviewers=1")
+	}
+	if apr.PhaseStr != "arch,diff" {
+		t.Errorf("expected PhaseStr 'arch,diff', got %q", apr.PhaseStr)
+	}
+}
+
+func TestAutoPhase_Large_FallbackOnError(t *testing.T) {
+	// Large diff but empty diff content → buildGroupedDiffSpecs fails → fallback
+	agents := []agent.Agent{agent.NewCodexAgent("")}
+
+	apr := resolveAutoPhase(git.DiffSizeLarge, 3, "", "", true, agents)
+
+	if apr.UseGrouped {
+		t.Fatal("expected UseGrouped=false when buildGroupedDiffSpecs fails")
+	}
+	if apr.PhaseStr != "arch,diff" {
+		t.Errorf("expected PhaseStr 'arch,diff', got %q", apr.PhaseStr)
+	}
+}
+
+func TestAutoPhase_Large_MaxDiffGroupsClamped(t *testing.T) {
+	// reviewers=6 → maxDiffGroups should be clamped to 4 (not 5)
+	sections := makeSectionsForReview(20, 10)
+	fullDiff := git.JoinDiffSections(sections)
+	agents := []agent.Agent{agent.NewCodexAgent("")}
+
+	apr := resolveAutoPhase(git.DiffSizeLarge, 6, fullDiff, "", true, agents)
+
+	if !apr.UseGrouped {
+		t.Fatal("expected UseGrouped=true")
+	}
+	// 1 arch + at most 4 diff groups = max 5 specs
+	diffGroupCount := len(apr.GroupedSpecs) - 1 // subtract arch
+	if diffGroupCount > 4 {
+		t.Errorf("expected at most 4 diff groups (clamped), got %d", diffGroupCount)
+	}
+}
+
 // --- splitFindingsByPhase tests ---
 
 func TestSplitFindingsByPhase(t *testing.T) {
