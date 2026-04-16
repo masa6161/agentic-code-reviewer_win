@@ -151,6 +151,38 @@ func TestGroupedFindings_TotalGroups(t *testing.T) {
 	}
 }
 
+func TestAggregateFindings_PreservesGroupKey(t *testing.T) {
+	findings := []Finding{
+		{Text: "issue A", ReviewerID: 1, GroupKey: "g01"},
+		{Text: "issue B", ReviewerID: 2, GroupKey: "g02"},
+	}
+	agg := AggregateFindings(findings)
+	if len(agg) != 2 {
+		t.Fatalf("expected 2 aggregated findings, got %d", len(agg))
+	}
+	if agg[0].GroupKey != "g01" {
+		t.Errorf("expected GroupKey 'g01', got %q", agg[0].GroupKey)
+	}
+	if agg[1].GroupKey != "g02" {
+		t.Errorf("expected GroupKey 'g02', got %q", agg[1].GroupKey)
+	}
+}
+
+func TestAggregateFindings_MergesGroupKeys(t *testing.T) {
+	findings := []Finding{
+		{Text: "same issue", ReviewerID: 1, GroupKey: "g01"},
+		{Text: "same issue", ReviewerID: 2, GroupKey: "g02"},
+		{Text: "same issue", ReviewerID: 3, GroupKey: "g01"}, // duplicate group key
+	}
+	agg := AggregateFindings(findings)
+	if len(agg) != 1 {
+		t.Fatalf("expected 1 aggregated finding, got %d", len(agg))
+	}
+	if agg[0].GroupKey != "g01,g02" {
+		t.Errorf("expected GroupKey 'g01,g02', got %q", agg[0].GroupKey)
+	}
+}
+
 func TestReviewStats_AllFailed(t *testing.T) {
 	tests := []struct {
 		name     string

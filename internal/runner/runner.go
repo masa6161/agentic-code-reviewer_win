@@ -336,6 +336,13 @@ func (r *Runner) runReviewer(ctx context.Context, reviewerID int) domain.Reviewe
 		}
 	}
 
+	// Stamp group key on all findings
+	if spec.GroupKey != "" {
+		for i := range result.Findings {
+			result.Findings[i].GroupKey = spec.GroupKey
+		}
+	}
+
 	// Capture parse errors tracked by the parser
 	result.ParseErrors += parser.ParseErrors()
 

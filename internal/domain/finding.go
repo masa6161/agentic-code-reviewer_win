@@ -1,6 +1,9 @@
 package domain
 
-import "slices"
+import (
+	"slices"
+	"strings"
+)
 
 // Finding represents a single review finding from a reviewer iteration.
 type Finding struct {
@@ -10,6 +13,7 @@ type Finding struct {
 	Prefix     string // "[must]" | "[imo]" | "[nits]" | "[fyi]" | "[ask]" | ""
 	Category   string // "correctness" | "security" | "perf" | "maintainability" | "testing" | "style" | ""
 	Phase      string // "arch" | "diff" | "" (populated from ReviewConfig.Phase)
+	GroupKey   string `json:"group_key,omitempty"` // "arch" | "g01"..."gNN" | "" (populated from ReviewerSpec.GroupKey)
 }
 
 // AggregatedFinding represents a finding with the list of reviewers who found it.
@@ -17,6 +21,7 @@ type AggregatedFinding struct {
 	Text      string
 	Reviewers []int
 	Severity  string // first-seen severity from grouped findings
+	GroupKey  string // group key(s), comma-separated if from multiple groups
 }
 
 // FindingGroup represents a grouped/clustered finding from the summarizer.
@@ -26,6 +31,7 @@ type FindingGroup struct {
 	Messages      []string `json:"messages"`
 	ReviewerCount int      `json:"reviewer_count"`
 	Sources       []int    `json:"sources"`
+	GroupKey      string   `json:"group_key,omitempty"` // propagated from source findings
 }
 
 // GroupedFindings represents the output from the summarizer.
@@ -145,6 +151,7 @@ func BuildDispositions(
 func AggregateFindings(findings []Finding) []AggregatedFinding {
 	seen := make(map[string][]int)
 	severities := make(map[string]string)
+	groupKeys := make(map[string]string)
 	order := make([]string, 0)
 
 	for _, f := range findings {
@@ -158,8 +165,18 @@ func AggregateFindings(findings []Finding) []AggregatedFinding {
 			order = append(order, normalized)
 			reviewers = nil
 			severities[normalized] = f.Severity
-		} else if f.Severity == "blocking" {
-			severities[normalized] = "blocking"
+			groupKeys[normalized] = f.GroupKey
+		} else {
+			if f.Severity == "blocking" {
+				severities[normalized] = "blocking"
+			}
+			if f.GroupKey != "" && !strings.Contains(groupKeys[normalized], f.GroupKey) {
+				if groupKeys[normalized] == "" {
+					groupKeys[normalized] = f.GroupKey
+				} else {
+					groupKeys[normalized] = groupKeys[normalized] + "," + f.GroupKey
+				}
+			}
 		}
 
 		found := false
@@ -183,6 +200,7 @@ func AggregateFindings(findings []Finding) []AggregatedFinding {
 			Text:      text,
 			Reviewers: sortedReviewers,
 			Severity:  severities[text],
+			GroupKey:  groupKeys[text],
 		})
 	}
 
