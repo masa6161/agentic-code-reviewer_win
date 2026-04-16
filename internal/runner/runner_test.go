@@ -304,7 +304,7 @@ invalid json line here
 	r := &Runner{
 		config:    Config{Reviewers: 1, Timeout: 10 * time.Second},
 		agents:    []agent.Agent{mockAgent},
-		specs:     []ReviewerSpec{{Agent: mockAgent}},
+		specs:     []ReviewerSpec{{ReviewerID: 1, Agent: mockAgent}},
 		logger:    terminal.NewLogger(),
 		completed: new(atomic.Int32),
 	}
@@ -331,7 +331,7 @@ func TestRunReviewer_RecoverableParseError(t *testing.T) {
 	r := &Runner{
 		config:    Config{Reviewers: 1, Timeout: 10 * time.Second},
 		agents:    []agent.Agent{mockAgent},
-		specs:     []ReviewerSpec{{Agent: mockAgent}},
+		specs:     []ReviewerSpec{{ReviewerID: 1, Agent: mockAgent}},
 		logger:    terminal.NewLogger(),
 		completed: new(atomic.Int32),
 	}
@@ -407,7 +407,7 @@ func TestRunReviewerWithRetry_SkipsRetryOnAuthFailure(t *testing.T) {
 	r := &Runner{
 		config:    Config{Reviewers: 1, Retries: 2, Timeout: 10 * time.Second},
 		agents:    []agent.Agent{mock},
-		specs:     []ReviewerSpec{{Agent: mock}},
+		specs:     []ReviewerSpec{{ReviewerID: 1, Agent: mock}},
 		logger:    terminal.NewLogger(),
 		completed: new(atomic.Int32),
 	}
@@ -431,7 +431,7 @@ func TestRunReviewerWithRetry_RetriesNonAuthFailure(t *testing.T) {
 	r := &Runner{
 		config:    Config{Reviewers: 1, Retries: 1, Timeout: 10 * time.Second},
 		agents:    []agent.Agent{mock},
-		specs:     []ReviewerSpec{{Agent: mock}},
+		specs:     []ReviewerSpec{{ReviewerID: 1, Agent: mock}},
 		logger:    terminal.NewLogger(),
 		completed: new(atomic.Int32),
 	}
@@ -443,5 +443,60 @@ func TestRunReviewerWithRetry_RetriesNonAuthFailure(t *testing.T) {
 	}
 	if result.AuthFailed {
 		t.Error("expected AuthFailed to be false for non-auth failure")
+	}
+}
+
+func TestNewWithSpecs_AssignsReviewerIDFromIndexWhenUnset(t *testing.T) {
+	// Specs with ReviewerID==0 should get IDs 1, 2, 3 from their slice position.
+	ag := &mockAgent{name: "codex"}
+	specs := []ReviewerSpec{
+		{Agent: ag}, // ReviewerID=0 → should become 1
+		{Agent: ag}, // ReviewerID=0 → should become 2
+		{Agent: ag}, // ReviewerID=0 → should become 3
+	}
+	r, err := NewWithSpecs(Config{Timeout: time.Minute}, specs, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for i, s := range r.specs {
+		want := i + 1
+		if s.ReviewerID != want {
+			t.Errorf("specs[%d].ReviewerID = %d, want %d", i, s.ReviewerID, want)
+		}
+	}
+}
+
+func TestNewWithSpecs_PreservesExplicitReviewerID(t *testing.T) {
+	// Specs with explicit ReviewerIDs should not be overwritten.
+	ag := &mockAgent{name: "codex"}
+	specs := []ReviewerSpec{
+		{ReviewerID: 10, Agent: ag},
+		{ReviewerID: 20, Agent: ag},
+	}
+	r, err := NewWithSpecs(Config{Timeout: time.Minute}, specs, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if r.specs[0].ReviewerID != 10 {
+		t.Errorf("expected ReviewerID=10, got %d", r.specs[0].ReviewerID)
+	}
+	if r.specs[1].ReviewerID != 20 {
+		t.Errorf("expected ReviewerID=20, got %d", r.specs[1].ReviewerID)
+	}
+}
+
+func TestNewWithSpecs_DuplicateReviewerIDError(t *testing.T) {
+	// Two specs sharing the same explicit ReviewerID must return an error.
+	ag := &mockAgent{name: "codex"}
+	specs := []ReviewerSpec{
+		{ReviewerID: 5, Agent: ag},
+		{ReviewerID: 5, Agent: ag},
+	}
+	_, err := NewWithSpecs(Config{Timeout: time.Minute}, specs, nil)
+	if err == nil {
+		t.Fatal("expected error for duplicate ReviewerID, got nil")
+	}
+	if !strings.Contains(err.Error(), "duplicate") {
+		t.Errorf("expected 'duplicate' in error message, got: %v", err)
 	}
 }

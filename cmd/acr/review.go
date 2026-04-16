@@ -114,6 +114,8 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 
 	// Resolve review phases
 	phaseStr := opts.Phase
+	var useGroupedSpecs bool
+	var groupedSpecs []runner.ReviewerSpec
 	if opts.AutoPhase && phaseStr == "" {
 		size, fileCount, lineCount, classifyErr := git.ClassifyDiffSize(ctx, resolvedBaseRef, opts.WorkDir)
 		if classifyErr != nil {
@@ -127,7 +129,32 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 			switch size {
 			case git.DiffSizeSmall:
 				phaseStr = "diff"
-			default:
+			case git.DiffSizeLarge:
+				if opts.Reviewers < 2 {
+					if opts.Verbose {
+						logger.Logf(terminal.StyleWarning, "Auto-phase: --reviewers=%d too low for grouped diff, falling back to arch,diff", opts.Reviewers)
+					}
+					phaseStr = "arch,diff"
+				} else {
+					maxDiffGroups := opts.Reviewers - 1
+					if maxDiffGroups > 4 {
+						maxDiffGroups = 4
+					}
+					specs, specErr := buildGroupedDiffSpecs(diff, opts.Guidance, diffPrecomputed, reviewAgents, maxDiffGroups)
+					if specErr != nil {
+						if opts.Verbose {
+							logger.Logf(terminal.StyleWarning, "Auto-phase: grouped diff setup failed: %v, falling back to arch,diff", specErr)
+						}
+						phaseStr = "arch,diff"
+					} else {
+						groupedSpecs = specs
+						useGroupedSpecs = true
+						if opts.Verbose {
+							logger.Logf(terminal.StyleDim, "Auto-phase: large diff — %d files in %d groups", fileCount, len(groupedSpecs)-1)
+						}
+					}
+				}
+			default: // medium
 				phaseStr = "arch,diff"
 			}
 		}
@@ -150,7 +177,10 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 
 	var r *runner.Runner
 	actualReviewers := opts.Reviewers
-	if phaseStr != "" {
+	if useGroupedSpecs {
+		actualReviewers = len(groupedSpecs)
+		r, err = runner.NewWithSpecs(runnerConfig, groupedSpecs, logger)
+	} else if phaseStr != "" {
 		phases, phaseErr := parsePhases(phaseStr, opts.Reviewers)
 		if phaseErr != nil {
 			logger.Logf(terminal.StyleError, "Invalid --phase: %v", phaseErr)
@@ -253,7 +283,14 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 
 	summarizerCtx, summarizerCancel := context.WithTimeout(ctx, opts.SummarizerTimeout)
 	defer summarizerCancel()
-	summaryResult, err := summarizer.Summarize(summarizerCtx, opts.SummarizerAgent, opts.SummarizerModel, aggregated, opts.Verbose, logger)
+
+	var summaryResult *summarizer.Result
+	if useGroupedSpecs {
+		// Phase-separate summarizer: arch and diff findings summarized independently
+		summaryResult, err = summarizeByPhase(summarizerCtx, allFindings, opts.SummarizerAgent, opts.SummarizerModel, opts.Verbose, logger)
+	} else {
+		summaryResult, err = summarizer.Summarize(summarizerCtx, opts.SummarizerAgent, opts.SummarizerModel, aggregated, opts.Verbose, logger)
+	}
 	spinnerCancel()
 	<-spinnerDone
 
@@ -430,6 +467,172 @@ func parsePhases(phaseStr string, totalReviewers int) ([]runner.PhaseConfig, err
 		}
 	}
 	return phases, nil
+}
+
+// splitFindingsByPhase separates findings into arch and diff groups.
+// Findings with Phase=="arch" go to arch; all others go to diff.
+func splitFindingsByPhase(findings []domain.Finding) (arch, diff []domain.Finding) {
+	for _, f := range findings {
+		if f.Phase == "arch" {
+			arch = append(arch, f)
+		} else {
+			diff = append(diff, f)
+		}
+	}
+	return
+}
+
+// mergeGroupedFindings combines phase-separated GroupedFindings.
+// Ok is true only if all non-nil phases are ok.
+// Findings, Info, and SkippedFiles are concatenated.
+func mergeGroupedFindings(groups ...*domain.GroupedFindings) domain.GroupedFindings {
+	var merged domain.GroupedFindings
+	merged.Ok = true
+	for _, g := range groups {
+		if g == nil {
+			continue
+		}
+		if !g.Ok {
+			merged.Ok = false
+		}
+		merged.Findings = append(merged.Findings, g.Findings...)
+		merged.Info = append(merged.Info, g.Info...)
+		merged.SkippedFiles = append(merged.SkippedFiles, g.SkippedFiles...)
+		if g.NotesForNextReview != "" {
+			if merged.NotesForNextReview != "" {
+				merged.NotesForNextReview += "\n"
+			}
+			merged.NotesForNextReview += g.NotesForNextReview
+		}
+	}
+	return merged
+}
+
+// summarizeByPhase runs the summarizer separately for arch and diff findings,
+// then merges the results. Used only for grouped diff reviews.
+func summarizeByPhase(
+	ctx context.Context,
+	allFindings []domain.Finding,
+	agentName, model string,
+	verbose bool,
+	logger *terminal.Logger,
+) (*summarizer.Result, error) {
+	archFindings, diffFindings := splitFindingsByPhase(allFindings)
+
+	var archResult, diffResult *summarizer.Result
+
+	if len(archFindings) > 0 {
+		archAgg := domain.AggregateFindings(archFindings)
+		r, err := summarizer.Summarize(ctx, agentName, model, archAgg, verbose, logger)
+		if err != nil {
+			return nil, fmt.Errorf("arch summarizer: %w", err)
+		}
+		archResult = r
+	}
+
+	if len(diffFindings) > 0 {
+		diffAgg := domain.AggregateFindings(diffFindings)
+		r, err := summarizer.Summarize(ctx, agentName, model, diffAgg, verbose, logger)
+		if err != nil {
+			return nil, fmt.Errorf("diff summarizer: %w", err)
+		}
+		diffResult = r
+	}
+
+	// Merge phase results
+	merged := &summarizer.Result{}
+	for _, r := range []*summarizer.Result{archResult, diffResult} {
+		if r == nil {
+			continue
+		}
+		if r.ExitCode != 0 {
+			merged.ExitCode = r.ExitCode
+			if merged.Stderr != "" && r.Stderr != "" {
+				merged.Stderr = merged.Stderr + "\n" + r.Stderr
+			} else if r.Stderr != "" {
+				merged.Stderr = r.Stderr
+			}
+			if merged.RawOut != "" && r.RawOut != "" {
+				merged.RawOut = merged.RawOut + "\n" + r.RawOut
+			} else if r.RawOut != "" {
+				merged.RawOut = r.RawOut
+			}
+		}
+		merged.Duration += r.Duration
+	}
+	merged.Grouped = mergeGroupedFindings(groupedPtr(archResult), groupedPtr(diffResult))
+
+	return merged, nil
+}
+
+// groupedPtr returns a pointer to the Grouped field of a summarizer.Result, or nil.
+func groupedPtr(r *summarizer.Result) *domain.GroupedFindings {
+	if r == nil {
+		return nil
+	}
+	return &r.Grouped
+}
+
+// buildGroupedDiffSpecs creates ReviewerSpecs for grouped diff review.
+// It parses the precomputed diff into sections, groups them, and generates:
+//   - 1 arch spec (full diff, GroupKey="arch")
+//   - N diff specs (per-group filtered diff, GroupKey="g01"..."gNN")
+//
+// maxDiffGroups is clamped to min(--reviewers - 1, 4) by the caller.
+func buildGroupedDiffSpecs(
+	fullDiff, guidance string,
+	diffPrecomputed bool,
+	agents []agent.Agent,
+	maxDiffGroups int,
+) ([]runner.ReviewerSpec, error) {
+	sections := git.ParseDiffSections(fullDiff)
+	if len(sections) == 0 {
+		return nil, fmt.Errorf("no diff sections found in precomputed diff")
+	}
+
+	groups := git.GroupDiffSections(sections, 0, 0, maxDiffGroups)
+	if len(groups) == 0 {
+		return nil, fmt.Errorf("grouping produced no groups")
+	}
+
+	specs := make([]runner.ReviewerSpec, 0, 1+len(groups))
+
+	// 1. Arch reviewer: full diff
+	archAgent := agent.AgentForReviewer(agents, 1)
+	specs = append(specs, runner.ReviewerSpec{
+		Agent:           archAgent,
+		Phase:           "arch",
+		GroupKey:        "arch",
+		Guidance:        guidance,
+		Diff:            fullDiff,
+		DiffPrecomputed: diffPrecomputed,
+	})
+
+	// 2. Per-group diff reviewers
+	for i, group := range groups {
+		groupDiff := git.JoinDiffSections(group.Sections)
+		if groupDiff == "" {
+			// Empty group diff after splitting precomputed diff is unexpected.
+			// Skip (budget adjusts accordingly).
+			continue
+		}
+		var targetFiles []string
+		for _, s := range group.Sections {
+			targetFiles = append(targetFiles, s.FilePath)
+		}
+		diffAgent := agent.AgentForReviewer(agents, i+2)
+		specs = append(specs, runner.ReviewerSpec{
+			Agent:           diffAgent,
+			Phase:           "diff",
+			GroupKey:        group.Key,
+			Guidance:        guidance,
+			Diff:            groupDiff,
+			DiffPrecomputed: true,
+			TargetFiles:     targetFiles,
+		})
+	}
+
+	return specs, nil
 }
 
 // diffFindingGroups returns groups present in before but not in after.

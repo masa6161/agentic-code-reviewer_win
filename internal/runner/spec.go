@@ -5,6 +5,7 @@ import "github.com/richhaase/agentic-code-reviewer/internal/agent"
 // ReviewerSpec defines the configuration for a single reviewer instance.
 // It replaces round-robin agent assignment with explicit per-reviewer specs.
 type ReviewerSpec struct {
+	ReviewerID      int         // Authoritative reviewer ID; 0 means "assign from index+1 at runner construction"
 	Agent           agent.Agent // Which agent to use
 	Model           string      // Per-reviewer model override (empty = agent default)
 	Phase           string      // "arch" | "diff" | "" (default = diff)

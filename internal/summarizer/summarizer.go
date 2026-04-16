@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/richhaase/agentic-code-reviewer/internal/agent"
@@ -194,6 +196,10 @@ func Summarize(ctx context.Context, agentName, model string, aggregated []domain
 		}, nil
 	}
 
+	// Backfill GroupKey from source AggregatedFindings into FindingGroups.
+	// The LLM doesn't see GroupKey, so we propagate it via Sources indices.
+	backfillGroupKeys(grouped, aggregated)
+
 	return &Result{
 		Grouped:  *grouped,
 		ExitCode: exitCode,
@@ -201,4 +207,33 @@ func Summarize(ctx context.Context, agentName, model string, aggregated []domain
 		RawOut:   string(output),
 		Duration: duration,
 	}, nil
+}
+
+// backfillGroupKeys populates GroupKey on each FindingGroup by collecting
+// unique GroupKeys from the source AggregatedFindings referenced by Sources.
+func backfillGroupKeys(grouped *domain.GroupedFindings, aggregated []domain.AggregatedFinding) {
+	fill := func(groups []domain.FindingGroup) {
+		for i := range groups {
+			keys := make(map[string]struct{})
+			for _, srcIdx := range groups[i].Sources {
+				if srcIdx >= 0 && srcIdx < len(aggregated) {
+					if gk := aggregated[srcIdx].GroupKey; gk != "" {
+						for _, k := range strings.Split(gk, ",") {
+							keys[k] = struct{}{}
+						}
+					}
+				}
+			}
+			if len(keys) > 0 {
+				sorted := make([]string, 0, len(keys))
+				for k := range keys {
+					sorted = append(sorted, k)
+				}
+				slices.Sort(sorted)
+				groups[i].GroupKey = strings.Join(sorted, ",")
+			}
+		}
+	}
+	fill(grouped.Findings)
+	fill(grouped.Info)
 }

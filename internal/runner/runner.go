@@ -64,26 +64,60 @@ func New(config Config, agents []agent.Agent, logger *terminal.Logger) (*Runner,
 
 // NewWithSpecs creates a Runner with explicit per-reviewer specs.
 // Used when callers need per-reviewer differentiation (phase-typed reviews).
+// Specs with ReviewerID==0 are auto-assigned IDs starting from 1 in slice order.
+// Specs with explicit ReviewerID values are preserved. Duplicate IDs return an error.
 func NewWithSpecs(config Config, specs []ReviewerSpec, logger *terminal.Logger) (*Runner, error) {
 	if len(specs) == 0 {
 		return nil, fmt.Errorf("at least one reviewer spec is required")
 	}
+	assigned, err := assignReviewerIDs(specs)
+	if err != nil {
+		return nil, err
+	}
 	// Ensure reviewer count matches spec count to prevent phantom failures
-	config.Reviewers = len(specs)
+	config.Reviewers = len(assigned)
 	return &Runner{
 		config:    config,
-		specs:     specs,
+		specs:     assigned,
 		logger:    logger,
 		completed: &atomic.Int32{},
 	}, nil
 }
 
+// assignReviewerIDs fills in ReviewerID for any spec where it is 0 (using
+// index+1 for those slots) and verifies that no two specs share the same ID.
+// It returns a new slice so the caller's original slice is not mutated.
+func assignReviewerIDs(specs []ReviewerSpec) ([]ReviewerSpec, error) {
+	out := make([]ReviewerSpec, len(specs))
+	copy(out, specs)
+
+	// First pass: assign IDs to zero-value slots.
+	for i := range out {
+		if out[i].ReviewerID == 0 {
+			out[i].ReviewerID = i + 1
+		}
+	}
+
+	// Second pass: verify uniqueness.
+	seen := make(map[int]bool, len(out))
+	for _, s := range out {
+		if seen[s.ReviewerID] {
+			return nil, fmt.Errorf("duplicate ReviewerID %d in specs", s.ReviewerID)
+		}
+		seen[s.ReviewerID] = true
+	}
+
+	return out, nil
+}
+
 // buildSpecsFromAgents converts a round-robin agent list into ReviewerSpecs
 // for backward compatibility with the existing New() constructor.
+// IDs are assigned explicitly (1..N) so runReviewer can address them directly.
 func buildSpecsFromAgents(agents []agent.Agent, config Config) []ReviewerSpec {
 	specs := make([]ReviewerSpec, config.Reviewers)
 	for i := range specs {
 		specs[i] = ReviewerSpec{
+			ReviewerID:      i + 1,
 			Agent:           agent.AgentForReviewer(agents, i+1),
 			Guidance:        config.Guidance,
 			Diff:            config.Diff,
@@ -119,8 +153,8 @@ func (r *Runner) Run(ctx context.Context) ([]domain.ReviewerResult, time.Duratio
 	// Create semaphore to limit concurrent reviewers
 	sem := make(chan struct{}, concurrency)
 
-	// Launch reviewers
-	for i := 1; i <= r.config.Reviewers; i++ {
+	// Launch reviewers — iterate specs to use authoritative ReviewerIDs.
+	for _, spec := range r.specs {
 		go func(id int) {
 			// Acquire semaphore
 			select {
@@ -140,7 +174,7 @@ func (r *Runner) Run(ctx context.Context) ([]domain.ReviewerResult, time.Duratio
 
 			r.completed.Add(1)
 			resultCh <- result
-		}(i)
+		}(spec.ReviewerID)
 	}
 
 	// Collect results
@@ -213,16 +247,23 @@ func (r *Runner) runReviewerWithRetry(ctx context.Context, reviewerID int) domai
 func (r *Runner) runReviewer(ctx context.Context, reviewerID int) domain.ReviewerResult {
 	start := time.Now()
 
-	// Select reviewer via spec (Phase 0: replaces round-robin)
-	specIdx := reviewerID - 1
-	if specIdx < 0 || specIdx >= len(r.specs) {
+	// Look up spec by authoritative ReviewerID (not positional index).
+	var spec ReviewerSpec
+	found := false
+	for _, s := range r.specs {
+		if s.ReviewerID == reviewerID {
+			spec = s
+			found = true
+			break
+		}
+	}
+	if !found {
 		return domain.ReviewerResult{
 			ReviewerID: reviewerID,
 			ExitCode:   -1,
 			Duration:   time.Since(start),
 		}
 	}
-	spec := r.specs[specIdx]
 	selectedAgent := spec.Agent
 	if selectedAgent == nil {
 		return domain.ReviewerResult{

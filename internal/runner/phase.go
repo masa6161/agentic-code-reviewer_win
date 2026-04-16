@@ -56,6 +56,7 @@ func BuildReviewerSpecs(phases []PhaseConfig, defaultAgents []agent.Agent, globa
 			}
 
 			specs = append(specs, ReviewerSpec{
+				ReviewerID:      reviewerIdx,
 				Agent:           a,
 				Model:           pc.Model,
 				Phase:           pc.Phase,

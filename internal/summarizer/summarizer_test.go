@@ -183,6 +183,82 @@ func TestSummarize_CodexFailure(t *testing.T) {
 	}
 }
 
+func TestBackfillGroupKeys_Basic(t *testing.T) {
+	aggregated := []domain.AggregatedFinding{
+		{Text: "issue A", GroupKey: "g01"},
+		{Text: "issue B", GroupKey: "g02"},
+		{Text: "info C", GroupKey: "g01,g02"},
+	}
+	grouped := &domain.GroupedFindings{
+		Findings: []domain.FindingGroup{
+			{Title: "cluster 1", Sources: []int{0, 1}},
+		},
+		Info: []domain.FindingGroup{
+			{Title: "info cluster", Sources: []int{2}},
+		},
+	}
+
+	backfillGroupKeys(grouped, aggregated)
+
+	if grouped.Findings[0].GroupKey != "g01,g02" {
+		t.Errorf("expected GroupKey 'g01,g02', got %q", grouped.Findings[0].GroupKey)
+	}
+	if grouped.Info[0].GroupKey != "g01,g02" {
+		t.Errorf("expected GroupKey 'g01,g02', got %q", grouped.Info[0].GroupKey)
+	}
+}
+
+func TestBackfillGroupKeys_OutOfRange(t *testing.T) {
+	aggregated := []domain.AggregatedFinding{
+		{Text: "only one", GroupKey: "g01"},
+	}
+	grouped := &domain.GroupedFindings{
+		Findings: []domain.FindingGroup{
+			{Title: "bad sources", Sources: []int{-1, 0, 5}},
+		},
+	}
+
+	backfillGroupKeys(grouped, aggregated)
+
+	if grouped.Findings[0].GroupKey != "g01" {
+		t.Errorf("expected GroupKey 'g01', got %q", grouped.Findings[0].GroupKey)
+	}
+}
+
+func TestBackfillGroupKeys_NoGroupKey(t *testing.T) {
+	aggregated := []domain.AggregatedFinding{
+		{Text: "no key", GroupKey: ""},
+	}
+	grouped := &domain.GroupedFindings{
+		Findings: []domain.FindingGroup{
+			{Title: "no key source", Sources: []int{0}},
+		},
+	}
+
+	backfillGroupKeys(grouped, aggregated)
+
+	if grouped.Findings[0].GroupKey != "" {
+		t.Errorf("expected empty GroupKey, got %q", grouped.Findings[0].GroupKey)
+	}
+}
+
+func TestBackfillGroupKeys_EmptySources(t *testing.T) {
+	aggregated := []domain.AggregatedFinding{
+		{Text: "issue", GroupKey: "g01"},
+	}
+	grouped := &domain.GroupedFindings{
+		Findings: []domain.FindingGroup{
+			{Title: "no sources", Sources: nil},
+		},
+	}
+
+	backfillGroupKeys(grouped, aggregated)
+
+	if grouped.Findings[0].GroupKey != "" {
+		t.Errorf("expected empty GroupKey, got %q", grouped.Findings[0].GroupKey)
+	}
+}
+
 func TestSummarize_MultipleFindings(t *testing.T) {
 	prepareMockCodex(t, `{"type":"thread.started","thread_id":"test"}
 {"type":"turn.started"}

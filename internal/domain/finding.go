@@ -174,7 +174,9 @@ func AggregateFindings(findings []Finding) []AggregatedFinding {
 				if groupKeys[normalized] == "" {
 					groupKeys[normalized] = f.GroupKey
 				} else {
-					groupKeys[normalized] = groupKeys[normalized] + "," + f.GroupKey
+					parts := strings.Split(groupKeys[normalized]+","+f.GroupKey, ",")
+					slices.Sort(parts)
+					groupKeys[normalized] = strings.Join(parts, ",")
 				}
 			}
 		}

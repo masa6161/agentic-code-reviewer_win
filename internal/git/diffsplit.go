@@ -99,7 +99,8 @@ func parseSingleSection(content string) DiffSection {
 	addedLines := 0
 	isBinary := false
 	for _, line := range lines[1:] {
-		if strings.Contains(line, "Binary files") && strings.Contains(line, "differ") {
+		if !strings.HasPrefix(line, "+") && !strings.HasPrefix(line, "-") && !strings.HasPrefix(line, " ") &&
+			strings.Contains(line, "Binary files") && strings.Contains(line, "differ") {
 			isBinary = true
 			break
 		}
