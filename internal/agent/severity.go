@@ -18,7 +18,7 @@ func ExtractSeverity(text string) string {
 // ExtractPrefix attempts to extract a prefix tag from finding text.
 // Returns the matched prefix or empty string.
 func ExtractPrefix(text string) string {
-	prefixes := []string{"[must]", "[imo]", "[nits]", "[fyi]", "[ask]"}
+	prefixes := []string{"[must]", "[blocking]", "[imo]", "[nits]", "[fyi]", "[ask]"}
 	lower := strings.ToLower(text)
 	for _, p := range prefixes {
 		if strings.Contains(lower, p) {

@@ -355,7 +355,7 @@ func RenderDismissedLGTMMarkdown(findings []domain.FindingGroup, stats domain.Re
 }
 
 // RenderJSON marshals the grouped findings as JSON with indentation.
-// Callers must set GroupedFindings.Ok before calling RenderJSON.
+// Ok is expected to be already computed before calling this function.
 func RenderJSON(grouped *domain.GroupedFindings) ([]byte, error) {
 	return json.MarshalIndent(grouped, "", "  ")
 }
