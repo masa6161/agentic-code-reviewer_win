@@ -25,6 +25,8 @@
 
 ## ビルドとテスト
 
+- auto-phase はデフォルト ON（差分サイズで自動的にフェーズを選択）。無効化は `--no-auto-phase`、`ACR_AUTO_PHASE=false`、または `.acr.yaml: auto_phase: false`。
+
 Unix 系では `make` が使えるが、Windows / PowerShell では直接 `go` コマンドを優先する。
 
 よく使う確認:

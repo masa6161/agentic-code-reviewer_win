@@ -122,6 +122,23 @@ acr --yes
 acr --verbose
 ```
 
+### Auto-phase (default) vs flat review
+
+By default, ACR automatically selects review phases based on diff size ("auto-phase"). Large diffs are split into an architecture review plus per-file-group diff reviews; small diffs use a single flat diff pass.
+
+To run a flat (single big diff × N reviewers) review instead:
+
+| Method | How |
+|---|---|
+| Ad-hoc flag | `acr --phase diff` |
+| Disable auto-phase for one run | `acr --no-auto-phase` |
+| Persistent opt-out in project | `.acr.yaml`: `auto_phase: false` |
+| Persistent opt-out via env | `ACR_AUTO_PHASE=false acr` |
+
+Using `--phase arch,diff` forces both phases explicitly (arch + diff) without grouping, regardless of diff size.
+
+The verdict field (`ok` / `advisory` / `blocking`) and exit-code policy apply on both paths. Use `--strict` to treat advisory findings as blocking (exit 1).
+
 ### Options
 
 | Flag                | Short | Default | Description                              |

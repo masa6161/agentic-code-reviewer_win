@@ -88,6 +88,8 @@ internal/
 
 6. **Terminal Detection**: Colors auto-disabled when stdout is not a TTY.
 
+7. **Auto-phase (default on)**: ACR automatically chooses review phases based on diff size. Small diffs → flat `diff` phase; large diffs → grouped arch+diff. Opt out with `--no-auto-phase`, `--phase diff`, `.acr.yaml: auto_phase: false`, or `ACR_AUTO_PHASE=false`. See README "Auto-phase (default) vs flat review" for the full contract.
+
 ## Code Patterns
 
 - **Error handling**: Return errors up the call stack. Log at the top level in main.go.
