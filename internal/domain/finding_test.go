@@ -211,6 +211,70 @@ func TestAggregateFindings_GroupKey_G01_G010(t *testing.T) {
 	}
 }
 
+func TestGroupedFindings_ComputeVerdict_Blocking(t *testing.T) {
+	g := GroupedFindings{
+		Findings: []FindingGroup{
+			{Title: "advisory one", Severity: "advisory"},
+			{Title: "blocker", Severity: "blocking"},
+		},
+	}
+	g.ComputeVerdict(false, false)
+	if g.Verdict != "blocking" {
+		t.Errorf("expected Verdict=blocking, got %q", g.Verdict)
+	}
+	if g.Ok {
+		t.Error("expected Ok=false for blocking verdict")
+	}
+}
+
+func TestGroupedFindings_ComputeVerdict_Advisory(t *testing.T) {
+	g := GroupedFindings{
+		Findings: []FindingGroup{
+			{Title: "note", Severity: "advisory"},
+		},
+	}
+	g.ComputeVerdict(false, false)
+	if g.Verdict != "advisory" {
+		t.Errorf("expected Verdict=advisory, got %q", g.Verdict)
+	}
+	if !g.Ok {
+		t.Error("expected Ok=true for advisory verdict")
+	}
+}
+
+func TestGroupedFindings_ComputeVerdict_Ok(t *testing.T) {
+	g := GroupedFindings{}
+	g.ComputeVerdict(false, false)
+	if g.Verdict != "ok" {
+		t.Errorf("expected Verdict=ok, got %q", g.Verdict)
+	}
+	if !g.Ok {
+		t.Error("expected Ok=true for ok verdict")
+	}
+}
+
+func TestGroupedFindings_ComputeVerdict_CrossCheckBlockingOnly(t *testing.T) {
+	g := GroupedFindings{}
+	g.ComputeVerdict(true, false)
+	if g.Verdict != "blocking" {
+		t.Errorf("expected Verdict=blocking from cc, got %q", g.Verdict)
+	}
+	if g.Ok {
+		t.Error("expected Ok=false when cross-check is blocking")
+	}
+}
+
+func TestGroupedFindings_ComputeVerdict_CrossCheckAdvisoryOnly(t *testing.T) {
+	g := GroupedFindings{}
+	g.ComputeVerdict(false, true)
+	if g.Verdict != "advisory" {
+		t.Errorf("expected Verdict=advisory from cc, got %q", g.Verdict)
+	}
+	if !g.Ok {
+		t.Error("expected Ok=true when cross-check is advisory only")
+	}
+}
+
 func TestReviewStats_AllFailed(t *testing.T) {
 	tests := []struct {
 		name     string

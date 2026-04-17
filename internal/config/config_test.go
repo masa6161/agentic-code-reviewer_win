@@ -1536,7 +1536,7 @@ func TestResolvedConfig_Validate_Errors(t *testing.T) {
 		{
 			name:    "invalid cross_check agent",
 			modify:  func(c *ResolvedConfig) { c.CrossCheckAgent = "bogus" },
-			wantMsg: "cross_check.agent must be one of",
+			wantMsg: "cross_check.agent contains unsupported agent",
 		},
 		{
 			name:    "zero cross_check timeout",
@@ -1677,5 +1677,239 @@ func TestLoadEnvState_CrossCheck(t *testing.T) {
 	if !state.CrossCheckTimeoutSet || state.CrossCheckTimeout != 7*time.Minute {
 		t.Errorf("expected timeout=7m (set), got set=%v timeout=%v",
 			state.CrossCheckTimeoutSet, state.CrossCheckTimeout)
+	}
+}
+
+// Tests for cross_check.agent multi-value validation
+
+func baseResolvedConfig() ResolvedConfig {
+	// Minimal valid ResolvedConfig so ValidateAll only fails on CrossCheckAgent.
+	return ResolvedConfig{
+		Reviewers:         1,
+		Concurrency:       0,
+		Base:              "main",
+		Timeout:           10 * time.Minute,
+		Retries:           0,
+		SummarizerAgent:   "codex",
+		FPThreshold:       50,
+		CrossCheckTimeout: 5 * time.Minute,
+	}
+}
+
+func TestValidateCrossCheckAgent_MultiValueAccepted(t *testing.T) {
+	cfg := baseResolvedConfig()
+	cfg.CrossCheckAgent = "codex,claude"
+	errs := cfg.ValidateAll()
+	for _, e := range errs {
+		if strings.Contains(e, "cross_check.agent") {
+			t.Errorf("unexpected cross_check.agent error: %s", e)
+		}
+	}
+}
+
+func TestValidateCrossCheckAgent_SingleValueAccepted(t *testing.T) {
+	cfg := baseResolvedConfig()
+	cfg.CrossCheckAgent = "codex"
+	errs := cfg.ValidateAll()
+	for _, e := range errs {
+		if strings.Contains(e, "cross_check.agent") {
+			t.Errorf("unexpected cross_check.agent error: %s", e)
+		}
+	}
+}
+
+func TestValidateCrossCheckAgent_EmptyAccepted(t *testing.T) {
+	cfg := baseResolvedConfig()
+	cfg.CrossCheckAgent = ""
+	errs := cfg.ValidateAll()
+	for _, e := range errs {
+		if strings.Contains(e, "cross_check.agent") {
+			t.Errorf("unexpected cross_check.agent error: %s", e)
+		}
+	}
+}
+
+func TestValidateCrossCheckAgent_UnknownTokenRejected(t *testing.T) {
+	cfg := baseResolvedConfig()
+	cfg.CrossCheckAgent = "codex,foobar"
+	errs := cfg.ValidateAll()
+	found := false
+	for _, e := range errs {
+		if strings.Contains(e, "foobar") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected error mentioning %q, got: %v", "foobar", errs)
+	}
+}
+
+func TestValidateCrossCheckAgent_EmptyTokenRejected(t *testing.T) {
+	tests := []struct {
+		name  string
+		value string
+	}{
+		{"double comma", "codex,,claude"},
+		{"trailing whitespace token", "codex, "},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := baseResolvedConfig()
+			cfg.CrossCheckAgent = tt.value
+			errs := cfg.ValidateAll()
+			found := false
+			for _, e := range errs {
+				if strings.Contains(e, "cross_check.agent") {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Errorf("expected cross_check.agent error for %q, got: %v", tt.value, errs)
+			}
+		})
+	}
+}
+
+func TestValidateCrossCheckAgent_TrimsWhitespace(t *testing.T) {
+	cfg := baseResolvedConfig()
+	cfg.CrossCheckAgent = " codex , claude "
+	errs := cfg.ValidateAll()
+	for _, e := range errs {
+		if strings.Contains(e, "cross_check.agent") {
+			t.Errorf("unexpected cross_check.agent error (whitespace should be trimmed): %s", e)
+		}
+	}
+}
+
+func boolPtr(b bool) *bool { return &b }
+
+// --- AutoPhase config resolution tests ---
+
+func TestResolve_AutoPhaseDefaultsToTrue(t *testing.T) {
+	// No flag, no env, no yaml → AutoPhase must be true (new default).
+	result := Resolve(&Config{}, EnvState{}, FlagState{}, ResolvedConfig{})
+	if !result.AutoPhase {
+		t.Errorf("expected AutoPhase=true as default, got false")
+	}
+}
+
+func TestResolve_AutoPhaseEnvFalse(t *testing.T) {
+	// ACR_AUTO_PHASE=false → AutoPhase=false.
+	t.Setenv("ACR_AUTO_PHASE", "false")
+	env, warnings := LoadEnvState()
+	if len(warnings) != 0 {
+		t.Errorf("unexpected warnings: %v", warnings)
+	}
+	result := Resolve(&Config{}, env, FlagState{}, ResolvedConfig{})
+	if result.AutoPhase {
+		t.Errorf("expected AutoPhase=false from env, got true")
+	}
+}
+
+func TestResolve_AutoPhaseYamlFalse(t *testing.T) {
+	// yaml auto_phase: false → AutoPhase=false.
+	cfg := &Config{AutoPhase: boolPtr(false)}
+	result := Resolve(cfg, EnvState{}, FlagState{}, ResolvedConfig{})
+	if result.AutoPhase {
+		t.Errorf("expected AutoPhase=false from yaml, got true")
+	}
+}
+
+func TestResolve_AutoPhaseFlagOverridesYaml(t *testing.T) {
+	// yaml false + flag --auto-phase → AutoPhase=true.
+	cfgFalse := &Config{AutoPhase: boolPtr(false)}
+	result := Resolve(cfgFalse, EnvState{}, FlagState{AutoPhaseSet: true}, ResolvedConfig{AutoPhase: true})
+	if !result.AutoPhase {
+		t.Errorf("expected flag --auto-phase to override yaml false, got false")
+	}
+
+	// flag --no-auto-phase + yaml true → AutoPhase=false.
+	cfgTrue := &Config{AutoPhase: boolPtr(true)}
+	result = Resolve(cfgTrue, EnvState{}, FlagState{AutoPhaseSet: true}, ResolvedConfig{AutoPhase: false})
+	if result.AutoPhase {
+		t.Errorf("expected flag --no-auto-phase to override yaml true, got true")
+	}
+}
+
+// --- Strict config resolution tests ---
+
+func TestResolve_StrictDefaultsToFalse(t *testing.T) {
+	result := Resolve(&Config{}, EnvState{}, FlagState{}, ResolvedConfig{})
+	if result.Strict {
+		t.Errorf("expected Strict=false as default, got true")
+	}
+}
+
+func TestResolve_StrictEnv(t *testing.T) {
+	t.Setenv("ACR_STRICT", "true")
+	env, warnings := LoadEnvState()
+	if len(warnings) != 0 {
+		t.Errorf("unexpected warnings: %v", warnings)
+	}
+	result := Resolve(&Config{}, env, FlagState{}, ResolvedConfig{})
+	if !result.Strict {
+		t.Errorf("expected Strict=true from env, got false")
+	}
+}
+
+func TestResolve_StrictFlag(t *testing.T) {
+	// Flag overrides env.
+	t.Setenv("ACR_STRICT", "true")
+	env, _ := LoadEnvState()
+	result := Resolve(&Config{}, env, FlagState{StrictSet: true}, ResolvedConfig{Strict: false})
+	if result.Strict {
+		t.Errorf("expected flag Strict=false to override env true, got true")
+	}
+
+	// Explicit flag true without env.
+	result = Resolve(&Config{}, EnvState{}, FlagState{StrictSet: true}, ResolvedConfig{Strict: true})
+	if !result.Strict {
+		t.Errorf("expected flag Strict=true, got false")
+	}
+}
+
+func TestLoadEnvState_AutoPhaseParsing(t *testing.T) {
+	tests := []struct {
+		name     string
+		envVal   string
+		wantSet  bool
+		wantVal  bool
+		wantWarn bool
+	}{
+		{"true", "true", true, true, false},
+		{"1", "1", true, true, false},
+		{"yes", "yes", true, true, false},
+		{"false", "false", true, false, false},
+		{"0", "0", true, false, false},
+		{"no", "no", true, false, false},
+		{"invalid", "maybe", false, false, true},
+		{"empty (unset)", "", false, false, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.envVal != "" {
+				t.Setenv("ACR_AUTO_PHASE", tt.envVal)
+			} else {
+				t.Setenv("ACR_AUTO_PHASE", "")
+			}
+			state, warnings := LoadEnvState()
+			if tt.wantWarn {
+				if len(warnings) == 0 {
+					t.Errorf("expected warning for ACR_AUTO_PHASE=%q, got none", tt.envVal)
+				}
+			} else {
+				if len(warnings) != 0 {
+					t.Errorf("unexpected warnings for ACR_AUTO_PHASE=%q: %v", tt.envVal, warnings)
+				}
+			}
+			if state.AutoPhaseSet != tt.wantSet {
+				t.Errorf("AutoPhaseSet: got %v, want %v", state.AutoPhaseSet, tt.wantSet)
+			}
+			if tt.wantSet && state.AutoPhase != tt.wantVal {
+				t.Errorf("AutoPhase: got %v, want %v", state.AutoPhase, tt.wantVal)
+			}
+		})
 	}
 }

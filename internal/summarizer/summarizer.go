@@ -20,7 +20,8 @@ const groupPrompt = `# Code Review Summarizer
 You are grouping results from repeated code review runs.
 
 Input: a JSON array of objects, each with "id" (input identifier), "text" (the finding),
-and "reviewers" (list of reviewer IDs that found it).
+"reviewers" (list of reviewer IDs that found it), and "severity"
+("blocking" | "advisory") indicating the raw reviewer-assigned severity.
 
 Task:
 - Cluster messages that describe the same underlying issue.
@@ -38,7 +39,8 @@ Output format (JSON only, no extra prose):
       "summary": "1-2 sentence summary.",
       "messages": ["short excerpt 1", "short excerpt 2"],
       "reviewer_count": 3,
-      "sources": [0, 2]
+      "sources": [0, 2],
+      "severity": "blocking"
     }
   ],
   "info": [
@@ -59,6 +61,7 @@ Rules:
 - If a message includes a file path with line numbers, keep that exact location text in the excerpt.
 - "sources" must include all input ids represented in each group.
 - reviewer_count = number of unique reviewers that reported any message in this cluster.
+- "severity" must be "blocking" or "advisory". Use "blocking" when any clustered reviewer input is severity=blocking; otherwise "advisory". If unsure, default to "advisory".
 - Put non-actionable outcomes (e.g., "no diffs", "no changes to review") in "info".
 - If the input is empty, return: {"findings": [], "info": []}`
 
@@ -103,6 +106,7 @@ type inputItem struct {
 	ID        int    `json:"id"`
 	Text      string `json:"text"`
 	Reviewers []int  `json:"reviewers"`
+	Severity  string `json:"severity,omitempty"`
 }
 
 // Summarize summarizes the aggregated findings using an LLM.
@@ -134,6 +138,7 @@ func Summarize(ctx context.Context, agentName, model string, aggregated []domain
 			ID:        i,
 			Text:      a.Text,
 			Reviewers: a.Reviewers,
+			Severity:  a.Severity,
 		}
 	}
 
@@ -232,6 +237,10 @@ func Summarize(ctx context.Context, agentName, model string, aggregated []domain
 	// The LLM doesn't see GroupKey, so we propagate it via Sources indices.
 	backfillGroupKeys(grouped, aggregated)
 
+	// Reconcile Severity: if the LLM skipped it, derive from aggregated source
+	// severities. Blocking wins on collision.
+	backfillSeverity(grouped, aggregated)
+
 	return &Result{
 		Grouped:  *grouped,
 		ExitCode: exitCode,
@@ -268,4 +277,56 @@ func backfillGroupKeys(grouped *domain.GroupedFindings, aggregated []domain.Aggr
 	}
 	fill(grouped.Findings)
 	fill(grouped.Info)
+}
+
+// backfillSeverity is the sole authoritative severity reconciler.
+// Rules:
+//   - Rule C (allow-list): unknown severity values normalize to "advisory".
+//   - Rule A (upgrade): any valid source with Severity=="blocking" → group Severity="blocking".
+//   - Rule B (downgrade): group Severity=="blocking" with valid sources but no blocking source
+//     → downgrade to "advisory" (LLM-fabricated).
+//   - Rule B preserves Severity when no valid sources exist (empty Sources or all out-of-range):
+//     treated as information loss, not evidence of non-blocking.
+//   - Default: empty Severity → "advisory".
+//
+// Info groups are not mutated (informational by nature).
+func backfillSeverity(grouped *domain.GroupedFindings, aggregated []domain.AggregatedFinding) {
+	for i := range grouped.Findings {
+		fg := &grouped.Findings[i]
+
+		// Rule C: allow-list normalization.
+		if fg.Severity != "blocking" && fg.Severity != "advisory" && fg.Severity != "" {
+			fg.Severity = "advisory"
+		}
+
+		// Inspect sources: count valid index entries and detect any blocking.
+		hasBlocking := false
+		validSources := 0
+		for _, srcIdx := range fg.Sources {
+			if srcIdx < 0 || srcIdx >= len(aggregated) {
+				continue
+			}
+			validSources++
+			if aggregated[srcIdx].Severity == "blocking" {
+				hasBlocking = true
+			}
+		}
+
+		// Rule A: upgrade on any blocking source.
+		if hasBlocking {
+			fg.Severity = "blocking"
+			continue
+		}
+
+		// Rule B: downgrade only when we have valid sources that confirm no blocking.
+		// If Sources is empty or all out-of-range, preserve LLM severity (information loss).
+		if fg.Severity == "blocking" && validSources > 0 {
+			fg.Severity = "advisory"
+		}
+
+		// Default: empty → advisory.
+		if fg.Severity == "" {
+			fg.Severity = "advisory"
+		}
+	}
 }

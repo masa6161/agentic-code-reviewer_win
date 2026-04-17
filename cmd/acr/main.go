@@ -54,6 +54,8 @@ var (
 	phase               string
 	formatOutput        string
 	autoPhase           bool
+	noAutoPhase         bool
+	strict              bool
 )
 
 func main() {
@@ -81,7 +83,7 @@ Exit codes:
 
 	// Configuration flags (defaults are resolved via config.Resolve with precedence: flag > env > config > default)
 	rootCmd.Flags().IntVarP(&reviewers, "reviewers", "r", 0,
-		"Number of parallel reviewers (default: 5, env: ACR_REVIEWERS)")
+		"Number of parallel reviewers (default: 5, env: ACR_REVIEWERS). Auto-phase bumps to minimum (medium:2, large:3) and clamps large to changed_files+1.")
 	rootCmd.Flags().IntVarP(&concurrency, "concurrency", "c", 0,
 		"Max concurrent reviewers (default: same as --reviewers, env: ACR_CONCURRENCY)")
 	rootCmd.Flags().StringVarP(&baseRef, "base", "b", "",
@@ -149,8 +151,12 @@ Exit codes:
 		"Review phases (comma-separated): arch, diff, arch,diff")
 	rootCmd.Flags().StringVar(&formatOutput, "format", "text",
 		"Output format: text or json")
-	rootCmd.Flags().BoolVar(&autoPhase, "auto-phase", false,
-		"Auto-select review phases based on diff size")
+	rootCmd.Flags().BoolVar(&autoPhase, "auto-phase", true,
+		"Auto-select review phases based on diff size (default: true, env: ACR_AUTO_PHASE)")
+	rootCmd.Flags().BoolVar(&noAutoPhase, "no-auto-phase", false,
+		"Disable auto-phase selection and use flat diff review (env: ACR_AUTO_PHASE=false)")
+	rootCmd.Flags().BoolVar(&strict, "strict", false,
+		"Exit 1 on any advisory verdict (default: false, env: ACR_STRICT)")
 
 	rootCmd.AddCommand(newConfigCmd())
 
@@ -361,6 +367,7 @@ func loadAndResolveConfig(cmd *cobra.Command, wt worktreeResult, logger *termina
 	// Build flag state from cobra's Changed() method
 	// For fetch, either --fetch or --no-fetch being set counts as explicit
 	fetchFlagSet := cmd.Flags().Changed("fetch") || cmd.Flags().Changed("no-fetch")
+	autoPhaseAnySet := cmd.Flags().Changed("auto-phase") || cmd.Flags().Changed("no-auto-phase")
 	flagState := config.FlagState{
 		ReviewersSet:         cmd.Flags().Changed("reviewers"),
 		ConcurrencySet:       cmd.Flags().Changed("concurrency"),
@@ -384,6 +391,8 @@ func loadAndResolveConfig(cmd *cobra.Command, wt worktreeResult, logger *termina
 		CrossCheckAgentSet:   cmd.Flags().Changed("cross-check-agent"),
 		CrossCheckModelSet:   cmd.Flags().Changed("cross-check-model"),
 		CrossCheckTimeoutSet: cmd.Flags().Changed("cross-check-timeout"),
+		AutoPhaseSet:         autoPhaseAnySet,
+		StrictSet:            cmd.Flags().Changed("strict"),
 	}
 
 	// Load env var state
@@ -403,6 +412,7 @@ func loadAndResolveConfig(cmd *cobra.Command, wt worktreeResult, logger *termina
 		resolvedBaseRef = wt.detectedBase
 	}
 
+	autoPhaseValue := autoPhase && !noAutoPhase
 	flagValues := config.ResolvedConfig{
 		Reviewers:         reviewers,
 		Concurrency:       concurrency,
@@ -426,6 +436,8 @@ func loadAndResolveConfig(cmd *cobra.Command, wt worktreeResult, logger *termina
 		CrossCheckAgent:   crossCheckAgent,
 		CrossCheckModel:   crossCheckModel,
 		CrossCheckTimeout: crossCheckTimeout,
+		AutoPhase:         autoPhaseValue,
+		Strict:            strict,
 	}
 
 	// Resolve final configuration (precedence: flags > env vars > config file > defaults)
@@ -549,7 +561,6 @@ func runReview(cmd *cobra.Command, _ []string) error {
 		WorkDir:         wt.workDir,
 		Phase:           phase,
 		Format:          formatOutput,
-		AutoPhase:       autoPhase,
 	}
 	code := executeReview(ctx, opts, logger)
 	return exitCode(code)

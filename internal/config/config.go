@@ -69,6 +69,7 @@ type Config struct {
 	FPFilterTimeout   *Duration        `yaml:"fp_filter_timeout"`
 	CrossCheckTimeout *Duration        `yaml:"cross_check_timeout"`
 	GuidanceFile      *string          `yaml:"guidance_file"`
+	AutoPhase         *bool            `yaml:"auto_phase"`
 	Filters           FilterConfig     `yaml:"filters"`
 	FPFilter          FPFilterConfig   `yaml:"fp_filter"`
 	PRFeedback        PRFeedbackConfig `yaml:"pr_feedback"`
@@ -180,7 +181,7 @@ func (c *Config) validatePatterns() error {
 	return nil
 }
 
-var knownTopLevelKeys = []string{"reviewers", "concurrency", "base", "timeout", "retries", "fetch", "reviewer_agent", "reviewer_agents", "summarizer_agent", "reviewer_model", "summarizer_model", "summarizer_timeout", "fp_filter_timeout", "cross_check_timeout", "guidance_file", "filters", "fp_filter", "pr_feedback", "cross_check"}
+var knownTopLevelKeys = []string{"reviewers", "concurrency", "base", "timeout", "retries", "fetch", "reviewer_agent", "reviewer_agents", "summarizer_agent", "reviewer_model", "summarizer_model", "summarizer_timeout", "fp_filter_timeout", "cross_check_timeout", "guidance_file", "auto_phase", "filters", "fp_filter", "pr_feedback", "cross_check"}
 
 var knownFPFilterKeys = []string{"enabled", "threshold"}
 
@@ -402,8 +403,17 @@ func (r *ResolvedConfig) ValidateAll() []string {
 	if r.PRFeedbackAgent != "" && !slices.Contains(agent.SupportedAgents, r.PRFeedbackAgent) {
 		errs = append(errs, fmt.Sprintf("pr_feedback.agent must be one of %v, got %q", agent.SupportedAgents, r.PRFeedbackAgent))
 	}
-	if r.CrossCheckAgent != "" && !slices.Contains(agent.SupportedAgents, r.CrossCheckAgent) {
-		errs = append(errs, fmt.Sprintf("cross_check.agent must be one of %v, got %q", agent.SupportedAgents, r.CrossCheckAgent))
+	if r.CrossCheckAgent != "" {
+		for _, tok := range strings.Split(r.CrossCheckAgent, ",") {
+			tok = strings.TrimSpace(tok)
+			if tok == "" {
+				errs = append(errs, "cross_check.agent contains an empty token; check for trailing commas or whitespace-only entries")
+				continue
+			}
+			if !slices.Contains(agent.SupportedAgents, tok) {
+				errs = append(errs, fmt.Sprintf("cross_check.agent contains unsupported agent %q, must be one of %v", tok, agent.SupportedAgents))
+			}
+		}
 	}
 	if r.CrossCheckTimeout <= 0 {
 		errs = append(errs, fmt.Sprintf("cross_check_timeout must be > 0, got %s", r.CrossCheckTimeout))
@@ -440,6 +450,8 @@ var Defaults = ResolvedConfig{
 	CrossCheckEnabled: true,
 	CrossCheckAgent:   "", // empty means use summarizer agent
 	CrossCheckModel:   "", // empty means use summarizer model
+	AutoPhase:         true,
+	Strict:            false,
 }
 
 type ResolvedConfig struct {
@@ -465,6 +477,8 @@ type ResolvedConfig struct {
 	CrossCheckEnabled bool
 	CrossCheckAgent   string // empty means use summarizer agent
 	CrossCheckModel   string // empty means use summarizer model
+	AutoPhase         bool
+	Strict            bool // when true, advisory verdict exits 1 (default false)
 }
 
 type FlagState struct {
@@ -490,6 +504,8 @@ type FlagState struct {
 	NoCrossCheckSet      bool
 	CrossCheckAgentSet   bool
 	CrossCheckModelSet   bool
+	AutoPhaseSet         bool
+	StrictSet            bool
 }
 
 type EnvState struct {
@@ -537,6 +553,10 @@ type EnvState struct {
 	CrossCheckModelSet   bool
 	CrossCheckTimeout    time.Duration
 	CrossCheckTimeoutSet bool
+	AutoPhase            bool
+	AutoPhaseSet         bool
+	Strict               bool
+	StrictSet            bool
 }
 
 // LoadEnvState reads environment variables and returns their state.
@@ -722,6 +742,32 @@ func LoadEnvState() (EnvState, []string) {
 		}
 	}
 
+	if v := os.Getenv("ACR_AUTO_PHASE"); v != "" {
+		switch strings.ToLower(v) {
+		case "true", "1", "yes":
+			state.AutoPhase = true
+			state.AutoPhaseSet = true
+		case "false", "0", "no":
+			state.AutoPhase = false
+			state.AutoPhaseSet = true
+		default:
+			warnings = append(warnings, fmt.Sprintf("ACR_AUTO_PHASE=%q is not a valid boolean (use true/false/1/0/yes/no), ignoring", v))
+		}
+	}
+
+	if v := os.Getenv("ACR_STRICT"); v != "" {
+		switch strings.ToLower(v) {
+		case "true", "1", "yes":
+			state.Strict = true
+			state.StrictSet = true
+		case "false", "0", "no":
+			state.Strict = false
+			state.StrictSet = true
+		default:
+			warnings = append(warnings, fmt.Sprintf("ACR_STRICT=%q is not a valid boolean (use true/false/1/0/yes/no), ignoring", v))
+		}
+	}
+
 	return state, warnings
 }
 
@@ -795,6 +841,9 @@ func Resolve(cfg *Config, envState EnvState, flagState FlagState, flagValues Res
 		if cfg.CrossCheck.Model != nil {
 			result.CrossCheckModel = *cfg.CrossCheck.Model
 		}
+		if cfg.AutoPhase != nil {
+			result.AutoPhase = *cfg.AutoPhase
+		}
 	}
 
 	// Apply env var values (if set)
@@ -858,6 +907,12 @@ func Resolve(cfg *Config, envState EnvState, flagState FlagState, flagValues Res
 	if envState.CrossCheckTimeoutSet {
 		result.CrossCheckTimeout = envState.CrossCheckTimeout
 	}
+	if envState.AutoPhaseSet {
+		result.AutoPhase = envState.AutoPhase
+	}
+	if envState.StrictSet {
+		result.Strict = envState.Strict
+	}
 
 	if flagState.ReviewersSet {
 		result.Reviewers = flagValues.Reviewers
@@ -918,6 +973,12 @@ func Resolve(cfg *Config, envState EnvState, flagState FlagState, flagValues Res
 	}
 	if flagState.CrossCheckTimeoutSet {
 		result.CrossCheckTimeout = flagValues.CrossCheckTimeout
+	}
+	if flagState.AutoPhaseSet {
+		result.AutoPhase = flagValues.AutoPhase
+	}
+	if flagState.StrictSet {
+		result.Strict = flagValues.Strict
 	}
 
 	return result

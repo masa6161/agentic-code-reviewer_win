@@ -20,6 +20,26 @@ import (
 // cross-check LLM. Long findings are truncated to keep stdin payloads small.
 const maxFindingTextLen = 500
 
+// Skip reason constants. Exported so callers (e.g., runner) can pattern-match
+// structural skips instead of hardcoding string literals. Structural skips are
+// conditions where cross-check is intentionally not run and must not suppress
+// the LGTM banner; non-structural (error) skips must suppress it.
+const (
+	SkipReasonSingleGroup = "single group, cross-check unnecessary"
+	SkipReasonNoAgents    = "no cross-check agents configured"
+	// SkipReasonPayloadPrefix is a prefix; runtime reasons append ": " + err.
+	SkipReasonPayloadPrefix = "payload marshal failed"
+	// SkipReasonAllAgentsPrefix is a prefix for "all N agents failed: ..." strings.
+	SkipReasonAllAgentsPrefix = "all "
+)
+
+// IsStructuralSkipReason reports whether a cross-check SkipReason represents a
+// structural skip (intentional non-run) rather than a failure. Structural
+// skips preserve LGTM; error skips suppress it.
+func IsStructuralSkipReason(reason string) bool {
+	return reason == "" || reason == SkipReasonSingleGroup
+}
+
 // truncateByRunes returns s truncated to at most max runes, appending "…" when
 // truncation happens. max <= 0 returns s unchanged. Using rune-based truncation
 // ensures multi-byte UTF-8 sequences (e.g. Japanese) are never split.
@@ -119,6 +139,24 @@ func (r *CrossCheckResult) HasAdvisoryFindings() bool {
 		return false
 	}
 	return len(r.Findings) > 0
+}
+
+// IsDegraded reports whether the cross-check ran but in a degraded state —
+// either Partial (some agents failed) or Skipped for a non-structural reason
+// (e.g. all agents failed, payload marshal failed). Degraded state should
+// force at least advisory verdict since some cross-group concerns may be
+// undetected.
+func (r *CrossCheckResult) IsDegraded() bool {
+	if r == nil {
+		return false
+	}
+	if r.Partial {
+		return true
+	}
+	if r.Skipped && !IsStructuralSkipReason(r.SkipReason) {
+		return true
+	}
+	return false
 }
 
 const crossCheckPrompt = `# Cross-Check: Multi-Group Review Consistency Verification
@@ -267,14 +305,14 @@ func CrossCheck(
 	if len(ccCtx.Groups) < 2 {
 		return &CrossCheckResult{
 			Skipped:    true,
-			SkipReason: "single group, cross-check unnecessary",
+			SkipReason: SkipReasonSingleGroup,
 			Duration:   time.Since(start),
 		}
 	}
 	if len(agentNames) == 0 {
 		return &CrossCheckResult{
 			Skipped:    true,
-			SkipReason: "no cross-check agents configured",
+			SkipReason: SkipReasonNoAgents,
 			Duration:   time.Since(start),
 		}
 	}

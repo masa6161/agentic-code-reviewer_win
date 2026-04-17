@@ -128,6 +128,50 @@ func TestCrossCheck_SkippedForNoAgents(t *testing.T) {
 	}
 }
 
+func TestIsStructuralSkipReason(t *testing.T) {
+	cases := []struct {
+		name   string
+		reason string
+		want   bool
+	}{
+		{"empty is structural", "", true},
+		{"single group constant is structural", SkipReasonSingleGroup, true},
+		{"single group literal is structural", "single group, cross-check unnecessary", true},
+		{"no agents is NOT structural (error condition)", SkipReasonNoAgents, false},
+		{"all agents failed is not structural", "all 3 agents failed: codex: timeout", false},
+		{"payload marshal failed is not structural", "payload marshal failed: x", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := IsStructuralSkipReason(tc.reason); got != tc.want {
+				t.Errorf("IsStructuralSkipReason(%q) = %v, want %v", tc.reason, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestIsDegraded(t *testing.T) {
+	cases := []struct {
+		name string
+		r    *CrossCheckResult
+		want bool
+	}{
+		{"nil", nil, false},
+		{"clean success", &CrossCheckResult{}, false},
+		{"structural skip (single group)", &CrossCheckResult{Skipped: true, SkipReason: SkipReasonSingleGroup}, false},
+		{"partial", &CrossCheckResult{Partial: true, FailedAgents: []string{"codex"}}, true},
+		{"all agents failed (non-structural skip)", &CrossCheckResult{Skipped: true, SkipReason: "all 3 agents failed: codex: timeout"}, true},
+		{"payload marshal failed", &CrossCheckResult{Skipped: true, SkipReason: "payload marshal failed: x"}, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.r.IsDegraded(); got != tc.want {
+				t.Errorf("IsDegraded() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestHasBlockingFindings(t *testing.T) {
 	cases := []struct {
 		name string

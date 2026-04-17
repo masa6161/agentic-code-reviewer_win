@@ -32,6 +32,7 @@ type FindingGroup struct {
 	ReviewerCount int      `json:"reviewer_count"`
 	Sources       []int    `json:"sources"`
 	GroupKey      string   `json:"group_key,omitempty"` // propagated from source findings
+	Severity      string   `json:"severity,omitempty"`  // "blocking" | "advisory" | "" (empty = advisory)
 }
 
 // GroupedFindings represents the output from the summarizer.
@@ -39,8 +40,37 @@ type GroupedFindings struct {
 	Findings           []FindingGroup `json:"findings"`
 	Info               []FindingGroup `json:"info"`
 	Ok                 bool           `json:"ok"`
-	NotesForNextReview string         `json:"notes_for_next_review,omitempty"`
-	SkippedFiles       []string       `json:"skipped_files,omitempty"`
+	Verdict            string         `json:"verdict"` // "blocking" | "advisory" | "ok"
+	NotesForNextReview string         `json:"notes_for_next_review"`
+	SkippedFiles       []string       `json:"skipped_files"`
+}
+
+// ComputeVerdict derives Verdict from Findings + an optional cross-check signal.
+// - blocking if any Finding.Severity=="blocking" OR ccBlocking=true
+// - advisory if any finding exists (all advisory) OR ccAdvisory=true (but not blocking)
+// - ok otherwise
+// Also sets Ok = (Verdict != "blocking") for backward compatibility.
+func (g *GroupedFindings) ComputeVerdict(ccBlocking, ccAdvisory bool) {
+	hasBlocking := ccBlocking
+	hasAny := ccAdvisory || ccBlocking
+	for _, f := range g.Findings {
+		hasAny = true
+		if f.Severity == "blocking" {
+			hasBlocking = true
+		}
+	}
+	switch {
+	case hasBlocking:
+		g.Verdict = "blocking"
+	case hasAny:
+		g.Verdict = "advisory"
+	default:
+		g.Verdict = "ok"
+	}
+	g.Ok = g.Verdict != "blocking"
+	if g.SkippedFiles == nil {
+		g.SkippedFiles = []string{}
+	}
 }
 
 // HasFindings returns true if there are any findings.

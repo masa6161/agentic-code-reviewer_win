@@ -290,3 +290,278 @@ func TestSummarize_MultipleFindings(t *testing.T) {
 		t.Errorf("expected 1 info, got %d", len(result.Grouped.Info))
 	}
 }
+
+// TestBackfillSeverity_NoSourceBlocking_LLMBlockingDowngraded verifies Rule B:
+// when all source findings are advisory but the LLM returned "blocking", the
+// group severity must be downgraded to "advisory".
+func TestBackfillSeverity_NoSourceBlocking_LLMBlockingDowngraded(t *testing.T) {
+	aggregated := []domain.AggregatedFinding{
+		{Text: "a1", Severity: "advisory"},
+		{Text: "a2", Severity: "advisory"},
+	}
+	grouped := &domain.GroupedFindings{
+		Findings: []domain.FindingGroup{
+			{Title: "cluster", Severity: "blocking", Sources: []int{0, 1}},
+		},
+	}
+
+	backfillSeverity(grouped, aggregated)
+
+	if got := grouped.Findings[0].Severity; got != "advisory" {
+		t.Errorf("Rule B: expected 'advisory', got %q", got)
+	}
+}
+
+// TestBackfillSeverity_SomeSourceBlocking_UpgradesToBlocking verifies Rule A:
+// when at least one source finding is blocking, the group must be upgraded to
+// "blocking" regardless of the LLM-supplied value.
+func TestBackfillSeverity_SomeSourceBlocking_UpgradesToBlocking(t *testing.T) {
+	aggregated := []domain.AggregatedFinding{
+		{Text: "a1", Severity: "advisory"},
+		{Text: "a2", Severity: "blocking"},
+	}
+	grouped := &domain.GroupedFindings{
+		Findings: []domain.FindingGroup{
+			{Title: "cluster", Severity: "advisory", Sources: []int{0, 1}},
+		},
+	}
+
+	backfillSeverity(grouped, aggregated)
+
+	if got := grouped.Findings[0].Severity; got != "blocking" {
+		t.Errorf("Rule A: expected 'blocking', got %q", got)
+	}
+}
+
+// TestBackfillSeverity_InvalidSeverityNormalized verifies Rule C:
+// an unrecognised LLM severity value (e.g. "critical") must be normalised to
+// "advisory".
+func TestBackfillSeverity_InvalidSeverityNormalized(t *testing.T) {
+	aggregated := []domain.AggregatedFinding{
+		{Text: "a1", Severity: "advisory"},
+	}
+	grouped := &domain.GroupedFindings{
+		Findings: []domain.FindingGroup{
+			{Title: "cluster", Severity: "critical", Sources: []int{0}},
+		},
+	}
+
+	backfillSeverity(grouped, aggregated)
+
+	if got := grouped.Findings[0].Severity; got != "advisory" {
+		t.Errorf("Rule C: expected 'advisory', got %q", got)
+	}
+}
+
+// TestBackfillSeverity_EmptySeverityDefaultsAdvisory verifies the default rule:
+// an empty LLM-returned severity with no blocking sources becomes "advisory".
+func TestBackfillSeverity_EmptySeverityDefaultsAdvisory(t *testing.T) {
+	aggregated := []domain.AggregatedFinding{
+		{Text: "a1", Severity: "advisory"},
+	}
+	grouped := &domain.GroupedFindings{
+		Findings: []domain.FindingGroup{
+			{Title: "cluster", Severity: "", Sources: []int{0}},
+		},
+	}
+
+	backfillSeverity(grouped, aggregated)
+
+	if got := grouped.Findings[0].Severity; got != "advisory" {
+		t.Errorf("default: expected 'advisory', got %q", got)
+	}
+}
+
+// TestBackfillSeverity_IdempotentOnSecondPass verifies that running
+// backfillSeverity twice yields the same result as running it once (idempotent).
+// This matters because Item 6 mandates that the summarizer is the sole
+// reconciler and the result must be stable if anything calls it again.
+func TestBackfillSeverity_IdempotentOnSecondPass(t *testing.T) {
+	cases := []struct {
+		name      string
+		srcSev    []string
+		llmSev    string
+		wantAfter string
+	}{
+		{"upgrade", []string{"blocking", "advisory"}, "advisory", "blocking"},
+		{"downgrade", []string{"advisory", "advisory"}, "blocking", "advisory"},
+		{"normalize", []string{"advisory"}, "critical", "advisory"},
+		{"default-empty", []string{"advisory"}, "", "advisory"},
+		{"already-blocking", []string{"blocking"}, "blocking", "blocking"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			aggregated := make([]domain.AggregatedFinding, len(tc.srcSev))
+			sources := make([]int, len(tc.srcSev))
+			for i, s := range tc.srcSev {
+				aggregated[i] = domain.AggregatedFinding{Text: "x", Severity: s}
+				sources[i] = i
+			}
+			grouped := &domain.GroupedFindings{
+				Findings: []domain.FindingGroup{
+					{Title: "cluster", Severity: tc.llmSev, Sources: sources},
+				},
+			}
+
+			backfillSeverity(grouped, aggregated)
+			afterFirst := grouped.Findings[0].Severity
+
+			backfillSeverity(grouped, aggregated)
+			afterSecond := grouped.Findings[0].Severity
+
+			if afterFirst != tc.wantAfter {
+				t.Errorf("first pass: expected %q, got %q", tc.wantAfter, afterFirst)
+			}
+			if afterSecond != afterFirst {
+				t.Errorf("idempotent: second pass changed %q → %q", afterFirst, afterSecond)
+			}
+		})
+	}
+}
+
+// TestBackfillSeverity_RuleB_EmptySources_PreservesLLMBlocking verifies that
+// when Sources is empty, Rule B preserves the LLM-supplied "blocking" severity
+// rather than downgrading. Empty sources signal information loss, not evidence
+// of non-blocking content.
+func TestBackfillSeverity_RuleB_EmptySources_PreservesLLMBlocking(t *testing.T) {
+	aggregated := []domain.AggregatedFinding{
+		{Text: "a1", Severity: "advisory"},
+	}
+	grouped := &domain.GroupedFindings{
+		Findings: []domain.FindingGroup{
+			{Title: "cluster", Severity: "blocking", Sources: []int{}},
+		},
+	}
+
+	backfillSeverity(grouped, aggregated)
+
+	if got := grouped.Findings[0].Severity; got != "blocking" {
+		t.Errorf("Rule B with empty Sources: expected 'blocking' preserved, got %q", got)
+	}
+}
+
+// TestBackfillSeverity_RuleB_AllOutOfRange_PreservesLLMBlocking verifies that
+// when every Sources entry is out-of-range, Rule B preserves the LLM-supplied
+// "blocking" severity (no valid evidence to downgrade against).
+func TestBackfillSeverity_RuleB_AllOutOfRange_PreservesLLMBlocking(t *testing.T) {
+	aggregated := []domain.AggregatedFinding{
+		{Text: "a1", Severity: "advisory"},
+		{Text: "a2", Severity: "advisory"},
+		{Text: "a3", Severity: "advisory"},
+	}
+	grouped := &domain.GroupedFindings{
+		Findings: []domain.FindingGroup{
+			{Title: "cluster", Severity: "blocking", Sources: []int{99, 100}},
+		},
+	}
+
+	backfillSeverity(grouped, aggregated)
+
+	if got := grouped.Findings[0].Severity; got != "blocking" {
+		t.Errorf("Rule B with all-out-of-range Sources: expected 'blocking' preserved, got %q", got)
+	}
+}
+
+// TestBackfillSeverity_RuleB_ValidSourcesNoBlocking_Downgrades verifies that
+// when all valid sources are advisory, Rule B downgrades LLM-fabricated
+// "blocking" to "advisory".
+func TestBackfillSeverity_RuleB_ValidSourcesNoBlocking_Downgrades(t *testing.T) {
+	aggregated := []domain.AggregatedFinding{
+		{Text: "a1", Severity: "advisory"},
+		{Text: "a2", Severity: "advisory"},
+	}
+	grouped := &domain.GroupedFindings{
+		Findings: []domain.FindingGroup{
+			{Title: "cluster", Severity: "blocking", Sources: []int{0, 1}},
+		},
+	}
+
+	backfillSeverity(grouped, aggregated)
+
+	if got := grouped.Findings[0].Severity; got != "advisory" {
+		t.Errorf("Rule B with valid non-blocking Sources: expected 'advisory', got %q", got)
+	}
+}
+
+// TestBackfillSeverity_RuleB_MixedValidInvalid_DowngradeOnlyIfAllAdvisory
+// verifies that even one valid, non-blocking source is sufficient evidence to
+// downgrade; out-of-range entries are ignored but do not block the downgrade.
+func TestBackfillSeverity_RuleB_MixedValidInvalid_DowngradeOnlyIfAllAdvisory(t *testing.T) {
+	aggregated := []domain.AggregatedFinding{
+		{Text: "a1", Severity: "advisory"},
+		{Text: "a2", Severity: "advisory"},
+		{Text: "a3", Severity: "advisory"},
+	}
+	grouped := &domain.GroupedFindings{
+		Findings: []domain.FindingGroup{
+			{Title: "cluster", Severity: "blocking", Sources: []int{0, 99}},
+		},
+	}
+
+	backfillSeverity(grouped, aggregated)
+
+	if got := grouped.Findings[0].Severity; got != "advisory" {
+		t.Errorf("Rule B with mixed valid/out-of-range Sources: expected 'advisory', got %q", got)
+	}
+}
+
+// TestBackfillSeverity_RuleA_UpgradesOnBlockingSource verifies Rule A for the
+// refactored implementation: any valid blocking source upgrades regardless of
+// the LLM-supplied severity.
+func TestBackfillSeverity_RuleA_UpgradesOnBlockingSource(t *testing.T) {
+	aggregated := []domain.AggregatedFinding{
+		{Text: "a1", Severity: "blocking"},
+		{Text: "a2", Severity: "advisory"},
+	}
+	grouped := &domain.GroupedFindings{
+		Findings: []domain.FindingGroup{
+			{Title: "cluster", Severity: "advisory", Sources: []int{0, 1}},
+		},
+	}
+
+	backfillSeverity(grouped, aggregated)
+
+	if got := grouped.Findings[0].Severity; got != "blocking" {
+		t.Errorf("Rule A with blocking source: expected 'blocking', got %q", got)
+	}
+}
+
+// TestBackfillSeverity_RuleC_NormalizesUnknown verifies Rule C allow-list
+// normalization for unknown severity values. When Rule A also applies, the
+// upgrade wins (normalized "advisory" → "blocking").
+func TestBackfillSeverity_RuleC_NormalizesUnknown(t *testing.T) {
+	t.Run("no_blocking_source", func(t *testing.T) {
+		aggregated := []domain.AggregatedFinding{
+			{Text: "a1", Severity: "advisory"},
+		}
+		grouped := &domain.GroupedFindings{
+			Findings: []domain.FindingGroup{
+				{Title: "cluster", Severity: "critical", Sources: []int{0}},
+			},
+		}
+
+		backfillSeverity(grouped, aggregated)
+
+		if got := grouped.Findings[0].Severity; got != "advisory" {
+			t.Errorf("Rule C with no blocking source: expected 'advisory', got %q", got)
+		}
+	})
+
+	t.Run("with_blocking_source", func(t *testing.T) {
+		aggregated := []domain.AggregatedFinding{
+			{Text: "a1", Severity: "blocking"},
+		}
+		grouped := &domain.GroupedFindings{
+			Findings: []domain.FindingGroup{
+				{Title: "cluster", Severity: "critical", Sources: []int{0}},
+			},
+		}
+
+		backfillSeverity(grouped, aggregated)
+
+		if got := grouped.Findings[0].Severity; got != "blocking" {
+			t.Errorf("Rule C then Rule A: expected 'blocking', got %q", got)
+		}
+	})
+}

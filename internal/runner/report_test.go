@@ -1,6 +1,7 @@
 package runner
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -625,5 +626,410 @@ func TestRenderDismissedLGTMMarkdown_UntitledFallback(t *testing.T) {
 
 	if !strings.Contains(result, "Untitled") {
 		t.Error("expected 'Untitled' fallback for empty title")
+	}
+}
+
+func TestRenderReport_PartialCrossCheckAnnotated(t *testing.T) {
+	terminal.WithColorsDisabled(func() {
+		grouped := domain.GroupedFindings{
+			Findings: []domain.FindingGroup{
+				{Title: "Issue"},
+			},
+		}
+		summaryResult := &summarizer.Result{ExitCode: 0}
+		stats := domain.ReviewStats{TotalReviewers: 2}
+		ccResult := &summarizer.CrossCheckResult{
+			Partial:      true,
+			FailedAgents: []string{"codex", "claude"},
+			Findings: []summarizer.CrossCheckFinding{
+				{Title: "cross-group gap", Type: "gap", Severity: "advisory"},
+			},
+		}
+
+		result := RenderReport(grouped, summaryResult, stats, ccResult)
+
+		if !strings.Contains(result, "Cross-check ran partially") {
+			t.Error("expected partial annotation line in output")
+		}
+		if !strings.Contains(result, "codex") || !strings.Contains(result, "claude") {
+			t.Error("expected failed agent names in annotation")
+		}
+		if !strings.Contains(result, "coverage reduced") {
+			t.Error("expected 'coverage reduced' in annotation")
+		}
+		if !strings.Contains(result, "Cross-Group Findings") {
+			t.Error("expected Cross-Group Findings header still present")
+		}
+	})
+}
+
+func TestRenderReport_VerdictLineBlocking(t *testing.T) {
+	terminal.WithColorsDisabled(func() {
+		grouped := domain.GroupedFindings{
+			Findings: []domain.FindingGroup{
+				{Title: "big issue", Severity: "blocking"},
+			},
+			Verdict: "blocking",
+		}
+		summaryResult := &summarizer.Result{ExitCode: 0}
+		stats := domain.ReviewStats{TotalReviewers: 2}
+
+		out := RenderReport(grouped, summaryResult, stats, nil)
+
+		if !strings.Contains(out, "Verdict: blocking") {
+			t.Errorf("expected 'Verdict: blocking' in output, got:\n%s", out)
+		}
+	})
+}
+
+func TestRenderReport_VerdictLineAdvisory(t *testing.T) {
+	terminal.WithColorsDisabled(func() {
+		grouped := domain.GroupedFindings{
+			Findings: []domain.FindingGroup{
+				{Title: "style note", Severity: "advisory"},
+			},
+			Verdict: "advisory",
+			Ok:      true,
+		}
+		summaryResult := &summarizer.Result{ExitCode: 0}
+		stats := domain.ReviewStats{TotalReviewers: 2}
+
+		out := RenderReport(grouped, summaryResult, stats, nil)
+
+		if !strings.Contains(out, "Verdict: advisory") {
+			t.Errorf("expected 'Verdict: advisory' in output, got:\n%s", out)
+		}
+	})
+}
+
+func TestRenderReport_VerdictLineOk(t *testing.T) {
+	terminal.WithColorsDisabled(func() {
+		grouped := domain.GroupedFindings{
+			Verdict: "ok",
+			Ok:      true,
+		}
+		summaryResult := &summarizer.Result{ExitCode: 0}
+		stats := domain.ReviewStats{TotalReviewers: 2, SuccessfulReviewers: 2}
+
+		out := RenderReport(grouped, summaryResult, stats, nil)
+
+		if !strings.Contains(out, "Verdict: ok") {
+			t.Errorf("expected 'Verdict: ok' in output, got:\n%s", out)
+		}
+		if !strings.Contains(out, "LGTM") {
+			t.Error("expected LGTM in ok verdict output")
+		}
+	})
+}
+
+func TestRenderReport_GroupFindingShowsSeverityLabel(t *testing.T) {
+	terminal.WithColorsDisabled(func() {
+		grouped := domain.GroupedFindings{
+			Findings: []domain.FindingGroup{
+				{Title: "null deref", Severity: "blocking"},
+				{Title: "nits", Severity: "advisory"},
+			},
+			Verdict: "blocking",
+		}
+		summaryResult := &summarizer.Result{ExitCode: 0}
+		stats := domain.ReviewStats{TotalReviewers: 1}
+
+		out := RenderReport(grouped, summaryResult, stats, nil)
+
+		if !strings.Contains(out, "[blocking]") {
+			t.Errorf("expected '[blocking]' label in output, got:\n%s", out)
+		}
+		if !strings.Contains(out, "[advisory]") {
+			t.Errorf("expected '[advisory]' label in output, got:\n%s", out)
+		}
+	})
+}
+
+func TestRenderJSON_ContainsVerdictAndOk(t *testing.T) {
+	grouped := &domain.GroupedFindings{
+		Findings: []domain.FindingGroup{
+			{Title: "issue", Severity: "advisory"},
+		},
+		Verdict: "advisory",
+		Ok:      true,
+	}
+	out, err := RenderJSON(grouped, nil)
+	if err != nil {
+		t.Fatalf("RenderJSON failed: %v", err)
+	}
+	var parsed map[string]interface{}
+	if err := json.Unmarshal(out, &parsed); err != nil {
+		t.Fatalf("JSON unmarshal failed: %v", err)
+	}
+	if parsed["verdict"] != "advisory" {
+		t.Errorf("expected verdict=advisory, got %v", parsed["verdict"])
+	}
+	okVal, ok := parsed["ok"].(bool)
+	if !ok || !okVal {
+		t.Errorf("expected ok=true bool, got %v", parsed["ok"])
+	}
+}
+
+func TestRenderJSON_ContainsGroupSeverity(t *testing.T) {
+	grouped := &domain.GroupedFindings{
+		Findings: []domain.FindingGroup{
+			{Title: "issue", Severity: "blocking"},
+		},
+		Verdict: "blocking",
+	}
+	out, err := RenderJSON(grouped, nil)
+	if err != nil {
+		t.Fatalf("RenderJSON failed: %v", err)
+	}
+	if !strings.Contains(string(out), "\"severity\": \"blocking\"") {
+		t.Errorf("expected per-finding severity in JSON output, got:\n%s", out)
+	}
+}
+
+func TestRenderJSON_CrossCheckStillHasPartial(t *testing.T) {
+	grouped := &domain.GroupedFindings{Verdict: "advisory", Ok: true}
+	ccResult := &summarizer.CrossCheckResult{
+		Partial:      true,
+		FailedAgents: []string{"claude"},
+		Findings: []summarizer.CrossCheckFinding{
+			{Title: "gap", Type: "gap", Severity: "advisory"},
+		},
+	}
+
+	out, err := RenderJSON(grouped, ccResult)
+	if err != nil {
+		t.Fatalf("RenderJSON failed: %v", err)
+	}
+	var parsed map[string]interface{}
+	if err := json.Unmarshal(out, &parsed); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	cc, ok := parsed["cross_check"].(map[string]interface{})
+	if !ok {
+		t.Fatal("missing cross_check section")
+	}
+	if partial, _ := cc["partial"].(bool); !partial {
+		t.Error("expected partial=true preserved")
+	}
+	if _, ok := cc["failed_agents"].([]interface{}); !ok {
+		t.Errorf("expected failed_agents preserved, got %v", cc["failed_agents"])
+	}
+	if parsed["verdict"] != "advisory" {
+		t.Errorf("expected verdict=advisory in wrapped output, got %v", parsed["verdict"])
+	}
+}
+
+func TestRenderJSON_PartialCrossCheckFields(t *testing.T) {
+	grouped := &domain.GroupedFindings{}
+	ccResult := &summarizer.CrossCheckResult{
+		Partial:      true,
+		FailedAgents: []string{"codex"},
+		Findings: []summarizer.CrossCheckFinding{
+			{Title: "gap", Type: "gap", Severity: "advisory"},
+		},
+	}
+
+	out, err := RenderJSON(grouped, ccResult)
+	if err != nil {
+		t.Fatalf("RenderJSON failed: %v", err)
+	}
+
+	var parsed map[string]interface{}
+	if err := json.Unmarshal(out, &parsed); err != nil {
+		t.Fatalf("JSON unmarshal failed: %v", err)
+	}
+
+	cc, ok := parsed["cross_check"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected cross_check section in JSON output")
+	}
+
+	if partial, _ := cc["partial"].(bool); !partial {
+		t.Error("expected partial=true in cross_check JSON")
+	}
+
+	failedRaw, ok := cc["failed_agents"].([]interface{})
+	if !ok || len(failedRaw) != 1 {
+		t.Errorf("expected failed_agents=[\"codex\"] in cross_check JSON, got %v", cc["failed_agents"])
+	} else if failedRaw[0] != "codex" {
+		t.Errorf("expected failed_agents[0]=\"codex\", got %v", failedRaw[0])
+	}
+}
+
+func TestRenderReport_GroupedEmpty_CrossCheckBlocking_ShowsCrossCheckAndVerdict(t *testing.T) {
+	terminal.WithColorsDisabled(func() {
+		grouped := domain.GroupedFindings{
+			Verdict: "blocking",
+		}
+		summaryResult := &summarizer.Result{ExitCode: 0}
+		stats := domain.ReviewStats{TotalReviewers: 2}
+		ccResult := &summarizer.CrossCheckResult{
+			Findings: []summarizer.CrossCheckFinding{
+				{Title: "cross-group memory leak", Type: "bug", Severity: "blocking"},
+			},
+		}
+
+		out := RenderReport(grouped, summaryResult, stats, ccResult)
+
+		if !strings.Contains(out, "Cross-Group Findings") {
+			t.Errorf("expected 'Cross-Group Findings' section in output, got:\n%s", out)
+		}
+		if !strings.Contains(out, "Verdict: blocking") {
+			t.Errorf("expected 'Verdict: blocking' in output, got:\n%s", out)
+		}
+		if strings.Contains(out, "LGTM") {
+			t.Errorf("expected no 'LGTM' when cross-check has blocking findings, got:\n%s", out)
+		}
+	})
+}
+
+func TestRenderReport_GroupedEmpty_CrossCheckAdvisoryOnly_ShowsVerdictAdvisory(t *testing.T) {
+	terminal.WithColorsDisabled(func() {
+		grouped := domain.GroupedFindings{
+			Verdict: "advisory",
+		}
+		summaryResult := &summarizer.Result{ExitCode: 0}
+		stats := domain.ReviewStats{TotalReviewers: 2}
+		ccResult := &summarizer.CrossCheckResult{
+			Findings: []summarizer.CrossCheckFinding{
+				{Title: "cross-group style gap", Type: "style", Severity: "advisory"},
+			},
+		}
+
+		out := RenderReport(grouped, summaryResult, stats, ccResult)
+
+		if !strings.Contains(out, "Verdict: advisory") {
+			t.Errorf("expected 'Verdict: advisory' in output, got:\n%s", out)
+		}
+		if strings.Contains(out, "LGTM") {
+			t.Errorf("expected no 'LGTM' when cross-check has advisory findings, got:\n%s", out)
+		}
+	})
+}
+
+func TestRenderReport_AllEmpty_ShowsLGTM(t *testing.T) {
+	terminal.WithColorsDisabled(func() {
+		grouped := domain.GroupedFindings{
+			Verdict: "ok",
+			Ok:      true,
+		}
+		summaryResult := &summarizer.Result{ExitCode: 0}
+		stats := domain.ReviewStats{TotalReviewers: 3, SuccessfulReviewers: 3}
+
+		out := RenderReport(grouped, summaryResult, stats, nil)
+
+		if !strings.Contains(out, "LGTM") {
+			t.Errorf("expected 'LGTM' when grouped empty and ccResult nil, got:\n%s", out)
+		}
+		if !strings.Contains(out, "Verdict: ok") {
+			t.Errorf("expected 'Verdict: ok' in output, got:\n%s", out)
+		}
+	})
+}
+
+func TestRenderReport_GroupedEmpty_PartialCrossCheck_NoLGTM(t *testing.T) {
+	terminal.WithColorsDisabled(func() {
+		grouped := domain.GroupedFindings{
+			Verdict: "advisory",
+		}
+		summaryResult := &summarizer.Result{ExitCode: 0}
+		stats := domain.ReviewStats{TotalReviewers: 2}
+		ccResult := &summarizer.CrossCheckResult{
+			Partial:      true,
+			FailedAgents: []string{"codex"},
+			Findings:     []summarizer.CrossCheckFinding{},
+		}
+
+		out := RenderReport(grouped, summaryResult, stats, ccResult)
+
+		if !strings.Contains(out, "coverage reduced") {
+			t.Errorf("expected 'coverage reduced' warning in output, got:\n%s", out)
+		}
+		if strings.Contains(out, "LGTM") {
+			t.Errorf("expected no 'LGTM' when cross-check is partial, got:\n%s", out)
+		}
+	})
+}
+
+func TestRenderReport_CCSkippedSingleGroup_ShowsLGTM(t *testing.T) {
+	terminal.WithColorsDisabled(func() {
+		grouped := domain.GroupedFindings{}
+		summaryResult := &summarizer.Result{ExitCode: 0}
+		stats := domain.ReviewStats{TotalReviewers: 2, SuccessfulReviewers: 2}
+		ccResult := &summarizer.CrossCheckResult{
+			Skipped:    true,
+			SkipReason: summarizer.SkipReasonSingleGroup,
+		}
+
+		out := RenderReport(grouped, summaryResult, stats, ccResult)
+
+		if !strings.Contains(out, "LGTM") {
+			t.Errorf("expected 'LGTM' for structural skip %q, got:\n%s", summarizer.SkipReasonSingleGroup, out)
+		}
+	})
+}
+
+func TestRenderReport_CCSkippedSingleGroup_LiteralString_ShowsLGTM(t *testing.T) {
+	terminal.WithColorsDisabled(func() {
+		// Regression: runtime CrossCheck emits the literal reason string.
+		// Report layer must match that literal via IsStructuralSkipReason.
+		grouped := domain.GroupedFindings{}
+		summaryResult := &summarizer.Result{ExitCode: 0}
+		stats := domain.ReviewStats{TotalReviewers: 2, SuccessfulReviewers: 2}
+		ccResult := &summarizer.CrossCheckResult{
+			Skipped:    true,
+			SkipReason: "single group, cross-check unnecessary",
+		}
+
+		out := RenderReport(grouped, summaryResult, stats, ccResult)
+
+		if !strings.Contains(out, "LGTM") {
+			t.Errorf("expected 'LGTM' for literal structural skip reason, got:\n%s", out)
+		}
+	})
+}
+
+func TestRenderReport_CCSkippedAllAgentsFailed_NoLGTM(t *testing.T) {
+	terminal.WithColorsDisabled(func() {
+		grouped := domain.GroupedFindings{}
+		summaryResult := &summarizer.Result{ExitCode: 0}
+		stats := domain.ReviewStats{TotalReviewers: 2, SuccessfulReviewers: 0}
+		ccResult := &summarizer.CrossCheckResult{
+			Skipped:    true,
+			SkipReason: "all-agents-failed",
+		}
+
+		out := RenderReport(grouped, summaryResult, stats, ccResult)
+
+		if strings.Contains(out, "LGTM") {
+			t.Errorf("expected no 'LGTM' for error skip 'all-agents-failed', got:\n%s", out)
+		}
+	})
+}
+
+func TestRenderCommentMarkdown_EmptyFindings_ReturnsEmpty(t *testing.T) {
+	grouped := domain.GroupedFindings{}
+
+	result := RenderCommentMarkdown(grouped, 5, nil, "dev")
+
+	if result != "" {
+		t.Errorf("expected empty string for empty findings, got %q", result)
+	}
+}
+
+func TestRenderCommentMarkdown_WithFindings_ReturnsBody(t *testing.T) {
+	grouped := domain.GroupedFindings{
+		Findings: []domain.FindingGroup{
+			{Title: "Some Issue", Summary: "Details here"},
+		},
+	}
+
+	result := RenderCommentMarkdown(grouped, 3, nil, "dev")
+
+	if !strings.Contains(result, "## Findings") {
+		t.Error("expected '## Findings' header in non-empty output")
+	}
+	if !strings.Contains(result, "Some Issue") {
+		t.Error("expected finding title in output")
 	}
 }

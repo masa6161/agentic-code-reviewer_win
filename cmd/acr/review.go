@@ -128,7 +128,7 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 	phaseStr := opts.Phase
 	var useGroupedSpecs bool
 	var groupedSpecs []runner.ReviewerSpec
-	if opts.AutoPhase && phaseStr == "" {
+	if shouldUseAutoPhase(opts) {
 		size, fileCount, lineCount, classifyErr := git.ClassifyDiffSize(ctx, resolvedBaseRef, opts.WorkDir)
 		if classifyErr != nil {
 			if opts.Verbose {
@@ -139,15 +139,24 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 				logger.Logf(terminal.StyleDim, "Auto-phase: diff is %s (%d files, %d lines)", size, fileCount, lineCount)
 			}
 			apr := resolveAutoPhase(size, opts.Reviewers, diff, opts.Guidance, diffPrecomputed, reviewAgents)
+			// Apply reviewer-count override BEFORE any downstream consumer of
+			// opts.Reviewers (concurrency resolution, runner config, etc.).
+			if apr.ReviewerOverride > 0 && apr.ReviewerOverride != opts.Reviewers {
+				logger.Logf(terminal.StyleInfo, "[auto-phase] reviewers bumped %d -> %d (%s)",
+					opts.Reviewers, apr.ReviewerOverride, apr.FallbackReason)
+				opts.Reviewers = apr.ReviewerOverride
+			}
 			phaseStr = apr.PhaseStr
 			groupedSpecs = apr.GroupedSpecs
 			useGroupedSpecs = apr.UseGrouped
 			if opts.Verbose {
 				switch {
 				case apr.UseGrouped:
-					logger.Logf(terminal.StyleDim, "Auto-phase: large diff — %d files in %d groups", fileCount, len(groupedSpecs)-1)
+					logger.Logf(terminal.StyleDim, "Auto-phase: grouped (%d diff groups + arch)", len(groupedSpecs)-1)
 				case size == git.DiffSizeLarge && opts.Reviewers < 2:
 					logger.Logf(terminal.StyleWarning, "Auto-phase: --reviewers=%d too low for grouped diff, falling back to arch,diff", opts.Reviewers)
+				case apr.FallbackReason != "":
+					logger.Logf(terminal.StyleWarning, "Auto-phase: falling back to arch,diff (%s)", apr.FallbackReason)
 				case size == git.DiffSizeLarge && !apr.UseGrouped:
 					logger.Logf(terminal.StyleWarning, "Auto-phase: grouped diff setup failed, falling back to arch,diff")
 				}
@@ -278,7 +287,7 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 	// Cross-check: run only for grouped diff reviews with >=2 groups.
 	var ccResult *summarizer.CrossCheckResult
 	if useGroupedSpecs && opts.CrossCheckEnabled && ctx.Err() == nil {
-		ccCtx := buildCrossCheckContext(allFindings, groupedSpecs, results)
+		ccCtx := buildCrossCheckContext(aggregated, groupedSpecs, results)
 		if len(ccCtx.Groups) >= 2 {
 			ccSpinner := terminal.NewPhaseSpinner("Cross-checking groups")
 			ccSpinnerCtx, ccSpinnerCancel := context.WithCancel(ctx)
@@ -401,31 +410,22 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 		excludeFiltered,
 		summaryResult.Grouped.Findings,
 	)
-	// Compute Ok field from post-filter state.
-	// Ok is true when no surviving finding group references a blocking aggregated finding
-	// AND no blocking cross-check finding is present.
-	summaryResult.Grouped.Ok = true
-	if ccResult.HasBlockingFindings() {
-		summaryResult.Grouped.Ok = false
+	// Severity reconcile now lives in summarizer.backfillSeverity (3 rules:
+	// empty Sources → blocking; any aggregated source blocking → blocking;
+	// otherwise default to advisory). Keeping a second pass here would
+	// double-apply and conflict with the single source of truth.
+
+	// Compute overall Verdict (and Ok) from post-filter state.
+	// Cross-check degradation (Partial or non-structural Skipped) is folded
+	// into ccAdvisory so a clean grouped run cannot LGTM while the cross-check
+	// layer silently lost coverage (split-brain prevention). Keeping domain
+	// ComputeVerdict pure, degradation interpretation lives at this boundary.
+	ccBlocking := ccResult.HasBlockingFindings()
+	ccAdvisory := false
+	if ccResult != nil && !ccBlocking && (ccResult.HasAdvisoryFindings() || ccResult.IsDegraded()) {
+		ccAdvisory = true
 	}
-	for _, fg := range summaryResult.Grouped.Findings {
-		// Defensive: a finding group with empty Sources cannot be verified as
-		// non-blocking via the aggregated list, so treat it as blocking to
-		// avoid a false-negative in the review gate.
-		if len(fg.Sources) == 0 {
-			summaryResult.Grouped.Ok = false
-			break
-		}
-		for _, src := range fg.Sources {
-			if src >= 0 && src < len(aggregated) && aggregated[src].Severity == "blocking" {
-				summaryResult.Grouped.Ok = false
-				break
-			}
-		}
-		if !summaryResult.Grouped.Ok {
-			break
-		}
-	}
+	summaryResult.Grouped.ComputeVerdict(ccBlocking, ccAdvisory)
 
 	// Render and print report
 	if opts.Format == "json" {
@@ -444,12 +444,44 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 		return domain.ExitError
 	}
 
-	// Handle PR actions
-	if !summaryResult.Grouped.HasFindings() {
+	// Handle PR actions based on overall verdict.
+	// "ok"        → LGTM path, exit 0
+	// "advisory"  → findings path, exit 0 (unless --strict, then 1)
+	// "blocking"  → findings path, exit 1
+	verdict := summaryResult.Grouped.Verdict
+	if verdict == "ok" {
 		return handleLGTM(ctx, opts, allFindings, aggregated, dispositions, stats, logger)
 	}
 
-	return handleFindings(ctx, opts, summaryResult.Grouped, aggregated, stats, logger)
+	findingsCode, finalVerdict := handleFindings(ctx, opts, summaryResult.Grouped, aggregated, ccResult, ccBlocking, ccAdvisory, verdict, opts.Strict, stats, logger)
+	return applyVerdictExitPolicy(finalVerdict, opts.Strict, findingsCode)
+}
+
+// applyVerdictExitPolicy maps a verdict + strict flag + handleFindings exit code
+// to the final exit code per Part C policy:
+//
+//	verdict=="ok"       → findingsCode unchanged (caller handles LGTM branch)
+//	verdict=="advisory" → 0 unless strict; strict keeps findingsCode
+//	verdict=="blocking" → findingsCode unchanged (1 on findings)
+//	propagates non-ExitFindings codes (e.g. interrupted/error) unchanged
+func applyVerdictExitPolicy(verdict string, strict bool, findingsCode domain.ExitCode) domain.ExitCode {
+	if verdict == "advisory" && !strict && findingsCode == domain.ExitFindings {
+		return domain.ExitNoFindings
+	}
+	return findingsCode
+}
+
+// isLGTM reports whether the review result qualifies for LGTM:
+// shouldUseAutoPhase returns true when auto-phase is enabled and no explicit
+// --phase override was provided. Explicit --phase always takes precedence.
+func shouldUseAutoPhase(opts ReviewOpts) bool {
+	return opts.AutoPhase && opts.Phase == ""
+}
+
+// no grouped findings AND no blocking cross-check findings.
+// ccResult may be nil (nil-safe via CrossCheckResult.HasBlockingFindings).
+func isLGTM(grouped domain.GroupedFindings, cc *summarizer.CrossCheckResult) bool {
+	return !grouped.HasFindings() && !cc.HasBlockingFindings()
 }
 
 // parsePhases converts a comma-separated phase string into PhaseConfigs.
@@ -504,11 +536,18 @@ func parsePhases(phaseStr string, totalReviewers int) ([]runner.PhaseConfig, err
 // resolveCrossCheckAgents returns the resolved cross-check agent names and
 // model. Empty agent falls back to the summarizer agent; empty model falls
 // back to the summarizer model.
+//
+// NOTE: agent.ParseAgentNames("") returns []string{DefaultAgent} ("codex"),
+// so we must check the raw string BEFORE calling ParseAgentNames to detect
+// a truly-unset CrossCheckAgent and fall back to SummarizerAgent. This is
+// belt-and-suspenders even if config.Resolve already copies the value,
+// because the fallback here is the canonical resolution point.
 func resolveCrossCheckAgents(opts ReviewOpts) ([]string, string) {
-	names := agent.ParseAgentNames(opts.CrossCheckAgent)
-	if len(names) == 0 {
-		names = []string{opts.SummarizerAgent}
+	agentSpec := opts.CrossCheckAgent
+	if strings.TrimSpace(agentSpec) == "" {
+		agentSpec = opts.SummarizerAgent
 	}
+	names := agent.ParseAgentNames(agentSpec)
 	model := opts.CrossCheckModel
 	if model == "" {
 		model = opts.SummarizerModel
@@ -518,7 +557,7 @@ func resolveCrossCheckAgents(opts ReviewOpts) ([]string, string) {
 
 // buildCrossCheckContext assembles the cross-check input context from review
 // specs, reviewer results, and aggregated findings.
-func buildCrossCheckContext(findings []domain.Finding, specs []runner.ReviewerSpec, results []domain.ReviewerResult) summarizer.CrossCheckContext {
+func buildCrossCheckContext(findings []domain.AggregatedFinding, specs []runner.ReviewerSpec, results []domain.ReviewerResult) summarizer.CrossCheckContext {
 	// Collect unique group keys from specs (preserving order of first appearance).
 	groupInfos := make([]summarizer.GroupInfo, 0, len(specs))
 	seenKey := make(map[string]bool, len(specs))
@@ -541,10 +580,10 @@ func buildCrossCheckContext(findings []domain.Finding, specs []runner.ReviewerSp
 	for _, g := range groupInfos {
 		outcomeByKey[g.GroupKey] = &summarizer.GroupOutcome{GroupKey: g.GroupKey}
 	}
-	// Map reviewer id -> group key via specs (spec index = reviewer id - 1).
+	// Map reviewer id -> group key via specs (uses authoritative ReviewerID field).
 	idToKey := make(map[int]string, len(specs))
-	for i, s := range specs {
-		idToKey[i+1] = s.GroupKey
+	for _, s := range specs {
+		idToKey[s.ReviewerID] = s.GroupKey
 	}
 	for _, r := range results {
 		key := idToKey[r.ReviewerID]
@@ -578,31 +617,108 @@ func buildCrossCheckContext(findings []domain.Finding, specs []runner.ReviewerSp
 
 // autoPhaseResult holds the outcome of resolveAutoPhase.
 type autoPhaseResult struct {
-	PhaseStr     string              // non-empty → use legacy phase path
-	GroupedSpecs []runner.ReviewerSpec // non-nil → use grouped diff path
-	UseGrouped   bool
+	PhaseStr         string                // non-empty → use legacy phase path
+	GroupedSpecs     []runner.ReviewerSpec // non-nil → use grouped diff path
+	UseGrouped       bool
+	FallbackReason   string // non-empty when UseGrouped was downgraded to false
+	ReviewerOverride int    // 0 = no override; otherwise the enforced reviewer count
+}
+
+// enforceReviewerBoundsForSize enforces per-size reviewer count bounds.
+//   - small: no change
+//   - medium: floor 2
+//   - large: floor 3, upper = fileCount + 1 (floored at 3)
+//
+// Returns the final reviewer count and a short reason string when an override
+// applies. An empty reason means reviewers was already within bounds.
+func enforceReviewerBoundsForSize(size git.DiffSize, reviewers, fileCount int) (int, string) {
+	switch size {
+	case git.DiffSizeSmall:
+		return reviewers, ""
+	case git.DiffSizeMedium:
+		if reviewers < 2 {
+			return 2, fmt.Sprintf("medium diff requires >=2 reviewers; bumped from %d to 2", reviewers)
+		}
+		return reviewers, ""
+	case git.DiffSizeLarge:
+		const floor = 3
+		upper := fileCount + 1
+		if upper < floor {
+			upper = floor
+		}
+		if reviewers < floor {
+			return floor, fmt.Sprintf("large diff requires >=%d reviewers; bumped from %d to %d", floor, reviewers, floor)
+		}
+		if reviewers > upper {
+			return upper, fmt.Sprintf("large diff clamped to file_count+1 = %d; was %d", upper, reviewers)
+		}
+		return reviewers, ""
+	}
+	return reviewers, ""
 }
 
 // resolveAutoPhase determines phase configuration based on diff size and reviewer budget.
 func resolveAutoPhase(size git.DiffSize, reviewers int, diff, guidance string, diffPrecomputed bool, agents []agent.Agent) autoPhaseResult {
 	switch size {
 	case git.DiffSizeSmall:
+		// Small: no reviewer-count override; flat diff path.
 		return autoPhaseResult{PhaseStr: "diff"}
 	case git.DiffSizeLarge:
-		if reviewers < 2 {
-			return autoPhaseResult{PhaseStr: "arch,diff"}
+		// Count files for bounds enforcement (file_count+1 upper bound on large).
+		fileCount := len(git.ParseDiffSections(diff))
+		effectiveReviewers, boundsReason := enforceReviewerBoundsForSize(size, reviewers, fileCount)
+
+		apr := autoPhaseResult{}
+		if effectiveReviewers != reviewers {
+			apr.ReviewerOverride = effectiveReviewers
 		}
-		maxDiffGroups := reviewers - 1
+		appendReason := func(extra string) {
+			if extra == "" {
+				return
+			}
+			if apr.FallbackReason == "" {
+				apr.FallbackReason = extra
+				return
+			}
+			apr.FallbackReason = apr.FallbackReason + "; " + extra
+		}
+		appendReason(boundsReason)
+
+		if effectiveReviewers < 2 {
+			apr.PhaseStr = "arch,diff"
+			return apr
+		}
+		maxDiffGroups := effectiveReviewers - 1
 		if maxDiffGroups > 4 {
 			maxDiffGroups = 4
 		}
 		specs, err := buildGroupedDiffSpecs(diff, guidance, diffPrecomputed, agents, maxDiffGroups)
 		if err != nil {
-			return autoPhaseResult{PhaseStr: "arch,diff"}
+			apr.PhaseStr = "arch,diff"
+			return apr
 		}
-		return autoPhaseResult{GroupedSpecs: specs, UseGrouped: true}
+		// specs[0] is always the arch spec; remaining entries are diff groups.
+		// Grouped path requires at least 2 diff groups for a meaningful cross-check.
+		diffGroupCount := len(specs) - 1
+		if diffGroupCount < 2 {
+			apr.PhaseStr = "arch,diff"
+			appendReason(fmt.Sprintf("only %d non-empty diff group(s)", diffGroupCount))
+			return apr
+		}
+		apr.GroupedSpecs = specs
+		apr.UseGrouped = true
+		return apr
 	default: // medium
-		return autoPhaseResult{PhaseStr: "arch,diff"}
+		// Medium requires >=2 reviewers for meaningful arch+diff coverage.
+		effectiveReviewers, boundsReason := enforceReviewerBoundsForSize(size, reviewers, 0)
+		apr := autoPhaseResult{PhaseStr: "arch,diff"}
+		if effectiveReviewers != reviewers {
+			apr.ReviewerOverride = effectiveReviewers
+		}
+		if boundsReason != "" {
+			apr.FallbackReason = boundsReason
+		}
+		return apr
 	}
 }
 
@@ -630,9 +746,10 @@ func buildGroupedDiffSpecs(
 
 	specs := make([]runner.ReviewerSpec, 0, 1+len(groups))
 
-	// 1. Arch reviewer: full diff
+	// 1. Arch reviewer: full diff (ReviewerID=1)
 	archAgent := agent.AgentForReviewer(agents, 1)
 	specs = append(specs, runner.ReviewerSpec{
+		ReviewerID:      1,
 		Agent:           archAgent,
 		Phase:           "arch",
 		GroupKey:        "arch",
@@ -641,8 +758,10 @@ func buildGroupedDiffSpecs(
 		DiffPrecomputed: diffPrecomputed,
 	})
 
-	// 2. Per-group diff reviewers
-	for i, group := range groups {
+	// 2. Per-group diff reviewers (ReviewerID=2, 3, ...)
+	// Compute ReviewerID once per non-skipped group so agent lookup and ReviewerID
+	// stay in lockstep (empty groups skip both counters together).
+	for _, group := range groups {
 		groupDiff := git.JoinDiffSections(group.Sections)
 		if groupDiff == "" {
 			// Empty group diff after splitting precomputed diff is unexpected.
@@ -653,8 +772,10 @@ func buildGroupedDiffSpecs(
 		for _, s := range group.Sections {
 			targetFiles = append(targetFiles, s.FilePath)
 		}
-		diffAgent := agent.AgentForReviewer(agents, i+2)
+		reviewerID := len(specs) + 1
+		diffAgent := agent.AgentForReviewer(agents, reviewerID)
 		specs = append(specs, runner.ReviewerSpec{
+			ReviewerID:      reviewerID,
 			Agent:           diffAgent,
 			Phase:           "diff",
 			GroupKey:        group.Key,
