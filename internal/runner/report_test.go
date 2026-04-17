@@ -375,7 +375,7 @@ func TestRenderReport_SummarizerError(t *testing.T) {
 		}
 		stats := domain.ReviewStats{}
 
-		result := RenderReport(grouped, summaryResult, stats)
+		result := RenderReport(grouped, summaryResult, stats, nil)
 
 		if !strings.Contains(result, "Summarizer Error") {
 			t.Error("expected 'Summarizer Error' in output")
@@ -398,7 +398,7 @@ func TestRenderReport_LGTM(t *testing.T) {
 		summaryResult := &summarizer.Result{ExitCode: 0}
 		stats := domain.ReviewStats{}
 
-		result := RenderReport(grouped, summaryResult, stats)
+		result := RenderReport(grouped, summaryResult, stats, nil)
 
 		if !strings.Contains(result, "LGTM") {
 			t.Error("expected 'LGTM' in output")
@@ -421,7 +421,7 @@ func TestRenderReport_WithWarnings(t *testing.T) {
 			},
 		}
 
-		result := RenderReport(grouped, summaryResult, stats)
+		result := RenderReport(grouped, summaryResult, stats, nil)
 
 		if !strings.Contains(result, "Warnings") {
 			t.Error("expected 'Warnings' section")
@@ -453,7 +453,7 @@ func TestRenderReport_WithFindings(t *testing.T) {
 		summaryResult := &summarizer.Result{ExitCode: 0}
 		stats := domain.ReviewStats{TotalReviewers: 5}
 
-		result := RenderReport(grouped, summaryResult, stats)
+		result := RenderReport(grouped, summaryResult, stats, nil)
 
 		if !strings.Contains(result, "1 finding") {
 			t.Error("expected '1 finding' header")
@@ -485,7 +485,7 @@ func TestRenderReport_MultipleFindings(t *testing.T) {
 		summaryResult := &summarizer.Result{ExitCode: 0}
 		stats := domain.ReviewStats{}
 
-		result := RenderReport(grouped, summaryResult, stats)
+		result := RenderReport(grouped, summaryResult, stats, nil)
 
 		if !strings.Contains(result, "3 findings") {
 			t.Error("expected '3 findings' header (plural)")
@@ -506,7 +506,7 @@ func TestRenderReport_UntitledFinding(t *testing.T) {
 		summaryResult := &summarizer.Result{ExitCode: 0}
 		stats := domain.ReviewStats{}
 
-		result := RenderReport(grouped, summaryResult, stats)
+		result := RenderReport(grouped, summaryResult, stats, nil)
 
 		if !strings.Contains(result, "Untitled") {
 			t.Error("expected 'Untitled' fallback")
@@ -531,7 +531,7 @@ func TestRenderReport_WithTimingStats(t *testing.T) {
 			},
 		}
 
-		result := RenderReport(grouped, summaryResult, stats)
+		result := RenderReport(grouped, summaryResult, stats, nil)
 
 		if !strings.Contains(result, "Timing") {
 			t.Error("expected 'Timing' section")
@@ -559,7 +559,7 @@ func TestRenderReport_WithAuthFailedWarning(t *testing.T) {
 			},
 		}
 
-		result := RenderReport(grouped, summaryResult, stats)
+		result := RenderReport(grouped, summaryResult, stats, nil)
 
 		if !strings.Contains(result, "Warnings") {
 			t.Error("expected 'Warnings' section")

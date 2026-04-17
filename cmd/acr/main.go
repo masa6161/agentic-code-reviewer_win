@@ -47,6 +47,10 @@ var (
 	fpFilterTimeout     time.Duration
 	noPRFeedback        bool
 	prFeedbackAgent     string
+	noCrossCheck        bool
+	crossCheckAgent     string
+	crossCheckModel     string
+	crossCheckTimeout   time.Duration
 	phase               string
 	formatOutput        string
 	autoPhase           bool
@@ -133,6 +137,14 @@ Exit codes:
 		"Disable reading PR comments for feedback context (env: ACR_PR_FEEDBACK=false)")
 	rootCmd.Flags().StringVar(&prFeedbackAgent, "pr-feedback-agent", "",
 		"Agent for PR feedback summarization (default: same as --summarizer-agent, env: ACR_PR_FEEDBACK_AGENT)")
+	rootCmd.Flags().BoolVar(&noCrossCheck, "no-cross-check", false,
+		"Disable cross-group consistency verification (env: ACR_CROSS_CHECK=false)")
+	rootCmd.Flags().StringVar(&crossCheckAgent, "cross-check-agent", "",
+		"Agent(s) for cross-check verification, comma-separated (default: same as --summarizer-agent, env: ACR_CROSS_CHECK_AGENT)")
+	rootCmd.Flags().StringVar(&crossCheckModel, "cross-check-model", "",
+		"LLM model for cross-check agent (default: same as --summarizer-model, env: ACR_CROSS_CHECK_MODEL)")
+	rootCmd.Flags().DurationVar(&crossCheckTimeout, "cross-check-timeout", 0,
+		"Timeout for cross-check phase (default: 5m, env: ACR_CROSS_CHECK_TIMEOUT)")
 	rootCmd.Flags().StringVar(&phase, "phase", "",
 		"Review phases (comma-separated): arch, diff, arch,diff")
 	rootCmd.Flags().StringVar(&formatOutput, "format", "text",
@@ -368,6 +380,10 @@ func loadAndResolveConfig(cmd *cobra.Command, wt worktreeResult, logger *termina
 		FPThresholdSet:       cmd.Flags().Changed("fp-threshold"),
 		NoPRFeedbackSet:      cmd.Flags().Changed("no-pr-feedback"),
 		PRFeedbackAgentSet:   cmd.Flags().Changed("pr-feedback-agent"),
+		NoCrossCheckSet:      cmd.Flags().Changed("no-cross-check"),
+		CrossCheckAgentSet:   cmd.Flags().Changed("cross-check-agent"),
+		CrossCheckModelSet:   cmd.Flags().Changed("cross-check-model"),
+		CrossCheckTimeoutSet: cmd.Flags().Changed("cross-check-timeout"),
 	}
 
 	// Load env var state
@@ -406,6 +422,10 @@ func loadAndResolveConfig(cmd *cobra.Command, wt worktreeResult, logger *termina
 		FPThreshold:       fpThreshold,
 		PRFeedbackEnabled: !noPRFeedback,
 		PRFeedbackAgent:   prFeedbackAgent,
+		CrossCheckEnabled: !noCrossCheck,
+		CrossCheckAgent:   crossCheckAgent,
+		CrossCheckModel:   crossCheckModel,
+		CrossCheckTimeout: crossCheckTimeout,
 	}
 
 	// Resolve final configuration (precedence: flags > env vars > config file > defaults)

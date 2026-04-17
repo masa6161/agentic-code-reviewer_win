@@ -15,10 +15,12 @@ import (
 const maxRawOutputLines = 10
 
 // RenderReport renders a terminal report for the review results.
+// ccResult may be nil when cross-check was not run.
 func RenderReport(
 	grouped domain.GroupedFindings,
 	summaryResult *summarizer.Result,
 	stats domain.ReviewStats,
+	ccResult *summarizer.CrossCheckResult,
 ) string {
 	width := terminal.ReportWidth()
 
@@ -137,6 +139,35 @@ func RenderReport(
 	lines = append(lines, "")
 	lines = append(lines, terminal.Ruler(width, "━"))
 
+	// Cross-check section (only when ccResult is non-nil and has findings)
+	if ccResult != nil && len(ccResult.Findings) > 0 {
+		lines = append(lines, "")
+		lines = append(lines, fmt.Sprintf("%s%s🔗 Cross-Group Findings (%d)%s",
+			terminal.Color(terminal.Cyan), terminal.Color(terminal.Bold), len(ccResult.Findings), terminal.Color(terminal.Reset)))
+		lines = append(lines, terminal.Ruler(width, "─"))
+		for i, cf := range ccResult.Findings {
+			title := cf.Title
+			if title == "" {
+				title = "Untitled"
+			}
+			sev := cf.Severity
+			if sev == "" {
+				sev = "advisory"
+			}
+			lines = append(lines, fmt.Sprintf("  %s%d.%s [%s/%s] %s",
+				terminal.Color(terminal.Dim), i+1, terminal.Color(terminal.Reset),
+				cf.Type, sev, title))
+			if cf.Summary != "" {
+				wrapped := terminal.WrapText(cf.Summary, width-5, "     ")
+				lines = append(lines, wrapped)
+			}
+			if len(cf.InvolvedGroups) > 0 {
+				lines = append(lines, fmt.Sprintf("     %sgroups: %v%s",
+					terminal.Color(terminal.Dim), cf.InvolvedGroups, terminal.Color(terminal.Reset)))
+			}
+		}
+	}
+
 	if stats.FPFilteredCount > 0 {
 		findingWord := "finding"
 		positiveWord := "positive"
@@ -182,13 +213,18 @@ func RenderReport(
 				terminal.Color(terminal.Dim), terminal.FormatDuration(summaryResult.Duration), terminal.Color(terminal.Reset)))
 		}
 
+		if stats.CrossCheckDuration > 0 {
+			lines = append(lines, fmt.Sprintf("  %scross-check: %s%s",
+				terminal.Color(terminal.Dim), terminal.FormatDuration(stats.CrossCheckDuration), terminal.Color(terminal.Reset)))
+		}
+
 		if stats.FPFilterDuration > 0 {
 			lines = append(lines, fmt.Sprintf("  %sfp-filter: %s%s",
 				terminal.Color(terminal.Dim), terminal.FormatDuration(stats.FPFilterDuration), terminal.Color(terminal.Reset)))
 		}
 
 		if stats.WallClockDuration > 0 && summaryResult.Duration > 0 {
-			total := stats.WallClockDuration + summaryResult.Duration + stats.FPFilterDuration
+			total := stats.WallClockDuration + summaryResult.Duration + stats.CrossCheckDuration + stats.FPFilterDuration
 			lines = append(lines, fmt.Sprintf("  %stotal: %s%s",
 				terminal.Color(terminal.Dim), terminal.FormatDuration(total), terminal.Color(terminal.Reset)))
 		}
@@ -356,8 +392,29 @@ func RenderDismissedLGTMMarkdown(findings []domain.FindingGroup, stats domain.Re
 
 // RenderJSON marshals the grouped findings as JSON with indentation.
 // Ok is expected to be already computed before calling this function.
-func RenderJSON(grouped *domain.GroupedFindings) ([]byte, error) {
-	return json.MarshalIndent(grouped, "", "  ")
+// If ccResult is non-nil and contains findings, a "cross_check" section is
+// embedded alongside the grouped findings.
+func RenderJSON(grouped *domain.GroupedFindings, ccResult *summarizer.CrossCheckResult) ([]byte, error) {
+	if ccResult == nil || len(ccResult.Findings) == 0 {
+		return json.MarshalIndent(grouped, "", "  ")
+	}
+	type crossCheckOut struct {
+		Findings   []summarizer.CrossCheckFinding `json:"findings"`
+		Skipped    bool                           `json:"skipped,omitempty"`
+		SkipReason string                         `json:"skip_reason,omitempty"`
+	}
+	type wrapped struct {
+		*domain.GroupedFindings
+		CrossCheck crossCheckOut `json:"cross_check"`
+	}
+	return json.MarshalIndent(wrapped{
+		GroupedFindings: grouped,
+		CrossCheck: crossCheckOut{
+			Findings:   ccResult.Findings,
+			Skipped:    ccResult.Skipped,
+			SkipReason: ccResult.SkipReason,
+		},
+	}, "", "  ")
 }
 
 // renderFooter returns a small attribution line for GitHub comments.

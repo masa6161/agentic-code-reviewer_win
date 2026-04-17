@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/richhaase/agentic-code-reviewer/internal/agent"
+	"github.com/richhaase/agentic-code-reviewer/internal/config"
 	"github.com/richhaase/agentic-code-reviewer/internal/domain"
 	"github.com/richhaase/agentic-code-reviewer/internal/git"
 	"github.com/richhaase/agentic-code-reviewer/internal/runner"
@@ -328,108 +329,121 @@ func TestAutoPhase_Large_MaxDiffGroupsClamped(t *testing.T) {
 	}
 }
 
-// --- splitFindingsByPhase tests ---
+// --- buildCrossCheckContext tests ---
 
-func TestSplitFindingsByPhase(t *testing.T) {
+func TestBuildCrossCheckContext_GroupTopology(t *testing.T) {
+	specs := []runner.ReviewerSpec{
+		{Phase: "arch", GroupKey: "arch"},
+		{Phase: "diff", GroupKey: "g01", TargetFiles: []string{"a.go"}},
+		{Phase: "diff", GroupKey: "g02", TargetFiles: []string{"b.go"}},
+	}
 	findings := []domain.Finding{
-		{Text: "arch issue", Phase: "arch", ReviewerID: 1},
-		{Text: "diff issue 1", Phase: "diff", ReviewerID: 2},
-		{Text: "diff issue 2", Phase: "diff", ReviewerID: 3},
-		{Text: "no phase", Phase: "", ReviewerID: 4},
+		{Text: "issue", ReviewerID: 2, GroupKey: "g01"},
+	}
+	results := []domain.ReviewerResult{
+		{ReviewerID: 1, ExitCode: 0, Findings: []domain.Finding{}},
+		{ReviewerID: 2, ExitCode: 0, Findings: findings},
+		{ReviewerID: 3, ExitCode: 1, TimedOut: true},
 	}
 
-	arch, diff := splitFindingsByPhase(findings)
+	ccCtx := buildCrossCheckContext(findings, specs, results)
 
-	if len(arch) != 1 {
-		t.Errorf("expected 1 arch finding, got %d", len(arch))
+	if len(ccCtx.Groups) != 3 {
+		t.Fatalf("expected 3 groups, got %d", len(ccCtx.Groups))
 	}
-	if arch[0].Text != "arch issue" {
-		t.Errorf("arch[0].Text = %q, want %q", arch[0].Text, "arch issue")
+	if ccCtx.Groups[0].GroupKey != "arch" || !ccCtx.Groups[0].FullDiff {
+		t.Errorf("expected arch group with FullDiff=true, got %+v", ccCtx.Groups[0])
 	}
-
-	// diff should include both "diff" and "" phase findings
-	if len(diff) != 3 {
-		t.Errorf("expected 3 diff findings, got %d", len(diff))
+	if ccCtx.Groups[1].GroupKey != "g01" || ccCtx.Groups[1].FullDiff {
+		t.Errorf("expected g01 with FullDiff=false, got %+v", ccCtx.Groups[1])
+	}
+	if len(ccCtx.Outcomes) != 3 {
+		t.Fatalf("expected 3 outcomes, got %d", len(ccCtx.Outcomes))
+	}
+	// g01 succeeded
+	if !ccCtx.Outcomes[1].Succeeded || ccCtx.Outcomes[1].FindingCount != 1 {
+		t.Errorf("g01 outcome wrong: %+v", ccCtx.Outcomes[1])
+	}
+	// g02 timed out
+	if !ccCtx.Outcomes[2].TimedOut || ccCtx.Outcomes[2].Succeeded {
+		t.Errorf("g02 outcome wrong: %+v", ccCtx.Outcomes[2])
 	}
 }
 
-func TestSplitFindingsByPhase_AllArch(t *testing.T) {
-	findings := []domain.Finding{
-		{Text: "a1", Phase: "arch"},
-		{Text: "a2", Phase: "arch"},
+func TestBuildCrossCheckContext_DedupGroupKey(t *testing.T) {
+	specs := []runner.ReviewerSpec{
+		{Phase: "arch", GroupKey: "arch"},
+		{Phase: "arch", GroupKey: "arch"}, // duplicate key
 	}
-	arch, diff := splitFindingsByPhase(findings)
-	if len(arch) != 2 {
-		t.Errorf("expected 2 arch, got %d", len(arch))
+	results := []domain.ReviewerResult{
+		{ReviewerID: 1, ExitCode: 0},
+		{ReviewerID: 2, ExitCode: 0},
 	}
-	if len(diff) != 0 {
-		t.Errorf("expected 0 diff, got %d", len(diff))
-	}
-}
-
-func TestSplitFindingsByPhase_Empty(t *testing.T) {
-	arch, diff := splitFindingsByPhase(nil)
-	if arch != nil || diff != nil {
-		t.Errorf("expected nil results for nil input")
+	ccCtx := buildCrossCheckContext(nil, specs, results)
+	if len(ccCtx.Groups) != 1 {
+		t.Errorf("expected 1 unique group, got %d", len(ccCtx.Groups))
 	}
 }
 
-// --- mergeGroupedFindings tests ---
+// --- resolveCrossCheckAgents tests ---
 
-func TestMergeGroupedFindings_AllOk(t *testing.T) {
-	a := &domain.GroupedFindings{
-		Ok:       true,
-		Findings: []domain.FindingGroup{{Title: "arch-f1"}},
-		Info:     []domain.FindingGroup{{Title: "arch-i1"}},
+func TestResolveCrossCheckAgents_EmptyFallsBackToSummarizer(t *testing.T) {
+	opts := ReviewOpts{
+		ResolvedConfig: config.ResolvedConfig{
+			SummarizerAgent:  "codex",
+			SummarizerModel:  "gpt-5",
+			CrossCheckAgent:  "",
+			CrossCheckModel:  "",
+		},
 	}
-	b := &domain.GroupedFindings{
-		Ok:       true,
-		Findings: []domain.FindingGroup{{Title: "diff-f1"}},
+	names, model := resolveCrossCheckAgents(opts)
+	if len(names) != 1 || names[0] != "codex" {
+		t.Errorf("expected fallback to summarizer agent, got %v", names)
 	}
-
-	merged := mergeGroupedFindings(a, b)
-	if !merged.Ok {
-		t.Error("expected merged.Ok = true")
-	}
-	if len(merged.Findings) != 2 {
-		t.Errorf("expected 2 findings, got %d", len(merged.Findings))
-	}
-	if len(merged.Info) != 1 {
-		t.Errorf("expected 1 info, got %d", len(merged.Info))
+	if model != "gpt-5" {
+		t.Errorf("expected fallback to summarizer model, got %q", model)
 	}
 }
 
-func TestMergeGroupedFindings_PartialFail(t *testing.T) {
-	a := &domain.GroupedFindings{Ok: true}
-	b := &domain.GroupedFindings{Ok: false, Findings: []domain.FindingGroup{{Title: "bad"}}}
-
-	merged := mergeGroupedFindings(a, b)
-	if merged.Ok {
-		t.Error("expected merged.Ok = false when one phase is not ok")
+func TestResolveCrossCheckAgents_Explicit(t *testing.T) {
+	opts := ReviewOpts{
+		ResolvedConfig: config.ResolvedConfig{
+			SummarizerAgent: "codex",
+			SummarizerModel: "gpt-5",
+			CrossCheckAgent: "claude,gemini",
+			CrossCheckModel: "opus",
+		},
+	}
+	names, model := resolveCrossCheckAgents(opts)
+	if len(names) != 2 || names[0] != "claude" || names[1] != "gemini" {
+		t.Errorf("expected [claude gemini], got %v", names)
+	}
+	if model != "opus" {
+		t.Errorf("expected 'opus', got %q", model)
 	}
 }
 
-func TestMergeGroupedFindings_NilGroup(t *testing.T) {
-	a := &domain.GroupedFindings{
-		Ok:       true,
-		Findings: []domain.FindingGroup{{Title: "f1"}},
+// Sanity test that grouped diff path produces specs whose GroupKey values
+// match the buildCrossCheckContext expected topology (1 arch + N diff groups).
+func TestLargeReview_GroupedSpecsProduceCrossCheckableTopology(t *testing.T) {
+	sections := makeSectionsForReview(8, 5)
+	fullDiff := git.JoinDiffSections(sections)
+	agents := []agent.Agent{agent.NewCodexAgent("")}
+	apr := resolveAutoPhase(git.DiffSizeLarge, 4, fullDiff, "", true, agents)
+	if !apr.UseGrouped {
+		t.Fatal("expected UseGrouped=true for large diff with 4 reviewers")
 	}
-
-	merged := mergeGroupedFindings(nil, a, nil)
-	if !merged.Ok {
-		t.Error("expected merged.Ok = true")
+	if apr.GroupedSpecs[0].GroupKey != "arch" {
+		t.Errorf("expected first spec GroupKey=arch, got %q", apr.GroupedSpecs[0].GroupKey)
 	}
-	if len(merged.Findings) != 1 {
-		t.Errorf("expected 1 finding, got %d", len(merged.Findings))
+	seen := map[string]bool{}
+	for i, s := range apr.GroupedSpecs {
+		if seen[s.GroupKey] {
+			t.Errorf("duplicate GroupKey %q at spec %d", s.GroupKey, i)
+		}
+		seen[s.GroupKey] = true
 	}
-}
-
-func TestMergeGroupedFindings_NotesConcat(t *testing.T) {
-	a := &domain.GroupedFindings{Ok: true, NotesForNextReview: "note-arch"}
-	b := &domain.GroupedFindings{Ok: true, NotesForNextReview: "note-diff"}
-
-	merged := mergeGroupedFindings(a, b)
-	if merged.NotesForNextReview != "note-arch\nnote-diff" {
-		t.Errorf("expected concatenated notes, got %q", merged.NotesForNextReview)
+	if len(seen) < 2 {
+		t.Errorf("expected >=2 groups for cross-check, got %d", len(seen))
 	}
 }

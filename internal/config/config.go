@@ -67,10 +67,19 @@ type Config struct {
 	SummarizerModel   *string          `yaml:"summarizer_model"`
 	SummarizerTimeout *Duration        `yaml:"summarizer_timeout"`
 	FPFilterTimeout   *Duration        `yaml:"fp_filter_timeout"`
+	CrossCheckTimeout *Duration        `yaml:"cross_check_timeout"`
 	GuidanceFile      *string          `yaml:"guidance_file"`
 	Filters           FilterConfig     `yaml:"filters"`
 	FPFilter          FPFilterConfig   `yaml:"fp_filter"`
 	PRFeedback        PRFeedbackConfig `yaml:"pr_feedback"`
+	CrossCheck        CrossCheckConfig `yaml:"cross_check"`
+}
+
+// CrossCheckConfig holds cross-check verification settings.
+type CrossCheckConfig struct {
+	Enabled *bool   `yaml:"enabled"`
+	Agent   *string `yaml:"agent"`
+	Model   *string `yaml:"model"`
 }
 
 type FPFilterConfig struct {
@@ -171,11 +180,13 @@ func (c *Config) validatePatterns() error {
 	return nil
 }
 
-var knownTopLevelKeys = []string{"reviewers", "concurrency", "base", "timeout", "retries", "fetch", "reviewer_agent", "reviewer_agents", "summarizer_agent", "reviewer_model", "summarizer_model", "summarizer_timeout", "fp_filter_timeout", "guidance_file", "filters", "fp_filter", "pr_feedback"}
+var knownTopLevelKeys = []string{"reviewers", "concurrency", "base", "timeout", "retries", "fetch", "reviewer_agent", "reviewer_agents", "summarizer_agent", "reviewer_model", "summarizer_model", "summarizer_timeout", "fp_filter_timeout", "cross_check_timeout", "guidance_file", "filters", "fp_filter", "pr_feedback", "cross_check"}
 
 var knownFPFilterKeys = []string{"enabled", "threshold"}
 
 var knownPRFeedbackKeys = []string{"enabled", "agent"}
+
+var knownCrossCheckKeys = []string{"enabled", "agent", "model"}
 
 // knownFilterKeys are the valid keys under the "filters" section.
 var knownFilterKeys = []string{"exclude_patterns"}
@@ -231,6 +242,18 @@ func checkUnknownKeys(data []byte) []string {
 			if !slices.Contains(knownPRFeedbackKeys, key) {
 				warning := fmt.Sprintf("unknown key %q in pr_feedback section of %s", key, ConfigFileName)
 				if suggestion := findSimilar(key, knownPRFeedbackKeys); suggestion != "" {
+					warning += fmt.Sprintf(" (did you mean %q?)", suggestion)
+				}
+				warnings = append(warnings, warning)
+			}
+		}
+	}
+
+	if crossCheck, ok := raw["cross_check"].(map[string]any); ok {
+		for key := range crossCheck {
+			if !slices.Contains(knownCrossCheckKeys, key) {
+				warning := fmt.Sprintf("unknown key %q in cross_check section of %s", key, ConfigFileName)
+				if suggestion := findSimilar(key, knownCrossCheckKeys); suggestion != "" {
 					warning += fmt.Sprintf(" (did you mean %q?)", suggestion)
 				}
 				warnings = append(warnings, warning)
@@ -379,6 +402,12 @@ func (r *ResolvedConfig) ValidateAll() []string {
 	if r.PRFeedbackAgent != "" && !slices.Contains(agent.SupportedAgents, r.PRFeedbackAgent) {
 		errs = append(errs, fmt.Sprintf("pr_feedback.agent must be one of %v, got %q", agent.SupportedAgents, r.PRFeedbackAgent))
 	}
+	if r.CrossCheckAgent != "" && !slices.Contains(agent.SupportedAgents, r.CrossCheckAgent) {
+		errs = append(errs, fmt.Sprintf("cross_check.agent must be one of %v, got %q", agent.SupportedAgents, r.CrossCheckAgent))
+	}
+	if r.CrossCheckTimeout <= 0 {
+		errs = append(errs, fmt.Sprintf("cross_check_timeout must be > 0, got %s", r.CrossCheckTimeout))
+	}
 	return errs
 }
 
@@ -403,10 +432,14 @@ var Defaults = ResolvedConfig{
 	SummarizerAgent:   agent.DefaultSummarizerAgent,
 	SummarizerTimeout: 5 * time.Minute,
 	FPFilterTimeout:   5 * time.Minute,
+	CrossCheckTimeout: 5 * time.Minute,
 	FPFilterEnabled:   true,
 	FPThreshold:       75,
 	PRFeedbackEnabled: true,
 	PRFeedbackAgent:   "", // empty means use summarizer agent
+	CrossCheckEnabled: true,
+	CrossCheckAgent:   "", // empty means use summarizer agent
+	CrossCheckModel:   "", // empty means use summarizer model
 }
 
 type ResolvedConfig struct {
@@ -422,12 +455,16 @@ type ResolvedConfig struct {
 	SummarizerModel   string
 	SummarizerTimeout time.Duration
 	FPFilterTimeout   time.Duration
+	CrossCheckTimeout time.Duration
 	Guidance          string
 	GuidanceFile      string
 	FPFilterEnabled   bool
 	FPThreshold       int
 	PRFeedbackEnabled bool
 	PRFeedbackAgent   string
+	CrossCheckEnabled bool
+	CrossCheckAgent   string // empty means use summarizer agent
+	CrossCheckModel   string // empty means use summarizer model
 }
 
 type FlagState struct {
@@ -443,12 +480,16 @@ type FlagState struct {
 	SummarizerModelSet   bool
 	SummarizerTimeoutSet bool
 	FPFilterTimeoutSet   bool
+	CrossCheckTimeoutSet bool
 	GuidanceSet          bool
 	GuidanceFileSet      bool
 	NoFPFilterSet        bool
 	FPThresholdSet       bool
 	NoPRFeedbackSet      bool
 	PRFeedbackAgentSet   bool
+	NoCrossCheckSet      bool
+	CrossCheckAgentSet   bool
+	CrossCheckModelSet   bool
 }
 
 type EnvState struct {
@@ -488,6 +529,14 @@ type EnvState struct {
 	PRFeedbackEnabledSet bool
 	PRFeedbackAgent      string
 	PRFeedbackAgentSet   bool
+	CrossCheckEnabled    bool
+	CrossCheckEnabledSet bool
+	CrossCheckAgent      string
+	CrossCheckAgentSet   bool
+	CrossCheckModel      string
+	CrossCheckModelSet   bool
+	CrossCheckTimeout    time.Duration
+	CrossCheckTimeoutSet bool
 }
 
 // LoadEnvState reads environment variables and returns their state.
@@ -638,6 +687,41 @@ func LoadEnvState() (EnvState, []string) {
 		state.PRFeedbackAgentSet = true
 	}
 
+	if v := os.Getenv("ACR_CROSS_CHECK"); v != "" {
+		switch v {
+		case "true", "1":
+			state.CrossCheckEnabled = true
+			state.CrossCheckEnabledSet = true
+		case "false", "0":
+			state.CrossCheckEnabled = false
+			state.CrossCheckEnabledSet = true
+		default:
+			warnings = append(warnings, fmt.Sprintf("ACR_CROSS_CHECK=%q is not a valid boolean (use true/false/1/0), ignoring", v))
+		}
+	}
+
+	if v := os.Getenv("ACR_CROSS_CHECK_AGENT"); v != "" {
+		state.CrossCheckAgent = v
+		state.CrossCheckAgentSet = true
+	}
+
+	if v := os.Getenv("ACR_CROSS_CHECK_MODEL"); v != "" {
+		state.CrossCheckModel = v
+		state.CrossCheckModelSet = true
+	}
+
+	if v := os.Getenv("ACR_CROSS_CHECK_TIMEOUT"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			state.CrossCheckTimeout = d
+			state.CrossCheckTimeoutSet = true
+		} else if secs, err := strconv.Atoi(v); err == nil {
+			state.CrossCheckTimeout = time.Duration(secs) * time.Second
+			state.CrossCheckTimeoutSet = true
+		} else {
+			warnings = append(warnings, fmt.Sprintf("ACR_CROSS_CHECK_TIMEOUT=%q is not a valid duration or integer, ignoring", v))
+		}
+	}
+
 	return state, warnings
 }
 
@@ -699,6 +783,18 @@ func Resolve(cfg *Config, envState EnvState, flagState FlagState, flagValues Res
 		if cfg.PRFeedback.Agent != nil {
 			result.PRFeedbackAgent = *cfg.PRFeedback.Agent
 		}
+		if cfg.CrossCheckTimeout != nil {
+			result.CrossCheckTimeout = cfg.CrossCheckTimeout.AsDuration()
+		}
+		if cfg.CrossCheck.Enabled != nil {
+			result.CrossCheckEnabled = *cfg.CrossCheck.Enabled
+		}
+		if cfg.CrossCheck.Agent != nil {
+			result.CrossCheckAgent = *cfg.CrossCheck.Agent
+		}
+		if cfg.CrossCheck.Model != nil {
+			result.CrossCheckModel = *cfg.CrossCheck.Model
+		}
 	}
 
 	// Apply env var values (if set)
@@ -750,6 +846,18 @@ func Resolve(cfg *Config, envState EnvState, flagState FlagState, flagValues Res
 	if envState.PRFeedbackAgentSet {
 		result.PRFeedbackAgent = envState.PRFeedbackAgent
 	}
+	if envState.CrossCheckEnabledSet {
+		result.CrossCheckEnabled = envState.CrossCheckEnabled
+	}
+	if envState.CrossCheckAgentSet {
+		result.CrossCheckAgent = envState.CrossCheckAgent
+	}
+	if envState.CrossCheckModelSet {
+		result.CrossCheckModel = envState.CrossCheckModel
+	}
+	if envState.CrossCheckTimeoutSet {
+		result.CrossCheckTimeout = envState.CrossCheckTimeout
+	}
 
 	if flagState.ReviewersSet {
 		result.Reviewers = flagValues.Reviewers
@@ -798,6 +906,18 @@ func Resolve(cfg *Config, envState EnvState, flagState FlagState, flagValues Res
 	}
 	if flagState.PRFeedbackAgentSet {
 		result.PRFeedbackAgent = flagValues.PRFeedbackAgent
+	}
+	if flagState.NoCrossCheckSet {
+		result.CrossCheckEnabled = flagValues.CrossCheckEnabled
+	}
+	if flagState.CrossCheckAgentSet {
+		result.CrossCheckAgent = flagValues.CrossCheckAgent
+	}
+	if flagState.CrossCheckModelSet {
+		result.CrossCheckModel = flagValues.CrossCheckModel
+	}
+	if flagState.CrossCheckTimeoutSet {
+		result.CrossCheckTimeout = flagValues.CrossCheckTimeout
 	}
 
 	return result

@@ -4,6 +4,7 @@ package summarizer
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"slices"
 	"strings"
@@ -61,6 +62,33 @@ Rules:
 - Put non-actionable outcomes (e.g., "no diffs", "no changes to review") in "info".
 - If the input is empty, return: {"findings": [], "info": []}`
 
+// buildGroupPrompt returns the summarizer prompt, optionally augmented with
+// cross-group context extracted from ccResult. The augmentation is informational
+// only: the summarizer still clusters by shared issue, not by cross-check links.
+func buildGroupPrompt(ccResult *CrossCheckResult) string {
+	if ccResult == nil || len(ccResult.Findings) == 0 {
+		return groupPrompt
+	}
+	var b strings.Builder
+	b.WriteString(groupPrompt)
+	b.WriteString("\n\n## Cross-Group Context\n\n")
+	b.WriteString("An upstream cross-check pass identified the following relationships across review groups.\n")
+	b.WriteString("Use this context to inform clustering and summaries; do NOT copy these items into findings.\n\n")
+	for i, f := range ccResult.Findings {
+		title := strings.TrimSpace(f.Title)
+		if title == "" {
+			title = "(untitled)"
+		}
+		b.WriteString(fmt.Sprintf("- [%s/%s] %s — groups=%v, related_ids=%v\n",
+			strings.ToLower(f.Type), strings.ToLower(f.Severity), title, f.InvolvedGroups, f.RelatedIDs))
+		if i >= 19 {
+			b.WriteString("- ...\n")
+			break
+		}
+	}
+	return b.String()
+}
+
 // Result contains the output from the summarizer.
 type Result struct {
 	Grouped  domain.GroupedFindings
@@ -81,7 +109,9 @@ type inputItem struct {
 // The agentName parameter specifies which agent to use for summarization.
 // The model parameter overrides the agent's default model (empty = default).
 // If verbose is true, non-fatal errors (like Close failures) are logged.
-func Summarize(ctx context.Context, agentName, model string, aggregated []domain.AggregatedFinding, verbose bool, logger *terminal.Logger) (*Result, error) {
+// If ccResult is non-nil and contains findings, its cross-group context is
+// injected into the prompt so the summarizer can reason about related items.
+func Summarize(ctx context.Context, agentName, model string, aggregated []domain.AggregatedFinding, ccResult *CrossCheckResult, verbose bool, logger *terminal.Logger) (*Result, error) {
 	start := time.Now()
 
 	if len(aggregated) == 0 {
@@ -112,6 +142,8 @@ func Summarize(ctx context.Context, agentName, model string, aggregated []domain
 		return nil, err
 	}
 
+	prompt := buildGroupPrompt(ccResult)
+
 	// Check if context is already canceled
 	if ctx.Err() != nil {
 		return &Result{
@@ -122,7 +154,7 @@ func Summarize(ctx context.Context, agentName, model string, aggregated []domain
 	}
 
 	// Execute summary via agent
-	execResult, err := ag.ExecuteSummary(ctx, groupPrompt, payload)
+	execResult, err := ag.ExecuteSummary(ctx, prompt, payload)
 	if err != nil {
 		// Handle context cancellation
 		if ctx.Err() != nil {

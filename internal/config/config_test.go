@@ -1533,6 +1533,16 @@ func TestResolvedConfig_Validate_Errors(t *testing.T) {
 			modify:  func(c *ResolvedConfig) { c.PRFeedbackAgent = "bad" },
 			wantMsg: "pr_feedback.agent must be one of",
 		},
+		{
+			name:    "invalid cross_check agent",
+			modify:  func(c *ResolvedConfig) { c.CrossCheckAgent = "bogus" },
+			wantMsg: "cross_check.agent must be one of",
+		},
+		{
+			name:    "zero cross_check timeout",
+			modify:  func(c *ResolvedConfig) { c.CrossCheckTimeout = 0 },
+			wantMsg: "cross_check_timeout must be > 0",
+		},
 	}
 
 	for _, tt := range tests {
@@ -1581,5 +1591,91 @@ func TestResolvedConfig_Validate_EmptyReviewerAgents(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "reviewer_agents must not be empty") {
 		t.Errorf("expected 'reviewer_agents must not be empty' in error, got: %v", err)
+	}
+}
+
+func TestResolvedConfig_Validate_EmptyCrossCheckAgent(t *testing.T) {
+	cfg := Defaults
+	cfg.CrossCheckAgent = "" // empty means fall back to summarizer
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("expected empty cross_check.agent to be valid, got: %v", err)
+	}
+}
+
+func TestResolve_CrossCheckPrecedence(t *testing.T) {
+	cfg := &Config{
+		CrossCheck: CrossCheckConfig{
+			Agent: strPtr("claude"),
+			Model: strPtr("config-model"),
+		},
+		CrossCheckTimeout: durationPtr(3 * time.Minute),
+	}
+	envState := EnvState{
+		CrossCheckAgent:      "gemini",
+		CrossCheckAgentSet:   true,
+		CrossCheckTimeout:    4 * time.Minute,
+		CrossCheckTimeoutSet: true,
+	}
+	flagState := FlagState{
+		CrossCheckModelSet: true,
+	}
+	flagValues := ResolvedConfig{
+		CrossCheckModel: "flag-model",
+	}
+
+	result := Resolve(cfg, envState, flagState, flagValues)
+
+	// env overrides config for agent
+	if result.CrossCheckAgent != "gemini" {
+		t.Errorf("expected env agent 'gemini', got %q", result.CrossCheckAgent)
+	}
+	// flag overrides config for model
+	if result.CrossCheckModel != "flag-model" {
+		t.Errorf("expected flag model 'flag-model', got %q", result.CrossCheckModel)
+	}
+	// env overrides config for timeout
+	if result.CrossCheckTimeout != 4*time.Minute {
+		t.Errorf("expected env timeout 4m, got %v", result.CrossCheckTimeout)
+	}
+}
+
+func TestResolve_CrossCheckDefaultsWhenUnset(t *testing.T) {
+	result := Resolve(&Config{}, EnvState{}, FlagState{}, ResolvedConfig{})
+	if result.CrossCheckEnabled != Defaults.CrossCheckEnabled {
+		t.Errorf("expected default cross_check enabled=%v, got %v", Defaults.CrossCheckEnabled, result.CrossCheckEnabled)
+	}
+	if result.CrossCheckTimeout != Defaults.CrossCheckTimeout {
+		t.Errorf("expected default timeout %v, got %v", Defaults.CrossCheckTimeout, result.CrossCheckTimeout)
+	}
+	if result.CrossCheckAgent != "" {
+		t.Errorf("expected empty default agent, got %q", result.CrossCheckAgent)
+	}
+}
+
+func TestLoadEnvState_CrossCheck(t *testing.T) {
+	t.Setenv("ACR_CROSS_CHECK", "false")
+	t.Setenv("ACR_CROSS_CHECK_AGENT", "gemini")
+	t.Setenv("ACR_CROSS_CHECK_MODEL", "env-model")
+	t.Setenv("ACR_CROSS_CHECK_TIMEOUT", "7m")
+
+	state, warnings := LoadEnvState()
+	if len(warnings) != 0 {
+		t.Errorf("unexpected warnings: %v", warnings)
+	}
+	if !state.CrossCheckEnabledSet || state.CrossCheckEnabled {
+		t.Errorf("expected CrossCheckEnabled=false (set), got set=%v enabled=%v",
+			state.CrossCheckEnabledSet, state.CrossCheckEnabled)
+	}
+	if !state.CrossCheckAgentSet || state.CrossCheckAgent != "gemini" {
+		t.Errorf("expected agent=gemini (set), got set=%v agent=%q",
+			state.CrossCheckAgentSet, state.CrossCheckAgent)
+	}
+	if !state.CrossCheckModelSet || state.CrossCheckModel != "env-model" {
+		t.Errorf("expected model=env-model (set), got set=%v model=%q",
+			state.CrossCheckModelSet, state.CrossCheckModel)
+	}
+	if !state.CrossCheckTimeoutSet || state.CrossCheckTimeout != 7*time.Minute {
+		t.Errorf("expected timeout=7m (set), got set=%v timeout=%v",
+			state.CrossCheckTimeoutSet, state.CrossCheckTimeout)
 	}
 }
