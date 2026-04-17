@@ -151,7 +151,7 @@ func BuildDispositions(
 func AggregateFindings(findings []Finding) []AggregatedFinding {
 	seen := make(map[string][]int)
 	severities := make(map[string]string)
-	groupKeys := make(map[string]string)
+	groupKeyTokens := make(map[string]map[string]struct{})
 	order := make([]string, 0)
 
 	for _, f := range findings {
@@ -165,19 +165,17 @@ func AggregateFindings(findings []Finding) []AggregatedFinding {
 			order = append(order, normalized)
 			reviewers = nil
 			severities[normalized] = f.Severity
-			groupKeys[normalized] = f.GroupKey
+			if f.GroupKey != "" {
+				groupKeyTokens[normalized] = map[string]struct{}{f.GroupKey: {}}
+			} else {
+				groupKeyTokens[normalized] = map[string]struct{}{}
+			}
 		} else {
 			if f.Severity == "blocking" {
 				severities[normalized] = "blocking"
 			}
-			if f.GroupKey != "" && !strings.Contains(groupKeys[normalized], f.GroupKey) {
-				if groupKeys[normalized] == "" {
-					groupKeys[normalized] = f.GroupKey
-				} else {
-					parts := strings.Split(groupKeys[normalized]+","+f.GroupKey, ",")
-					slices.Sort(parts)
-					groupKeys[normalized] = strings.Join(parts, ",")
-				}
+			if f.GroupKey != "" {
+				groupKeyTokens[normalized][f.GroupKey] = struct{}{}
 			}
 		}
 
@@ -198,11 +196,16 @@ func AggregateFindings(findings []Finding) []AggregatedFinding {
 		reviewers := seen[text]
 		sortedReviewers := slices.Clone(reviewers)
 		slices.Sort(sortedReviewers)
+		tokens := make([]string, 0, len(groupKeyTokens[text]))
+		for tok := range groupKeyTokens[text] {
+			tokens = append(tokens, tok)
+		}
+		slices.Sort(tokens)
 		result = append(result, AggregatedFinding{
 			Text:      text,
 			Reviewers: sortedReviewers,
 			Severity:  severities[text],
-			GroupKey:  groupKeys[text],
+			GroupKey:  strings.Join(tokens, ","),
 		})
 	}
 

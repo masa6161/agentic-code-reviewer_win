@@ -183,6 +183,34 @@ func TestAggregateFindings_MergesGroupKeys(t *testing.T) {
 	}
 }
 
+func TestAggregateFindings_GroupKeySubstring_NotCollapsed(t *testing.T) {
+	findings := []Finding{
+		{Text: "same issue", ReviewerID: 1, GroupKey: "g1"},
+		{Text: "same issue", ReviewerID: 2, GroupKey: "g11"},
+	}
+	agg := AggregateFindings(findings)
+	if len(agg) != 1 {
+		t.Fatalf("expected 1 aggregated finding, got %d", len(agg))
+	}
+	if agg[0].GroupKey != "g1,g11" {
+		t.Errorf("expected GroupKey 'g1,g11', got %q", agg[0].GroupKey)
+	}
+}
+
+func TestAggregateFindings_GroupKey_G01_G010(t *testing.T) {
+	findings := []Finding{
+		{Text: "same issue", ReviewerID: 1, GroupKey: "g01"},
+		{Text: "same issue", ReviewerID: 2, GroupKey: "g010"},
+	}
+	agg := AggregateFindings(findings)
+	if len(agg) != 1 {
+		t.Fatalf("expected 1 aggregated finding, got %d", len(agg))
+	}
+	if agg[0].GroupKey != "g01,g010" {
+		t.Errorf("expected GroupKey 'g01,g010', got %q", agg[0].GroupKey)
+	}
+}
+
 func TestReviewStats_AllFailed(t *testing.T) {
 	tests := []struct {
 		name     string
