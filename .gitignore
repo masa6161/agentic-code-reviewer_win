@@ -44,3 +44,5 @@ bin/acr-test
 /docs/cf_skills
 /.tmp/
 .claude/settings.json
+.claude/scheduled_tasks.lock
+/.tmp/
