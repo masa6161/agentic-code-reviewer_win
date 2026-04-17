@@ -211,6 +211,47 @@ func TestAggregateFindings_GroupKey_G01_G010(t *testing.T) {
 	}
 }
 
+func TestAggregateFindings_CommaSplitGroupKey_NoDuplicates(t *testing.T) {
+	findings := []Finding{
+		{Text: "x", ReviewerID: 1, GroupKey: "g1,g2"},
+		{Text: "x", ReviewerID: 2, GroupKey: "g1"},
+	}
+	agg := AggregateFindings(findings)
+	if len(agg) != 1 {
+		t.Fatalf("expected 1 aggregated finding, got %d", len(agg))
+	}
+	if agg[0].GroupKey != "g1,g2" {
+		t.Errorf("expected GroupKey 'g1,g2', got %q", agg[0].GroupKey)
+	}
+}
+
+func TestAggregateFindings_MultipleCommaSplits(t *testing.T) {
+	findings := []Finding{
+		{Text: "y", ReviewerID: 1, GroupKey: "g1,g3"},
+		{Text: "y", ReviewerID: 2, GroupKey: "g2,g3"},
+	}
+	agg := AggregateFindings(findings)
+	if len(agg) != 1 {
+		t.Fatalf("expected 1 aggregated finding, got %d", len(agg))
+	}
+	if agg[0].GroupKey != "g1,g2,g3" {
+		t.Errorf("expected GroupKey 'g1,g2,g3', got %q", agg[0].GroupKey)
+	}
+}
+
+func TestAggregateFindings_CommaSplitTrimsWhitespace(t *testing.T) {
+	findings := []Finding{
+		{Text: "z", ReviewerID: 1, GroupKey: " g1 , g2 "},
+	}
+	agg := AggregateFindings(findings)
+	if len(agg) != 1 {
+		t.Fatalf("expected 1 aggregated finding, got %d", len(agg))
+	}
+	if agg[0].GroupKey != "g1,g2" {
+		t.Errorf("expected GroupKey 'g1,g2', got %q", agg[0].GroupKey)
+	}
+}
+
 func TestGroupedFindings_ComputeVerdict_Blocking(t *testing.T) {
 	g := GroupedFindings{
 		Findings: []FindingGroup{

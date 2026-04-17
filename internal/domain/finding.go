@@ -177,6 +177,16 @@ func BuildDispositions(
 	return dispositions
 }
 
+// addGroupKeyTokens splits raw by "," and inserts each non-empty trimmed token into tokens.
+func addGroupKeyTokens(tokens map[string]struct{}, raw string) {
+	for _, t := range strings.Split(raw, ",") {
+		t = strings.TrimSpace(t)
+		if t != "" {
+			tokens[t] = struct{}{}
+		}
+	}
+}
+
 // AggregateFindings aggregates findings by text, tracking which reviewers found each.
 func AggregateFindings(findings []Finding) []AggregatedFinding {
 	seen := make(map[string][]int)
@@ -195,18 +205,13 @@ func AggregateFindings(findings []Finding) []AggregatedFinding {
 			order = append(order, normalized)
 			reviewers = nil
 			severities[normalized] = f.Severity
-			if f.GroupKey != "" {
-				groupKeyTokens[normalized] = map[string]struct{}{f.GroupKey: {}}
-			} else {
-				groupKeyTokens[normalized] = map[string]struct{}{}
-			}
+			groupKeyTokens[normalized] = map[string]struct{}{}
+			addGroupKeyTokens(groupKeyTokens[normalized], f.GroupKey)
 		} else {
 			if f.Severity == "blocking" {
 				severities[normalized] = "blocking"
 			}
-			if f.GroupKey != "" {
-				groupKeyTokens[normalized][f.GroupKey] = struct{}{}
-			}
+			addGroupKeyTokens(groupKeyTokens[normalized], f.GroupKey)
 		}
 
 		found := false
