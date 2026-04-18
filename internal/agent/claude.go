@@ -6,7 +6,22 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"strings"
 )
+
+// claudeEffortArgs maps a Spec.Effort value to Claude Code CLI's --effort flag.
+// Claude Code CLI accepts low|medium|high|xhigh|max (available levels depend
+// on the model; unknown values are silently dropped so runs don't fail on
+// outdated configs). Session-scoped; does not persist to settings.
+// See https://code.claude.com/docs/en/cli-reference --effort.
+func claudeEffortArgs(effort string) []string {
+	switch strings.ToLower(effort) {
+	case "low", "medium", "high", "xhigh", "max":
+		return []string{"--effort", strings.ToLower(effort)}
+	default:
+		return nil
+	}
+}
 
 // Compile-time interface check
 var _ Agent = (*ClaudeAgent)(nil)
@@ -19,13 +34,19 @@ var _ Agent = (*ClaudeAgent)(nil)
 
 // ClaudeAgent implements the Agent interface for the Claude CLI backend.
 type ClaudeAgent struct {
-	model string
+	model  string
+	effort string
 }
 
 // NewClaudeAgent creates a new ClaudeAgent instance.
 // If model is non-empty, it overrides the default model via --model.
 func NewClaudeAgent(model string) *ClaudeAgent {
 	return &ClaudeAgent{model: model}
+}
+
+// NewClaudeAgentWithOptions creates a new ClaudeAgent instance with the given options.
+func NewClaudeAgentWithOptions(opts AgentOptions) *ClaudeAgent {
+	return &ClaudeAgent{model: opts.Model, effort: opts.Effort}
 }
 
 // Name returns the agent's identifier.
@@ -58,7 +79,8 @@ func (c *ClaudeAgent) ExecuteReview(ctx context.Context, config *ReviewConfig) (
 		model = config.Model
 	}
 
-	args := []string{"--print", "-"}
+	effortArgs := claudeEffortArgs(c.effort)
+	args := append(effortArgs, "--print", "-")
 	if model != "" {
 		args = append([]string{"--model", model}, args...)
 	}
@@ -103,7 +125,8 @@ func (c *ClaudeAgent) ExecuteSummary(ctx context.Context, prompt string, input [
 
 	// Build command with JSON output format (no --json-schema — see note above)
 	// -: Read prompt from stdin (avoids ARG_MAX limits on large inputs)
-	args := []string{"--print", "--output-format", "json", "-"}
+	effortArgs := claudeEffortArgs(c.effort)
+	args := append(effortArgs, "--print", "--output-format", "json", "-")
 	if c.model != "" {
 		args = append([]string{"--model", c.model}, args...)
 	}

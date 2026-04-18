@@ -7,7 +7,7 @@ import (
 
 // agentRegistry holds the factory functions for a single agent.
 type agentRegistry struct {
-	newAgent         func(model string) Agent
+	newAgent         func(opts AgentOptions) Agent
 	newReviewParser  func(reviewerID int) ReviewParser
 	newSummaryParser func() SummaryParser
 }
@@ -16,17 +16,17 @@ type agentRegistry struct {
 // To add a new agent, add an entry here - no other changes needed.
 var registry = map[string]agentRegistry{
 	"codex": {
-		newAgent:         func(model string) Agent { return NewCodexAgent(model) },
+		newAgent:         func(opts AgentOptions) Agent { return NewCodexAgentWithOptions(opts) },
 		newReviewParser:  func(id int) ReviewParser { return NewCodexOutputParser(id) },
 		newSummaryParser: func() SummaryParser { return NewCodexSummaryParser() },
 	},
 	"claude": {
-		newAgent:         func(model string) Agent { return NewClaudeAgent(model) },
+		newAgent:         func(opts AgentOptions) Agent { return NewClaudeAgentWithOptions(opts) },
 		newReviewParser:  func(id int) ReviewParser { return NewClaudeOutputParser(id) },
 		newSummaryParser: func() SummaryParser { return NewClaudeSummaryParser() },
 	},
 	"gemini": {
-		newAgent:         func(model string) Agent { return NewGeminiAgent(model) },
+		newAgent:         func(opts AgentOptions) Agent { return NewGeminiAgentWithOptions(opts) },
 		newReviewParser:  func(id int) ReviewParser { return NewGeminiOutputParser(id) },
 		newSummaryParser: func() SummaryParser { return NewGeminiSummaryParser() },
 	},
@@ -52,17 +52,25 @@ const DefaultSummarizerAgent = "codex"
 // NewAgent creates an Agent by name with the default model.
 // Supported agents: codex, claude, gemini
 func NewAgent(name string) (Agent, error) {
-	return NewAgentWithModel(name, "")
+	return NewAgentWithOptions(name, AgentOptions{})
 }
 
 // NewAgentWithModel creates an Agent by name with an optional model override.
 // If model is empty, the agent uses its default model.
+// Deprecated: prefer NewAgentWithOptions for new call sites.
 func NewAgentWithModel(name, model string) (Agent, error) {
+	return NewAgentWithOptions(name, AgentOptions{Model: model})
+}
+
+// NewAgentWithOptions creates an Agent by name with the given options.
+// opts.Model overrides the agent's default model (empty = agent default).
+// opts.Effort configures agent-specific reasoning effort (empty = agent default).
+func NewAgentWithOptions(name string, opts AgentOptions) (Agent, error) {
 	reg, ok := registry[name]
 	if !ok {
 		return nil, fmt.Errorf("unknown agent %q, supported: %v", name, SupportedAgents)
 	}
-	return reg.newAgent(model), nil
+	return reg.newAgent(opts), nil
 }
 
 // NewReviewParser creates a ReviewParser for the given agent name.

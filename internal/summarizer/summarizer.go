@@ -109,13 +109,20 @@ type inputItem struct {
 	Severity  string `json:"severity,omitempty"`
 }
 
+// SummarizeOptions bundles model/effort resolution for the summarizer role.
+// Empty fields fall back to the agent's built-in defaults.
+type SummarizeOptions struct {
+	Model  string
+	Effort string
+}
+
 // Summarize summarizes the aggregated findings using an LLM.
 // The agentName parameter specifies which agent to use for summarization.
-// The model parameter overrides the agent's default model (empty = default).
+// The opts parameter carries model and effort overrides (empty = agent defaults).
 // If verbose is true, non-fatal errors (like Close failures) are logged.
 // If ccResult is non-nil and contains findings, its cross-group context is
 // injected into the prompt so the summarizer can reason about related items.
-func Summarize(ctx context.Context, agentName, model string, aggregated []domain.AggregatedFinding, ccResult *CrossCheckResult, verbose bool, logger *terminal.Logger) (*Result, error) {
+func Summarize(ctx context.Context, agentName string, opts SummarizeOptions, aggregated []domain.AggregatedFinding, ccResult *CrossCheckResult, verbose bool, logger *terminal.Logger) (*Result, error) {
 	start := time.Now()
 
 	if len(aggregated) == 0 {
@@ -126,7 +133,7 @@ func Summarize(ctx context.Context, agentName, model string, aggregated []domain
 	}
 
 	// Create agent
-	ag, err := agent.NewAgentWithModel(agentName, model)
+	ag, err := agent.NewAgentWithOptions(agentName, agent.AgentOptions{Model: opts.Model, Effort: opts.Effort})
 	if err != nil {
 		return nil, err
 	}

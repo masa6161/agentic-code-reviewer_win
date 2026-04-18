@@ -12,6 +12,7 @@ type PhaseConfig struct {
 	ReviewerCount int    // Number of reviewers for this phase
 	AgentName     string // Which agent to use (empty = default from caller)
 	Model         string // Model override (empty = agent default)
+	Effort        string // Reasoning effort override (empty = agent default)
 	Prompt        string // Per-phase guidance override (empty = use global guidance; phase prompt template is selected by Phase)
 }
 
@@ -39,12 +40,21 @@ func BuildReviewerSpecs(phases []PhaseConfig, defaultAgents []agent.Agent, globa
 			var a agent.Agent
 			if pc.AgentName != "" {
 				var err error
-				a, err = agent.NewAgentWithModel(pc.AgentName, pc.Model)
+				a, err = agent.NewAgentWithOptions(pc.AgentName, agent.AgentOptions{Model: pc.Model, Effort: pc.Effort})
 				if err != nil {
 					return nil, fmt.Errorf("phase %q agent %q: %w", pc.Phase, pc.AgentName, err)
 				}
 			} else {
-				a = agent.AgentForReviewer(defaultAgents, reviewerIdx)
+				base := agent.AgentForReviewer(defaultAgents, reviewerIdx)
+				if pc.Effort != "" || pc.Model != "" {
+					var rebindErr error
+					a, rebindErr = agent.NewAgentWithOptions(base.Name(), agent.AgentOptions{Model: pc.Model, Effort: pc.Effort})
+					if rebindErr != nil {
+						return nil, fmt.Errorf("phase %q effort rebind: %w", pc.Phase, rebindErr)
+					}
+				} else {
+					a = base
+				}
 			}
 
 			// Guidance carries user-provided steering context, not the phase prompt template.

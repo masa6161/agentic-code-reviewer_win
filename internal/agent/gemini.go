@@ -9,18 +9,31 @@ import (
 	"strings"
 )
 
+// geminiEffortArgs returns an empty args slice; gemini does not support
+// thinking effort control. Callers that want a visible notice should log
+// at the call site when verbose is on.
+func geminiEffortArgs(_ string) []string {
+	return nil
+}
+
 // Compile-time interface check
 var _ Agent = (*GeminiAgent)(nil)
 
 // GeminiAgent implements the Agent interface for the Gemini CLI backend.
 type GeminiAgent struct {
-	model string
+	model  string
+	effort string
 }
 
 // NewGeminiAgent creates a new GeminiAgent instance.
 // If model is non-empty, it overrides the default model via --model.
 func NewGeminiAgent(model string) *GeminiAgent {
 	return &GeminiAgent{model: model}
+}
+
+// NewGeminiAgentWithOptions creates a new GeminiAgent instance with the given options.
+func NewGeminiAgentWithOptions(opts AgentOptions) *GeminiAgent {
+	return &GeminiAgent{model: opts.Model, effort: opts.Effort}
 }
 
 // Name returns the agent's identifier.

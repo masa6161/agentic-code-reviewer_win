@@ -53,6 +53,37 @@ func (d Duration) AsDuration() time.Duration {
 	return time.Duration(d)
 }
 
+// ModelSpec holds the model name and effort for a specific role.
+type ModelSpec struct {
+	Model  string `yaml:"model"`
+	Effort string `yaml:"effort"`
+}
+
+// RoleModels holds per-role model specifications.
+//
+// ArchReviewer / DiffReviewer are phase-specific reviewer overrides used only
+// by auto-phase medium/large runs where `arch` and `diff` phases run with
+// distinct model/effort. When unset, the resolver falls back to the generic
+// Reviewer spec at the SAME cascade layer (see modelconfig.ResolveReviewer).
+// Flat review (auto-phase OFF / size=small / explicit `--phase diff`) ignores
+// these fields and uses Reviewer only.
+type RoleModels struct {
+	Reviewer     *ModelSpec `yaml:"reviewer"`
+	ArchReviewer *ModelSpec `yaml:"arch_reviewer"`
+	DiffReviewer *ModelSpec `yaml:"diff_reviewer"`
+	Summarizer   *ModelSpec `yaml:"summarizer"`
+	FPFilter     *ModelSpec `yaml:"fp_filter"`
+	CrossCheck   *ModelSpec `yaml:"cross_check"`
+	PRFeedback   *ModelSpec `yaml:"pr_feedback"`
+}
+
+// ModelsConfig holds the models configuration section.
+type ModelsConfig struct {
+	Defaults RoleModels            `yaml:"defaults"`
+	Sizes    map[string]RoleModels `yaml:"sizes"`
+	Agents   map[string]RoleModels `yaml:"agents"`
+}
+
 type Config struct {
 	Reviewers         *int             `yaml:"reviewers"`
 	Concurrency       *int             `yaml:"concurrency"`
@@ -74,6 +105,7 @@ type Config struct {
 	FPFilter          FPFilterConfig   `yaml:"fp_filter"`
 	PRFeedback        PRFeedbackConfig `yaml:"pr_feedback"`
 	CrossCheck        CrossCheckConfig `yaml:"cross_check"`
+	Models            ModelsConfig     `yaml:"models"`
 }
 
 // CrossCheckConfig holds cross-check verification settings.
@@ -181,9 +213,15 @@ func (c *Config) validatePatterns() error {
 	return nil
 }
 
-var knownTopLevelKeys = []string{"reviewers", "concurrency", "base", "timeout", "retries", "fetch", "reviewer_agent", "reviewer_agents", "summarizer_agent", "reviewer_model", "summarizer_model", "summarizer_timeout", "fp_filter_timeout", "cross_check_timeout", "guidance_file", "auto_phase", "filters", "fp_filter", "pr_feedback", "cross_check"}
+var knownTopLevelKeys = []string{"reviewers", "concurrency", "base", "timeout", "retries", "fetch", "reviewer_agent", "reviewer_agents", "summarizer_agent", "reviewer_model", "summarizer_model", "summarizer_timeout", "fp_filter_timeout", "cross_check_timeout", "guidance_file", "auto_phase", "filters", "fp_filter", "pr_feedback", "cross_check", "models"}
 
 var knownFPFilterKeys = []string{"enabled", "threshold"}
+
+var knownModelsKeys = []string{"defaults", "sizes", "agents"}
+
+var knownRoleKeys = []string{"reviewer", "arch_reviewer", "diff_reviewer", "summarizer", "fp_filter", "cross_check", "pr_feedback"}
+
+var knownModelSpecKeys = []string{"model", "effort"}
 
 var knownPRFeedbackKeys = []string{"enabled", "agent"}
 
@@ -262,6 +300,69 @@ func checkUnknownKeys(data []byte) []string {
 		}
 	}
 
+	if models, ok := raw["models"].(map[string]any); ok {
+		for key := range models {
+			if !slices.Contains(knownModelsKeys, key) {
+				warning := fmt.Sprintf("unknown key %q in models section of %s", key, ConfigFileName)
+				if suggestion := findSimilar(key, knownModelsKeys); suggestion != "" {
+					warning += fmt.Sprintf(" (did you mean %q?)", suggestion)
+				}
+				warnings = append(warnings, warning)
+			}
+		}
+
+		// Check defaults section role keys and modelspec keys
+		if defaults, ok := models["defaults"].(map[string]any); ok {
+			warnings = append(warnings, checkRoleModelsKeys(defaults, "models.defaults", ConfigFileName)...)
+		}
+
+		// Check sizes: each size name is user-defined, but its role keys must be known
+		if sizes, ok := models["sizes"].(map[string]any); ok {
+			for sizeName, sizeVal := range sizes {
+				if roleMap, ok := sizeVal.(map[string]any); ok {
+					warnings = append(warnings, checkRoleModelsKeys(roleMap, fmt.Sprintf("models.sizes.%s", sizeName), ConfigFileName)...)
+				}
+			}
+		}
+
+		// Check agents: each agent name is validated in Validate(), but role keys must be known
+		if agents, ok := models["agents"].(map[string]any); ok {
+			for agentName, agentVal := range agents {
+				if roleMap, ok := agentVal.(map[string]any); ok {
+					warnings = append(warnings, checkRoleModelsKeys(roleMap, fmt.Sprintf("models.agents.%s", agentName), ConfigFileName)...)
+				}
+			}
+		}
+	}
+
+	return warnings
+}
+
+// checkRoleModelsKeys checks that all keys in a RoleModels map are known role keys,
+// and that all keys within each ModelSpec are known modelspec keys.
+func checkRoleModelsKeys(roleMap map[string]any, section, configFileName string) []string {
+	var warnings []string
+	for roleKey, roleVal := range roleMap {
+		if !slices.Contains(knownRoleKeys, roleKey) {
+			warning := fmt.Sprintf("unknown key %q in %s section of %s", roleKey, section, configFileName)
+			if suggestion := findSimilar(roleKey, knownRoleKeys); suggestion != "" {
+				warning += fmt.Sprintf(" (did you mean %q?)", suggestion)
+			}
+			warnings = append(warnings, warning)
+			continue
+		}
+		if specMap, ok := roleVal.(map[string]any); ok {
+			for specKey := range specMap {
+				if !slices.Contains(knownModelSpecKeys, specKey) {
+					warning := fmt.Sprintf("unknown key %q in %s.%s section of %s", specKey, section, roleKey, configFileName)
+					if suggestion := findSimilar(specKey, knownModelSpecKeys); suggestion != "" {
+						warning += fmt.Sprintf(" (did you mean %q?)", suggestion)
+					}
+					warnings = append(warnings, warning)
+				}
+			}
+		}
+	}
 	return warnings
 }
 
@@ -358,6 +459,9 @@ func Merge(cfg *Config, cliPatterns []string) []string {
 func (c *Config) Validate() error {
 	resolved := Resolve(c, EnvState{}, FlagState{}, Defaults)
 	errs := resolved.ValidateAll()
+	errs = append(errs, c.validateModelsAgents()...)
+	errs = append(errs, c.validateModelsSizes()...)
+	errs = append(errs, c.validateModelsEffort()...)
 	if len(errs) > 0 {
 		return fmt.Errorf("%s", strings.Join(errs, "; "))
 	}
@@ -421,6 +525,88 @@ func (r *ResolvedConfig) ValidateAll() []string {
 	return errs
 }
 
+// validateModelsAgents checks that all agent keys in models.agents are supported agents.
+func (c *Config) validateModelsAgents() []string {
+	var errs []string
+	for agentName := range c.Models.Agents {
+		if !slices.Contains(agent.SupportedAgents, agentName) {
+			errs = append(errs, fmt.Sprintf("models.agents contains unsupported agent %q, must be one of %v", agentName, agent.SupportedAgents))
+		}
+	}
+	return errs
+}
+
+var validSizeKeys = []string{"small", "medium", "large"}
+
+// validateModelsSizes checks that all size keys in models.sizes are valid.
+func (c *Config) validateModelsSizes() []string {
+	var errs []string
+	for sizeName := range c.Models.Sizes {
+		if !slices.Contains(validSizeKeys, sizeName) {
+			errs = append(errs, fmt.Sprintf(
+				"models.sizes contains unknown size key %q, must be one of %v",
+				sizeName, validSizeKeys,
+			))
+		}
+	}
+	return errs
+}
+
+// validEffortsLoose is the superset accepted in defaults/sizes layers
+// (not agent-specific; uses the broadest supported set).
+var validEffortsLoose = []string{"low", "medium", "high", "xhigh", "max"}
+
+// validEffortsByAgent is the per-agent accepted set for the agents layer.
+var validEffortsByAgent = map[string][]string{
+	"codex":  {"low", "medium", "high"},
+	"claude": {"low", "medium", "high", "xhigh", "max"},
+	"gemini": {},
+}
+
+// validateModelsEffort validates effort values across defaults, sizes, and agents layers.
+func (c *Config) validateModelsEffort() []string {
+	var errs []string
+
+	checkAllSpecEfforts(c.Models.Defaults, "defaults", validEffortsLoose, &errs)
+
+	for sizeName, roleModels := range c.Models.Sizes {
+		checkAllSpecEfforts(roleModels, "sizes."+sizeName, validEffortsLoose, &errs)
+	}
+
+	for agentName, roleModels := range c.Models.Agents {
+		valid, ok := validEffortsByAgent[agentName]
+		if !ok {
+			// Unknown agent — validateModelsAgents already catches this, skip.
+			continue
+		}
+		checkAllSpecEfforts(roleModels, "agents."+agentName, valid, &errs)
+	}
+
+	return errs
+}
+
+// checkAllSpecEfforts validates all ModelSpec.Effort fields in a RoleModels struct.
+func checkAllSpecEfforts(rm RoleModels, prefix string, valid []string, errs *[]string) {
+	checkOne := func(spec *ModelSpec, role string) {
+		if spec == nil || spec.Effort == "" {
+			return
+		}
+		if !slices.Contains(valid, strings.ToLower(spec.Effort)) {
+			*errs = append(*errs, fmt.Sprintf(
+				"models.%s.%s.effort %q is not valid (accepted: %v)",
+				prefix, role, spec.Effort, valid,
+			))
+		}
+	}
+	checkOne(rm.Reviewer, "reviewer")
+	checkOne(rm.ArchReviewer, "arch_reviewer")
+	checkOne(rm.DiffReviewer, "diff_reviewer")
+	checkOne(rm.Summarizer, "summarizer")
+	checkOne(rm.FPFilter, "fp_filter")
+	checkOne(rm.CrossCheck, "cross_check")
+	checkOne(rm.PRFeedback, "pr_feedback")
+}
+
 // Validate checks that all resolved config values are semantically valid.
 // Returns a single error summarizing all issues, or nil if valid.
 func (r *ResolvedConfig) Validate() error {
@@ -479,6 +665,13 @@ type ResolvedConfig struct {
 	CrossCheckModel   string // empty means use summarizer model
 	AutoPhase         bool
 	Strict            bool // when true, advisory verdict exits 1 (default false)
+	// ReviewerModelFromCLI is true when --reviewer-model or ACR_REVIEWER_MODEL
+	// set the ReviewerModel field, making it a CLI/env override that should win
+	// over models.agents/sizes/defaults config.
+	ReviewerModelFromCLI   bool
+	SummarizerModelFromCLI bool
+	CrossCheckModelFromCLI bool
+	Models                 ModelsConfig
 }
 
 type FlagState struct {
@@ -844,6 +1037,8 @@ func Resolve(cfg *Config, envState EnvState, flagState FlagState, flagValues Res
 		if cfg.AutoPhase != nil {
 			result.AutoPhase = *cfg.AutoPhase
 		}
+		// Models configuration is a struct (not a pointer); copy as-is.
+		result.Models = cfg.Models
 	}
 
 	// Apply env var values (if set)
@@ -980,6 +1175,10 @@ func Resolve(cfg *Config, envState EnvState, flagState FlagState, flagValues Res
 	if flagState.StrictSet {
 		result.Strict = flagValues.Strict
 	}
+
+	result.ReviewerModelFromCLI = flagState.ReviewerModelSet || envState.ReviewerModelSet
+	result.SummarizerModelFromCLI = flagState.SummarizerModelSet || envState.SummarizerModelSet
+	result.CrossCheckModelFromCLI = flagState.CrossCheckModelSet || envState.CrossCheckModelSet
 
 	return result
 }

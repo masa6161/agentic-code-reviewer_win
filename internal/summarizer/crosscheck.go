@@ -36,8 +36,13 @@ const (
 // IsStructuralSkipReason reports whether a cross-check SkipReason represents a
 // structural skip (intentional non-run) rather than a failure. Structural
 // skips preserve LGTM; error skips suppress it.
+//
+// SkipReasonNoAgents is treated as structural because the user explicitly
+// omitted cross-check agents — it is a configuration choice, not a runtime
+// failure. Degraded advisories (all-agents-failed, payload errors) are
+// non-structural and must suppress the LGTM banner.
 func IsStructuralSkipReason(reason string) bool {
-	return reason == "" || reason == SkipReasonSingleGroup
+	return reason == "" || reason == SkipReasonSingleGroup || reason == SkipReasonNoAgents
 }
 
 // truncateByRunes returns s truncated to at most max runes, appending "…" when
@@ -289,13 +294,29 @@ func buildCrossCheckPayload(ccCtx CrossCheckContext) crossCheckPayload {
 	return payload
 }
 
+// CrossCheckOptions bundles model/effort resolution for the cross-check role.
+// Empty fields fall back to the agent's built-in defaults.
+type CrossCheckOptions struct {
+	Model  string
+	Effort string
+}
+
+// CrossCheckAgentSpec bundles a cross-check agent name with its pre-resolved
+// per-agent options. Callers resolve per-agent model/effort BEFORE calling
+// CrossCheck so that agents.<name>.cross_check settings are honored.
+type CrossCheckAgentSpec struct {
+	Name    string
+	Options CrossCheckOptions
+}
+
 // CrossCheck performs cross-group consistency verification.
-// Multiple agents run in parallel; results are merged via union.
-// Never returns error; uses Skipped/SkipReason for degradation.
+// Multiple agents run in parallel with per-agent resolved options; results are
+// merged via union. agentSpecs preserves caller-specified ordering; when empty
+// the result is skipped with SkipReasonNoAgents. Never returns error; uses
+// Skipped/SkipReason for degradation.
 func CrossCheck(
 	ctx context.Context,
-	agentNames []string,
-	model string,
+	agentSpecs []CrossCheckAgentSpec,
 	ccCtx CrossCheckContext,
 	verbose bool,
 	logger *terminal.Logger,
@@ -309,7 +330,7 @@ func CrossCheck(
 			Duration:   time.Since(start),
 		}
 	}
-	if len(agentNames) == 0 {
+	if len(agentSpecs) == 0 {
 		return &CrossCheckResult{
 			Skipped:    true,
 			SkipReason: SkipReasonNoAgents,
@@ -328,17 +349,17 @@ func CrossCheck(
 	}
 
 	var wg sync.WaitGroup
-	agentResults := make([]AgentCrossCheckResult, len(agentNames))
-	for i, name := range agentNames {
+	agentResults := make([]AgentCrossCheckResult, len(agentSpecs))
+	for i, spec := range agentSpecs {
 		wg.Add(1)
-		go func(idx int, agentName string) {
+		go func(idx int, s CrossCheckAgentSpec) {
 			defer wg.Done()
-			agentResults[idx] = runCrossCheckAgent(ctx, agentName, model, payloadBytes, verbose, logger)
-		}(i, name)
+			agentResults[idx] = runCrossCheckAgent(ctx, s.Name, s.Options, payloadBytes, verbose, logger)
+		}(i, spec)
 	}
 	wg.Wait()
 
-	result := mergeAgentResults(agentResults, len(agentNames))
+	result := mergeAgentResults(agentResults, len(agentSpecs))
 	result.AgentResults = agentResults
 	result.Duration = time.Since(start)
 	return result
@@ -392,7 +413,8 @@ func mergeAgentResults(agentResults []AgentCrossCheckResult, totalAgents int) *C
 // an AgentCrossCheckResult capturing its findings or error.
 func runCrossCheckAgent(
 	ctx context.Context,
-	agentName, model string,
+	agentName string,
+	opts CrossCheckOptions,
 	payload []byte,
 	verbose bool,
 	logger *terminal.Logger,
@@ -400,7 +422,7 @@ func runCrossCheckAgent(
 	start := time.Now()
 	result := AgentCrossCheckResult{AgentName: agentName}
 
-	ag, err := agent.NewAgentWithModel(agentName, model)
+	ag, err := agent.NewAgentWithOptions(agentName, agent.AgentOptions{Model: opts.Model, Effort: opts.Effort})
 	if err != nil {
 		result.Err = fmt.Errorf("agent creation failed: %w", err)
 		result.Duration = time.Since(start)

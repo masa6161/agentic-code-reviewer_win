@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/richhaase/agentic-code-reviewer/internal/domain"
 	"github.com/richhaase/agentic-code-reviewer/internal/github"
@@ -16,6 +17,11 @@ import (
 )
 
 const maxDisplayedCIChecks = 5
+
+// betaNoticeOnce ensures the PR posting beta warning is emitted at most once
+// per process run, regardless of how many times confirmAndSubmitReview or
+// confirmAndSubmitLGTM are called.
+var betaNoticeOnce sync.Once
 
 // prContext holds PR number and self-review status for GitHub operations.
 type prContext struct {
@@ -196,21 +202,30 @@ func buildReviewPromptLabel(defaultAction string) string {
 	return "[R]equest changes (default) / [C]omment / [S]kip:"
 }
 
-// formatCrossCheckForPR renders cross-check findings as a Markdown section for
-// inclusion in a PR review body. Returns "" when cc is nil, or when cc has no
-// findings and is neither Partial nor in a non-structural Skipped state —
-// structural skips (single group, no agents configured) stay silent because
-// they do not represent lost coverage.
+// formatCrossCheckForPR renders cross-check findings as a Markdown section for inclusion
+// in a PR review body. Returns "" when cc is nil, has no findings, and is not partial or
+// degraded. Returns a degraded advisory notice when cc was skipped for a non-structural
+// reason (e.g. all agents failed, payload marshal failed) so the PR body is non-empty
+// and the caller's empty-body safety guard does not silently swallow the review.
 func formatCrossCheckForPR(cc *summarizer.CrossCheckResult) string {
 	if cc == nil {
 		return ""
 	}
-	noFindings := len(cc.Findings) == 0
-	if noFindings && !cc.Partial && !cc.Skipped {
+
+	// Structural skip (single group, no agents configured): nothing to report.
+	if cc.Skipped && summarizer.IsStructuralSkipReason(cc.SkipReason) {
 		return ""
 	}
-	// Structural skips stay silent — cross-check was intentionally not run.
-	if noFindings && cc.Skipped && summarizer.IsStructuralSkipReason(cc.SkipReason) {
+
+	// Non-structural skip (all agents failed, payload error, etc.): emit a
+	// degraded advisory notice so the PR body is non-empty.
+	if cc.Skipped && !summarizer.IsStructuralSkipReason(cc.SkipReason) {
+		safeReason := sanitizeCrossCheckSkipReason(cc.SkipReason)
+		return fmt.Sprintf("⚠ Cross-check degraded (%s) — coverage reduced; treat as advisory\n\n", safeReason)
+	}
+
+	// No findings and not partial: nothing to report.
+	if len(cc.Findings) == 0 && !cc.Partial {
 		return ""
 	}
 
@@ -222,16 +237,6 @@ func formatCrossCheckForPR(cc *summarizer.CrossCheckResult) string {
 			agents = "unknown"
 		}
 		sb.WriteString(fmt.Sprintf("⚠ Cross-check ran partially (failed agents: %s) — coverage reduced\n\n", agents))
-	}
-
-	// Non-structural skip with no findings: emit a minimal section so reviewers
-	// can see that cross-group coverage was lost (vs. silently dropping it).
-	if noFindings && cc.Skipped {
-		reason := cc.SkipReason
-		if reason == "" {
-			reason = "unknown reason"
-		}
-		sb.WriteString(fmt.Sprintf("⚠ Cross-check skipped: %s — cross-group coverage unavailable\n\n", reason))
 	}
 
 	if len(cc.Findings) > 0 {
@@ -260,6 +265,25 @@ func formatCrossCheckForPR(cc *summarizer.CrossCheckResult) string {
 	}
 
 	return sb.String()
+}
+
+// sanitizeCrossCheckSkipReason returns a PR-safe description of why cross-check was degraded.
+// Only well-known safe patterns are passed through; everything else is replaced with a
+// generic message to avoid leaking internal paths, error strings, or PII into PR bodies.
+func sanitizeCrossCheckSkipReason(reason string) string {
+	// Allow known safe patterns through verbatim.
+	if reason == summarizer.SkipReasonSingleGroup || reason == summarizer.SkipReasonNoAgents {
+		return reason
+	}
+	// "all N agents failed" pattern — safe, no internal detail.
+	if strings.HasPrefix(reason, "all ") && strings.Contains(reason, " agents failed") {
+		// Extract just the first sentence (e.g. "all 3 agents failed") without per-agent details.
+		if idx := strings.Index(reason, ":"); idx != -1 {
+			return strings.TrimSpace(reason[:idx])
+		}
+		return reason
+	}
+	return "cross-check degraded (see local log for details)"
 }
 
 // buildReviewBody composes the full PR review body from grouped findings and
@@ -303,26 +327,30 @@ func handleFindings(ctx context.Context, opts ReviewOpts, grouped domain.Grouped
 		}
 		selectedFindings = filterFindingsByIndices(grouped.Findings, indices)
 
-		if len(selectedFindings) == 0 {
-			logger.Log("No findings selected to post.", terminal.StyleDim)
-
-			// Recompute verdict against the empty grouped slice plus the
-			// original cross-check signals. When cross-check has its own
-			// concerns (or is degraded), filtered.Verdict will not be "ok",
-			// so we fall through to confirmAndSubmitReview with the CC-only
-			// body and the updated verdict drives the review action. Only a
-			// genuinely clean recompute may emit the dismissed-LGTM banner.
-			filtered := domain.GroupedFindings{Findings: nil, Info: grouped.Info}
+		if len(selectedFindings) < len(grouped.Findings) {
+			// Recompute verdict against the remaining findings plus the original
+			// cross-check signals. Partial dismiss (e.g. blocking removed, advisory
+			// kept) must downgrade the verdict so applyVerdictExitPolicy does not
+			// fire request_changes / exit 1 for a now-advisory review.
+			filtered := domain.GroupedFindings{Findings: selectedFindings, Info: grouped.Info}
 			filtered.ComputeVerdict(ccBlocking, ccAdvisory)
 			verdict = filtered.Verdict
 
-			if verdict == "ok" {
-				lgtmBody := runner.RenderDismissedLGTMMarkdown(grouped.Findings, stats, version)
-				pr := getPRContext(ctx, opts)
-				// Best-effort: LGTM posting is optional when dismissing findings.
-				// Auth/network errors should not fail the run.
-				_ = confirmAndSubmitLGTM(ctx, lgtmBody, pr, opts, logger)
-				return domain.ExitNoFindings, verdict
+			if len(selectedFindings) == 0 {
+				logger.Log("No findings selected to post.", terminal.StyleDim)
+
+				// Only emit the dismissed-LGTM banner when cross-check is also
+				// clean (verdict=="ok"). Any cross-check signal (blocking, advisory,
+				// or degraded) falls through to confirmAndSubmitReview so the
+				// CC-only body reaches the PR with the correct review action.
+				if verdict == "ok" {
+					lgtmBody := runner.RenderDismissedLGTMMarkdown(grouped.Findings, stats, version)
+					pr := getPRContext(ctx, opts)
+					// Best-effort: LGTM posting is optional when dismissing findings.
+					// Auth/network errors should not fail the run.
+					_ = confirmAndSubmitLGTM(ctx, lgtmBody, pr, opts, logger)
+					return domain.ExitNoFindings, verdict
+				}
 			}
 		}
 	}
@@ -363,6 +391,10 @@ func confirmAndSubmitReview(ctx context.Context, body string, pr prContext, verd
 	if !available {
 		return nil
 	}
+
+	betaNoticeOnce.Do(func() {
+		logger.Logf(terminal.StyleWarning, "PR posting is beta in the Windows port; behavior may change.")
+	})
 
 	// Determine the default action from verdict + strict.
 	// Self-review always falls back to comment (cannot request changes on own PR).
@@ -457,6 +489,10 @@ func confirmAndSubmitLGTM(ctx context.Context, body string, pr prContext, opts R
 	if !available {
 		return nil
 	}
+
+	betaNoticeOnce.Do(func() {
+		logger.Logf(terminal.StyleWarning, "PR posting is beta in the Windows port; behavior may change.")
+	})
 
 	action := actionApprove
 	if pr.isSelfReview {

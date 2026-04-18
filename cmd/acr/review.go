@@ -13,10 +13,20 @@ import (
 	"github.com/richhaase/agentic-code-reviewer/internal/filter"
 	"github.com/richhaase/agentic-code-reviewer/internal/fpfilter"
 	"github.com/richhaase/agentic-code-reviewer/internal/git"
+	"github.com/richhaase/agentic-code-reviewer/internal/modelconfig"
 	"github.com/richhaase/agentic-code-reviewer/internal/runner"
 	"github.com/richhaase/agentic-code-reviewer/internal/summarizer"
 	"github.com/richhaase/agentic-code-reviewer/internal/terminal"
 )
+
+// cliOrLegacy returns (cliModel, legacyModel) based on whether the value came
+// from a CLI flag or env var (highest priority) vs config file (lowest priority).
+func cliOrLegacy(value string, fromCLI bool) (cli, legacy string) {
+	if fromCLI {
+		return value, ""
+	}
+	return "", value
+}
 
 func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger) domain.ExitCode {
 	if err := agent.ValidateAgentNames(opts.ReviewerAgents); err != nil {
@@ -24,55 +34,11 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 		return domain.ExitError
 	}
 
-	reviewAgents, err := agent.CreateAgentsWithModel(opts.ReviewerAgents, opts.ReviewerModel)
-	if err != nil {
-		logger.Logf(terminal.StyleError, "%v", err)
-		return domain.ExitError
-	}
-
-	summarizerAgent, err := agent.NewAgentWithModel(opts.SummarizerAgent, opts.SummarizerModel)
-	if err != nil {
-		logger.Logf(terminal.StyleError, "Invalid summarizer agent: %v", err)
-		return domain.ExitError
-	}
-	if err := summarizerAgent.IsAvailable(); err != nil {
-		logger.Logf(terminal.StyleError, "%s CLI not found (summarizer): %v", opts.SummarizerAgent, err)
-		return domain.ExitError
-	}
-
-	// Resolve and validate cross-check agents (fail-fast).
-	ccAgentNames, ccModel := resolveCrossCheckAgents(opts)
-	if opts.CrossCheckEnabled {
-		if err := agent.ValidateAgentNames(ccAgentNames); err != nil {
-			logger.Logf(terminal.StyleError, "Invalid cross-check agent: %v", err)
-			return domain.ExitError
-		}
-		for _, name := range ccAgentNames {
-			ccAg, err := agent.NewAgentWithModel(name, ccModel)
-			if err != nil {
-				logger.Logf(terminal.StyleError, "Invalid cross-check agent %q: %v", name, err)
-				return domain.ExitError
-			}
-			if err := ccAg.IsAvailable(); err != nil {
-				logger.Logf(terminal.StyleError, "%s CLI not found (cross-check): %v", name, err)
-				return domain.ExitError
-			}
-		}
-	}
-
-	// Show agent distribution if multiple agents
-	if len(reviewAgents) > 1 {
-		distribution := agent.FormatDistribution(reviewAgents, opts.Reviewers)
-		logger.Logf(terminal.StyleInfo, "Agent distribution: %s%s%s",
-			terminal.Color(terminal.Dim), distribution, terminal.Color(terminal.Reset))
-	} else if opts.Verbose && len(opts.ReviewerAgents) > 0 {
-		logger.Logf(terminal.StyleDim, "%sUsing agent: %s%s",
-			terminal.Color(terminal.Dim), opts.ReviewerAgents[0], terminal.Color(terminal.Reset))
-	}
-
 	// Resolve the base ref once before launching parallel reviewers.
 	// This ensures all reviewers compare against the same ref, avoiding
 	// inconsistent results if network conditions vary during parallel execution.
+	// Hoisted above agent construction so diff-size classification can feed the
+	// size-aware model resolver (models.sizes.<size>.<role>).
 	resolvedBaseRef := opts.Base
 	if opts.Fetch {
 		// Update current branch from remote (fast-forward only).
@@ -96,6 +62,202 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 		} else if opts.Verbose && result.FetchAttempted && result.RefResolved {
 			logger.Logf(terminal.StyleDim, "Comparing against %s (fetched from origin)", resolvedBaseRef)
 		}
+	}
+
+	// Classify diff size once up-front so the size-aware model resolver
+	// (models.sizes.<size>.<role>) can pick per-role model/effort for every
+	// agent constructed below. ClassifyDiffSize uses `git diff --stat` and is
+	// cheap compared to GetDiff. On classification error we pass sizeStr=""
+	// and the resolver falls through to defaults + legacy fields.
+	var sizeStr string
+	var diffSize git.DiffSize
+	var diffFileCount, diffLineCount int
+	var diffSizeClassified bool
+	var classifyErr error
+	diffSize, diffFileCount, diffLineCount, classifyErr = git.ClassifyDiffSize(ctx, resolvedBaseRef, opts.WorkDir)
+	if classifyErr == nil {
+		sizeStr = diffSize.String()
+		diffSizeClassified = true
+	} else if opts.Verbose {
+		logger.Logf(terminal.StyleWarning, "Diff size classification failed: %v (model resolver will skip size layer)", classifyErr)
+	}
+
+	// Resolve generic (phase="") reviewer specs with per-agent-name effort/model
+	// via the size-aware phase-aware model config resolver. This covers the flat
+	// review path (auto-phase OFF / size=small / explicit `--phase diff`); the
+	// grouped and phased paths below re-resolve per-phase from the same config
+	// using phase="arch"/"diff".
+	reviewerSpecs := make([]agent.AgentSpec, 0, len(opts.ReviewerAgents))
+	for _, name := range opts.ReviewerAgents {
+		cliRevModel, legacyRevModel := cliOrLegacy(opts.ReviewerModel, opts.ReviewerModelFromCLI)
+		spec := modelconfig.ResolveReviewer(
+			opts.Models, sizeStr, "" /* flat */, name,
+			cliRevModel, "",
+			legacyRevModel, "",
+		)
+		reviewerSpecs = append(reviewerSpecs, agent.AgentSpec{
+			Name:    name,
+			Options: agent.AgentOptions{Model: spec.Model, Effort: spec.Effort},
+		})
+	}
+	reviewAgents, err := agent.CreateAgentsFromSpecs(reviewerSpecs)
+	if err != nil {
+		logger.Logf(terminal.StyleError, "%v", err)
+		return domain.ExitError
+	}
+
+	// rebindSpecAgent re-resolves the reviewer model/effort for a given
+	// (phase, agent name) pair and constructs a fresh Agent instance for the
+	// spec. Captures surrounding scope (opts, sizeStr) so downstream phase
+	// wiring stays concise. Falls back to the original Agent on error.
+	rebindSpecAgent := func(origAgent agent.Agent, phase string) agent.Agent {
+		if origAgent == nil {
+			return origAgent
+		}
+		name := origAgent.Name()
+		cliRevModel, legacyRevModel := cliOrLegacy(opts.ReviewerModel, opts.ReviewerModelFromCLI)
+		spec := modelconfig.ResolveReviewer(
+			opts.Models, sizeStr, phase, name,
+			cliRevModel, "",
+			legacyRevModel, "",
+		)
+		a, err := agent.NewAgentWithOptions(name, agent.AgentOptions{Model: spec.Model, Effort: spec.Effort})
+		if err != nil {
+			return origAgent
+		}
+		return a
+	}
+
+	cliSumModel, legacySumModel := cliOrLegacy(opts.SummarizerModel, opts.SummarizerModelFromCLI)
+	summSpec := modelconfig.Resolve(
+		opts.Models, sizeStr, modelconfig.RoleSummarizer, opts.SummarizerAgent,
+		cliSumModel, "",
+		legacySumModel, "",
+	)
+	summarizerAgent, err := agent.NewAgentWithOptions(opts.SummarizerAgent, agent.AgentOptions{Model: summSpec.Model, Effort: summSpec.Effort})
+	if err != nil {
+		logger.Logf(terminal.StyleError, "Invalid summarizer agent: %v", err)
+		return domain.ExitError
+	}
+	if err := summarizerAgent.IsAvailable(); err != nil {
+		logger.Logf(terminal.StyleError, "%s CLI not found (summarizer): %v", opts.SummarizerAgent, err)
+		return domain.ExitError
+	}
+
+	// Resolve and validate cross-check agents (fail-fast).
+	ccAgentNames, ccModel := resolveCrossCheckAgents(opts)
+	// ccModel came from opts.CrossCheckModel (or SummarizerModel fallback inside
+	// resolveCrossCheckAgents). CrossCheckModelFromCLI reflects whether the raw
+	// opts.CrossCheckModel was a CLI/env override; when it's empty and we fell
+	// back to SummarizerModel, SummarizerModelFromCLI governs precedence instead.
+	ccFromCLI := opts.CrossCheckModelFromCLI
+	if opts.CrossCheckModel == "" {
+		ccFromCLI = opts.SummarizerModelFromCLI
+	}
+	// Resolve cross-check options per agent so that agents.<name>.cross_check
+	// overrides are honored when multiple agents are configured. The specs
+	// slice preserves caller order and is passed directly to CrossCheck.
+	ccSpecs := make([]summarizer.CrossCheckAgentSpec, 0, len(ccAgentNames))
+	for _, name := range ccAgentNames {
+		cliCCModel, legacyCCModel := cliOrLegacy(ccModel, ccFromCLI)
+		perSpec := modelconfig.Resolve(
+			opts.Models, sizeStr, modelconfig.RoleCrossCheck, name,
+			cliCCModel, "",
+			legacyCCModel, "",
+		)
+		ccSpecs = append(ccSpecs, summarizer.CrossCheckAgentSpec{
+			Name:    name,
+			Options: summarizer.CrossCheckOptions{Model: perSpec.Model, Effort: perSpec.Effort},
+		})
+	}
+	if opts.CrossCheckEnabled {
+		if err := agent.ValidateAgentNames(ccAgentNames); err != nil {
+			logger.Logf(terminal.StyleError, "Invalid cross-check agent: %v", err)
+			return domain.ExitError
+		}
+		for _, spec := range ccSpecs {
+			ccAg, err := agent.NewAgentWithOptions(spec.Name, agent.AgentOptions{Model: spec.Options.Model, Effort: spec.Options.Effort})
+			if err != nil {
+				logger.Logf(terminal.StyleError, "Invalid cross-check agent %q: %v", spec.Name, err)
+				return domain.ExitError
+			}
+			if err := ccAg.IsAvailable(); err != nil {
+				logger.Logf(terminal.StyleError, "%s CLI not found (cross-check): %v", spec.Name, err)
+				return domain.ExitError
+			}
+		}
+	}
+
+	// Verbose: log the effective model/effort matrix for all roles once, up-front.
+	// fp_filter and pr_feedback specs are resolved later in the flow, so we
+	// re-invoke Resolve here (pure, cheap) solely for display purposes.
+	if opts.Verbose {
+		cliSumModelLog, legacySumModelLog := cliOrLegacy(opts.SummarizerModel, opts.SummarizerModelFromCLI)
+		fpSpecLog := modelconfig.Resolve(
+			opts.Models, sizeStr, modelconfig.RoleFPFilter, opts.SummarizerAgent,
+			cliSumModelLog, "",
+			legacySumModelLog, "",
+		)
+		prFeedbackAgentName := opts.PRFeedbackAgent
+		if prFeedbackAgentName == "" {
+			prFeedbackAgentName = opts.SummarizerAgent
+		}
+		prFeedbackSpecLog := modelconfig.Resolve(
+			opts.Models, sizeStr, modelconfig.RolePRFeedback, prFeedbackAgentName,
+			cliSumModelLog, "",
+			legacySumModelLog, "",
+		)
+		logger.Logf(terminal.StyleDim, "Effective model matrix (size=%s):", formatSizeStr(sizeStr))
+		for _, s := range reviewerSpecs {
+			logger.Logf(terminal.StyleDim, "  reviewer[%s]       : %s", s.Name, formatSpec(agent.AgentOptions{Model: s.Options.Model, Effort: s.Options.Effort}))
+		}
+		// arch_reviewer / diff_reviewer rows are meaningful only when
+		// auto-phase is enabled AND diff-size classification succeeded: they
+		// show how the multi-phase run will resolve per-phase model/effort
+		// (phase-specific roles fall back to the generic reviewer at the SAME
+		// cascade layer via ResolveReviewer). Without a classified size, these
+		// rows would be misleading since auto-phase will skip per-phase routing.
+		if opts.AutoPhase && opts.Phase == "" && diffSizeClassified && diffSize != git.DiffSizeSmall {
+			for _, name := range opts.ReviewerAgents {
+				cliRevModelLog, legacyRevModelLog := cliOrLegacy(opts.ReviewerModel, opts.ReviewerModelFromCLI)
+				archSpec := modelconfig.ResolveReviewer(
+					opts.Models, sizeStr, "arch", name,
+					cliRevModelLog, "",
+					legacyRevModelLog, "",
+				)
+				diffSpec := modelconfig.ResolveReviewer(
+					opts.Models, sizeStr, "diff", name,
+					cliRevModelLog, "",
+					legacyRevModelLog, "",
+				)
+				logger.Logf(terminal.StyleDim, "  arch_reviewer[%s]  : %s", name, formatSpec(agent.AgentOptions{Model: archSpec.Model, Effort: archSpec.Effort}))
+				logger.Logf(terminal.StyleDim, "  diff_reviewer[%s]  : %s", name, formatSpec(agent.AgentOptions{Model: diffSpec.Model, Effort: diffSpec.Effort}))
+			}
+		}
+		logger.Logf(terminal.StyleDim, "  summarizer        : %s", formatSpec(agent.AgentOptions{Model: summSpec.Model, Effort: summSpec.Effort}))
+		if opts.CrossCheckEnabled {
+			for _, name := range ccAgentNames {
+				cliCCModelLog, legacyCCModelLog := cliOrLegacy(ccModel, ccFromCLI)
+				perSpec := modelconfig.Resolve(
+					opts.Models, sizeStr, modelconfig.RoleCrossCheck, name,
+					cliCCModelLog, "",
+					legacyCCModelLog, "",
+				)
+				logger.Logf(terminal.StyleDim, "  cross_check[%s]    : %s", name, formatSpec(agent.AgentOptions{Model: perSpec.Model, Effort: perSpec.Effort}))
+			}
+		}
+		logger.Logf(terminal.StyleDim, "  fp_filter         : %s", formatSpec(agent.AgentOptions{Model: fpSpecLog.Model, Effort: fpSpecLog.Effort}))
+		logger.Logf(terminal.StyleDim, "  pr_feedback       : %s", formatSpec(agent.AgentOptions{Model: prFeedbackSpecLog.Model, Effort: prFeedbackSpecLog.Effort}))
+	}
+
+	// Show agent distribution if multiple agents
+	if len(reviewAgents) > 1 {
+		distribution := agent.FormatDistribution(reviewAgents, opts.Reviewers)
+		logger.Logf(terminal.StyleInfo, "Agent distribution: %s%s%s",
+			terminal.Color(terminal.Dim), distribution, terminal.Color(terminal.Reset))
+	} else if opts.Verbose && len(opts.ReviewerAgents) > 0 {
+		logger.Logf(terminal.StyleDim, "%sUsing agent: %s%s",
+			terminal.Color(terminal.Dim), opts.ReviewerAgents[0], terminal.Color(terminal.Reset))
 	}
 
 	// Pre-compute the git diff once and share it across all reviewers.
@@ -124,17 +286,23 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 		logger.Logf(terminal.StyleDim, "Ref-file mode enabled")
 	}
 
-	// Resolve review phases
+	// Resolve review phases. phaseFromAuto tracks whether the final phase
+	// configuration came from auto-phase (true) vs CLI `--phase` (false).
+	// Only auto-phase-derived multi-phase runs consult arch_reviewer /
+	// diff_reviewer; explicit `--phase` flags use the generic reviewer role.
 	phaseStr := opts.Phase
+	phaseFromAuto := false
 	var useGroupedSpecs bool
 	var groupedSpecs []runner.ReviewerSpec
 	if shouldUseAutoPhase(opts) {
-		size, fileCount, lineCount, classifyErr := git.ClassifyDiffSize(ctx, resolvedBaseRef, opts.WorkDir)
-		if classifyErr != nil {
+		if !diffSizeClassified {
 			if opts.Verbose {
-				logger.Logf(terminal.StyleWarning, "Auto-phase: diff size classification failed: %v", classifyErr)
+				logger.Logf(terminal.StyleWarning, "Auto-phase: diff size classification failed earlier, using default phase")
 			}
 		} else {
+			size := diffSize
+			fileCount := diffFileCount
+			lineCount := diffLineCount
 			if opts.Verbose {
 				logger.Logf(terminal.StyleDim, "Auto-phase: diff is %s (%d files, %d lines)", size, fileCount, lineCount)
 			}
@@ -149,6 +317,10 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 			phaseStr = apr.PhaseStr
 			groupedSpecs = apr.GroupedSpecs
 			useGroupedSpecs = apr.UseGrouped
+			// Enable per-phase role rebinding (arch_reviewer/diff_reviewer) only
+			// for medium/large diffs. Small diffs use flat diff review with the
+			// generic reviewer role.
+			phaseFromAuto = size != git.DiffSizeSmall
 			if opts.Verbose {
 				switch {
 				case apr.UseGrouped:
@@ -182,6 +354,12 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 	var r *runner.Runner
 	actualReviewers := opts.Reviewers
 	if useGroupedSpecs {
+		// Auto-phase grouped path: per-phase model/effort rebind using
+		// ResolveReviewer with spec.Phase ("arch"/"diff"). arch_reviewer /
+		// diff_reviewer overrides take effect here.
+		for i := range groupedSpecs {
+			groupedSpecs[i].Agent = rebindSpecAgent(groupedSpecs[i].Agent, groupedSpecs[i].Phase)
+		}
 		actualReviewers = len(groupedSpecs)
 		r, err = runner.NewWithSpecs(runnerConfig, groupedSpecs, logger)
 	} else if phaseStr != "" {
@@ -199,6 +377,14 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 		if specErr != nil {
 			logger.Logf(terminal.StyleError, "Phase config error: %v", specErr)
 			return domain.ExitError
+		}
+		// Per-phase rebind: only when phases were produced by auto-phase.
+		// Explicit `--phase` flags use the generic reviewer role per the
+		// documented contract (flat review path).
+		if phaseFromAuto {
+			for i := range specs {
+				specs[i].Agent = rebindSpecAgent(specs[i].Agent, specs[i].Phase)
+			}
 		}
 		actualReviewers = len(specs)
 		r, err = runner.NewWithSpecs(runnerConfig, specs, logger)
@@ -235,7 +421,13 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 				feedbackAgentName = opts.SummarizerAgent
 			}
 
-			summarizer := feedback.NewSummarizer(feedbackAgentName, opts.SummarizerModel, opts.Verbose, logger)
+			cliSumModelPR, legacySumModelPR := cliOrLegacy(opts.SummarizerModel, opts.SummarizerModelFromCLI)
+			prSpec := modelconfig.Resolve(
+				opts.Models, sizeStr, modelconfig.RolePRFeedback, feedbackAgentName,
+				cliSumModelPR, "",
+				legacySumModelPR, "",
+			)
+			summarizer := feedback.NewSummarizer(feedbackAgentName, prSpec.Model, prSpec.Effort, opts.Verbose, logger)
 			feedbackCtx, feedbackCancel := context.WithTimeout(ctx, opts.SummarizerTimeout)
 			defer feedbackCancel()
 
@@ -298,7 +490,7 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 			}()
 
 			ccRunCtx, ccRunCancel := context.WithTimeout(ctx, opts.CrossCheckTimeout)
-			ccResult = summarizer.CrossCheck(ccRunCtx, ccAgentNames, ccModel, ccCtx, opts.Verbose, logger)
+			ccResult = summarizer.CrossCheck(ccRunCtx, ccSpecs, ccCtx, opts.Verbose, logger)
 			ccRunCancel()
 			ccSpinnerCancel()
 			<-ccSpinnerDone
@@ -327,7 +519,7 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 	summarizerCtx, summarizerCancel := context.WithTimeout(ctx, opts.SummarizerTimeout)
 	defer summarizerCancel()
 
-	summaryResult, err := summarizer.Summarize(summarizerCtx, opts.SummarizerAgent, opts.SummarizerModel, aggregated, ccResult, opts.Verbose, logger)
+	summaryResult, err := summarizer.Summarize(summarizerCtx, opts.SummarizerAgent, summarizer.SummarizeOptions{Model: summSpec.Model, Effort: summSpec.Effort}, aggregated, ccResult, opts.Verbose, logger)
 	spinnerCancel()
 	<-spinnerDone
 
@@ -361,7 +553,13 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 
 		fpCtx, fpCancel := context.WithTimeout(ctx, opts.FPFilterTimeout)
 		defer fpCancel()
-		fpFilter := fpfilter.New(opts.SummarizerAgent, opts.SummarizerModel, opts.FPThreshold, opts.Verbose, logger)
+		cliSumModelFP, legacySumModelFP := cliOrLegacy(opts.SummarizerModel, opts.SummarizerModelFromCLI)
+		fpSpec := modelconfig.Resolve(
+			opts.Models, sizeStr, modelconfig.RoleFPFilter, opts.SummarizerAgent,
+			cliSumModelFP, "",
+			legacySumModelFP, "",
+		)
+		fpFilter := fpfilter.New(opts.SummarizerAgent, fpSpec.Model, fpSpec.Effort, opts.FPThreshold, opts.Verbose, logger)
 		fpResult := fpFilter.Apply(fpCtx, summaryResult.Grouped, priorFeedback, stats.SuccessfulReviewers)
 		fpSpinnerCancel()
 		<-fpSpinnerDone
@@ -799,4 +997,27 @@ func diffFindingGroups(before, after []domain.FindingGroup) []domain.FindingGrou
 		}
 	}
 	return removed
+}
+
+// formatSpec formats a model/effort pair for the verbose effective matrix log.
+// Empty fields are shown as "(default)" to distinguish "not set" from a blank value.
+func formatSpec(opts agent.AgentOptions) string {
+	model := opts.Model
+	if model == "" {
+		model = "(default)"
+	}
+	effort := opts.Effort
+	if effort == "" {
+		effort = "(default)"
+	}
+	return fmt.Sprintf("%s [%s]", model, effort)
+}
+
+// formatSizeStr returns the size string for display, substituting "(unknown)"
+// when classification was not available (empty string).
+func formatSizeStr(s string) string {
+	if s == "" {
+		return "(unknown)"
+	}
+	return s
 }

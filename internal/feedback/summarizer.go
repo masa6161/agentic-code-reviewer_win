@@ -14,16 +14,19 @@ import (
 type Summarizer struct {
 	agentName string
 	model     string
+	effort    string
 	verbose   bool
 	logger    *terminal.Logger
 }
 
 // NewSummarizer creates a new PR feedback summarizer.
 // The model parameter overrides the agent's default model (empty = default).
-func NewSummarizer(agentName, model string, verbose bool, logger *terminal.Logger) *Summarizer {
+// The effort parameter overrides the agent's default reasoning effort (empty = default).
+func NewSummarizer(agentName, model, effort string, verbose bool, logger *terminal.Logger) *Summarizer {
 	return &Summarizer{
 		agentName: agentName,
 		model:     model,
+		effort:    effort,
 		verbose:   verbose,
 		logger:    logger,
 	}
@@ -49,7 +52,7 @@ func (s *Summarizer) Summarize(ctx context.Context, prNumber string) (string, er
 	input := s.buildInput(prCtx)
 
 	// Create agent
-	ag, err := agent.NewAgentWithModel(s.agentName, s.model)
+	ag, err := agent.NewAgentWithOptions(s.agentName, agent.AgentOptions{Model: s.model, Effort: s.effort})
 	if err != nil {
 		return "", fmt.Errorf("failed to create agent: %w", err)
 	}

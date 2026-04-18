@@ -1913,3 +1913,483 @@ func TestLoadEnvState_AutoPhaseParsing(t *testing.T) {
 		})
 	}
 }
+
+func TestConfig_ModelsSection_Parses(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, ".acr.yaml")
+
+	content := `models:
+  defaults:
+    reviewer:       { model: gpt-5.4-mini, effort: medium }
+    arch_reviewer:  { model: gpt-5.4,      effort: high }
+    diff_reviewer:  { model: gpt-5.4-mini, effort: medium }
+    summarizer:     { model: gpt-5.4,      effort: high }
+    fp_filter:      { model: gpt-5.4-mini, effort: low }
+    cross_check:    { model: gpt-5.4,      effort: medium }
+    pr_feedback:    { model: gpt-5.4-mini }
+  sizes:
+    small:
+      reviewer: { model: gpt-5.4-mini, effort: low }
+    medium:
+      reviewer: { model: gpt-5.4-mini, effort: medium }
+    large:
+      reviewer:      { model: gpt-5.4,      effort: high }
+      arch_reviewer: { model: gpt-5.4,      effort: high }
+      diff_reviewer: { model: gpt-5.4,      effort: medium }
+      summarizer:    { model: gpt-5.4,      effort: high }
+  agents:
+    codex:
+      reviewer:      { model: gpt-5.4-mini, effort: medium }
+      arch_reviewer: { effort: high }
+      diff_reviewer: { effort: medium }
+    claude:
+      reviewer: { model: sonnet-4-6,   effort: max }
+`
+	if err := os.WriteFile(configPath, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := LoadFromPathWithWarnings(configPath)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(result.Warnings) != 0 {
+		t.Errorf("unexpected warnings: %v", result.Warnings)
+	}
+
+	m := result.Config.Models
+
+	// defaults
+	if m.Defaults.Reviewer == nil {
+		t.Fatal("defaults.reviewer should not be nil")
+	}
+	if m.Defaults.Reviewer.Model != "gpt-5.4-mini" {
+		t.Errorf("defaults.reviewer.model: got %q, want %q", m.Defaults.Reviewer.Model, "gpt-5.4-mini")
+	}
+	if m.Defaults.Reviewer.Effort != "medium" {
+		t.Errorf("defaults.reviewer.effort: got %q, want %q", m.Defaults.Reviewer.Effort, "medium")
+	}
+	if m.Defaults.ArchReviewer == nil {
+		t.Fatal("defaults.arch_reviewer should not be nil")
+	}
+	if m.Defaults.ArchReviewer.Model != "gpt-5.4" || m.Defaults.ArchReviewer.Effort != "high" {
+		t.Errorf("defaults.arch_reviewer: got %+v, want {gpt-5.4, high}", *m.Defaults.ArchReviewer)
+	}
+	if m.Defaults.DiffReviewer == nil {
+		t.Fatal("defaults.diff_reviewer should not be nil")
+	}
+	if m.Defaults.DiffReviewer.Model != "gpt-5.4-mini" || m.Defaults.DiffReviewer.Effort != "medium" {
+		t.Errorf("defaults.diff_reviewer: got %+v, want {gpt-5.4-mini, medium}", *m.Defaults.DiffReviewer)
+	}
+	if m.Defaults.Summarizer == nil {
+		t.Fatal("defaults.summarizer should not be nil")
+	}
+	if m.Defaults.Summarizer.Model != "gpt-5.4" {
+		t.Errorf("defaults.summarizer.model: got %q, want %q", m.Defaults.Summarizer.Model, "gpt-5.4")
+	}
+	if m.Defaults.FPFilter == nil {
+		t.Fatal("defaults.fp_filter should not be nil")
+	}
+	if m.Defaults.FPFilter.Effort != "low" {
+		t.Errorf("defaults.fp_filter.effort: got %q, want %q", m.Defaults.FPFilter.Effort, "low")
+	}
+	if m.Defaults.CrossCheck == nil {
+		t.Fatal("defaults.cross_check should not be nil")
+	}
+	if m.Defaults.PRFeedback == nil {
+		t.Fatal("defaults.pr_feedback should not be nil")
+	}
+	if m.Defaults.PRFeedback.Effort != "" {
+		t.Errorf("defaults.pr_feedback.effort: expected empty, got %q", m.Defaults.PRFeedback.Effort)
+	}
+
+	// sizes
+	small, ok := m.Sizes["small"]
+	if !ok {
+		t.Fatal("sizes.small not found")
+	}
+	if small.Reviewer == nil {
+		t.Fatal("sizes.small.reviewer should not be nil")
+	}
+	if small.Reviewer.Effort != "low" {
+		t.Errorf("sizes.small.reviewer.effort: got %q, want %q", small.Reviewer.Effort, "low")
+	}
+	large, ok := m.Sizes["large"]
+	if !ok {
+		t.Fatal("sizes.large not found")
+	}
+	if large.Summarizer == nil {
+		t.Fatal("sizes.large.summarizer should not be nil")
+	}
+
+	// agents
+	codex, ok := m.Agents["codex"]
+	if !ok {
+		t.Fatal("agents.codex not found")
+	}
+	if codex.Reviewer == nil {
+		t.Fatal("agents.codex.reviewer should not be nil")
+	}
+	if codex.Reviewer.Model != "gpt-5.4-mini" {
+		t.Errorf("agents.codex.reviewer.model: got %q, want %q", codex.Reviewer.Model, "gpt-5.4-mini")
+	}
+	if codex.ArchReviewer == nil || codex.ArchReviewer.Effort != "high" {
+		t.Errorf("agents.codex.arch_reviewer.effort: got %+v, want effort=high", codex.ArchReviewer)
+	}
+	if codex.DiffReviewer == nil || codex.DiffReviewer.Effort != "medium" {
+		t.Errorf("agents.codex.diff_reviewer.effort: got %+v, want effort=medium", codex.DiffReviewer)
+	}
+	claude, ok := m.Agents["claude"]
+	if !ok {
+		t.Fatal("agents.claude not found")
+	}
+	if claude.Reviewer == nil {
+		t.Fatal("agents.claude.reviewer should not be nil")
+	}
+	if claude.Reviewer.Effort != "max" {
+		t.Errorf("agents.claude.reviewer.effort: got %q, want %q", claude.Reviewer.Effort, "max")
+	}
+}
+
+func TestConfig_ModelsSection_UnknownKey_Warns(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, ".acr.yaml")
+
+	content := `models:
+  defaults:
+    unknown_role: { model: gpt-5.4-mini }
+`
+	if err := os.WriteFile(configPath, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := LoadFromPathWithWarnings(configPath)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(result.Warnings) == 0 {
+		t.Fatal("expected warning for unknown role key, got none")
+	}
+	found := false
+	for _, w := range result.Warnings {
+		if strings.Contains(w, "unknown_role") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected warning mentioning 'unknown_role', got: %v", result.Warnings)
+	}
+}
+
+func TestConfig_ModelsSection_AgentsMustBeSupported(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, ".acr.yaml")
+
+	content := `models:
+  agents:
+    unknown_agent:
+      reviewer: { model: gpt-5.4-mini }
+`
+	if err := os.WriteFile(configPath, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := LoadFromPathWithWarnings(configPath)
+	if err == nil {
+		t.Fatal("expected error for unsupported agent in models.agents, got nil")
+	}
+	if !strings.Contains(err.Error(), "unknown_agent") {
+		t.Errorf("expected error mentioning 'unknown_agent', got: %v", err)
+	}
+}
+
+func TestConfig_ModelsSection_EmptySectionOK(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, ".acr.yaml")
+
+	content := `reviewers: 3
+`
+	if err := os.WriteFile(configPath, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := LoadFromPathWithWarnings(configPath)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	m := result.Config.Models
+	if m.Defaults.Reviewer != nil {
+		t.Error("expected Models.Defaults.Reviewer to be nil when models section absent")
+	}
+	if len(m.Sizes) != 0 {
+		t.Errorf("expected Models.Sizes to be empty, got %v", m.Sizes)
+	}
+	if len(m.Agents) != 0 {
+		t.Errorf("expected Models.Agents to be empty, got %v", m.Agents)
+	}
+	if result.Config.Reviewers == nil || *result.Config.Reviewers != 3 {
+		t.Error("expected Reviewers=3 to still be set correctly")
+	}
+}
+
+// --- F#1: CLI-vs-legacy model precedence markers ---
+
+func TestResolve_ReviewerModelFromCLI_FlagSet(t *testing.T) {
+	r := Resolve(&Config{}, EnvState{}, FlagState{ReviewerModelSet: true}, ResolvedConfig{ReviewerModel: "gpt-cli"})
+	if !r.ReviewerModelFromCLI {
+		t.Errorf("expected ReviewerModelFromCLI=true when flag is set")
+	}
+	if r.ReviewerModel != "gpt-cli" {
+		t.Errorf("expected ReviewerModel=gpt-cli, got %q", r.ReviewerModel)
+	}
+}
+
+func TestResolve_ReviewerModelFromCLI_EnvSet(t *testing.T) {
+	r := Resolve(&Config{}, EnvState{ReviewerModel: "gpt-env", ReviewerModelSet: true}, FlagState{}, ResolvedConfig{})
+	if !r.ReviewerModelFromCLI {
+		t.Errorf("expected ReviewerModelFromCLI=true when env is set")
+	}
+}
+
+func TestResolve_ReviewerModelFromCLI_ConfigOnly(t *testing.T) {
+	s := "gpt-cfg"
+	r := Resolve(&Config{ReviewerModel: &s}, EnvState{}, FlagState{}, ResolvedConfig{})
+	if r.ReviewerModelFromCLI {
+		t.Errorf("expected ReviewerModelFromCLI=false when only config sets ReviewerModel")
+	}
+	if r.ReviewerModel != "gpt-cfg" {
+		t.Errorf("expected ReviewerModel=gpt-cfg, got %q", r.ReviewerModel)
+	}
+}
+
+func TestResolve_SummarizerModelFromCLI(t *testing.T) {
+	r := Resolve(&Config{}, EnvState{}, FlagState{SummarizerModelSet: true}, ResolvedConfig{SummarizerModel: "sum-cli"})
+	if !r.SummarizerModelFromCLI {
+		t.Errorf("expected SummarizerModelFromCLI=true when flag is set")
+	}
+}
+
+func TestResolve_CrossCheckModelFromCLI(t *testing.T) {
+	r := Resolve(&Config{}, EnvState{CrossCheckModel: "cc-env", CrossCheckModelSet: true}, FlagState{}, ResolvedConfig{})
+	if !r.CrossCheckModelFromCLI {
+		t.Errorf("expected CrossCheckModelFromCLI=true when env is set")
+	}
+}
+
+// --- F#3: models.sizes key + effort validation ---
+
+func TestConfig_ModelsSizes_UnknownSizeKeyRejected(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, ".acr.yaml")
+
+	content := `models:
+  sizes:
+    larg:
+      reviewer: { model: gpt-5.4 }
+`
+	if err := os.WriteFile(configPath, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := LoadFromPathWithWarnings(configPath)
+	if err == nil {
+		t.Fatal("expected error for unknown size key, got nil")
+	}
+	if !strings.Contains(err.Error(), "unknown size key") {
+		t.Errorf("expected error to mention 'unknown size key', got: %v", err)
+	}
+	if !strings.Contains(err.Error(), `"larg"`) {
+		t.Errorf("expected error to mention the bad key %q, got: %v", "larg", err)
+	}
+}
+
+func TestConfig_ModelsEffort_CodexXhighRejected(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, ".acr.yaml")
+
+	content := `models:
+  agents:
+    codex:
+      reviewer: { model: gpt-5.4, effort: xhigh }
+`
+	if err := os.WriteFile(configPath, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := LoadFromPathWithWarnings(configPath)
+	if err == nil {
+		t.Fatal("expected error for xhigh on codex, got nil")
+	}
+	if !strings.Contains(err.Error(), "xhigh") {
+		t.Errorf("expected error to mention 'xhigh', got: %v", err)
+	}
+}
+
+func TestConfig_ModelsEffort_GeminiEffortRejected(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, ".acr.yaml")
+
+	content := `models:
+  agents:
+    gemini:
+      reviewer: { model: gemini-2.5-pro, effort: low }
+`
+	if err := os.WriteFile(configPath, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := LoadFromPathWithWarnings(configPath)
+	if err == nil {
+		t.Fatal("expected error for effort on gemini, got nil")
+	}
+	if !strings.Contains(err.Error(), "effort") {
+		t.Errorf("expected error to mention 'effort', got: %v", err)
+	}
+}
+
+func TestConfig_ModelsEffort_DefaultsXhighAccepted(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, ".acr.yaml")
+
+	content := `models:
+  defaults:
+    reviewer: { model: gpt-5.4, effort: xhigh }
+`
+	if err := os.WriteFile(configPath, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := LoadFromPathWithWarnings(configPath)
+	if err != nil {
+		t.Fatalf("expected no error for xhigh in defaults (loose set), got: %v", err)
+	}
+	if result.Config.Models.Defaults.Reviewer == nil || result.Config.Models.Defaults.Reviewer.Effort != "xhigh" {
+		t.Errorf("expected defaults.reviewer.effort=xhigh, got %+v", result.Config.Models.Defaults.Reviewer)
+	}
+}
+
+func TestConfig_ModelsEffort_ClaudeMaxAccepted(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, ".acr.yaml")
+
+	content := `models:
+  agents:
+    claude:
+      reviewer: { model: sonnet-4-6, effort: max }
+`
+	if err := os.WriteFile(configPath, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := LoadFromPathWithWarnings(configPath)
+	if err != nil {
+		t.Fatalf("expected no error for claude.effort=max, got: %v", err)
+	}
+}
+
+func TestConfig_ModelsEffort_CaseInsensitive_Defaults(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, ".acr.yaml")
+
+	content := `models:
+  defaults:
+    reviewer: { model: gpt-5.4, effort: High }
+    summarizer: { model: gpt-5.4, effort: XHIGH }
+    fp_filter: { model: gpt-5.4, effort: Low }
+`
+	if err := os.WriteFile(configPath, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := LoadFromPathWithWarnings(configPath)
+	if err != nil {
+		t.Fatalf("expected case-insensitive effort to be accepted in defaults, got: %v", err)
+	}
+	if result.Config.Models.Defaults.Reviewer == nil || result.Config.Models.Defaults.Reviewer.Effort != "High" {
+		t.Errorf("expected defaults.reviewer.effort=High, got %+v", result.Config.Models.Defaults.Reviewer)
+	}
+	if result.Config.Models.Defaults.Summarizer == nil || result.Config.Models.Defaults.Summarizer.Effort != "XHIGH" {
+		t.Errorf("expected defaults.summarizer.effort=XHIGH, got %+v", result.Config.Models.Defaults.Summarizer)
+	}
+}
+
+func TestConfig_ModelsEffort_CaseInsensitive_Sizes(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, ".acr.yaml")
+
+	content := `models:
+  sizes:
+    small:
+      reviewer: { model: gpt-5.4-mini, effort: LOW }
+    large:
+      arch_reviewer: { model: gpt-5.4, effort: MediuM }
+`
+	if err := os.WriteFile(configPath, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := LoadFromPathWithWarnings(configPath)
+	if err != nil {
+		t.Fatalf("expected case-insensitive effort to be accepted in sizes, got: %v", err)
+	}
+	small := result.Config.Models.Sizes["small"]
+	if small.Reviewer == nil || small.Reviewer.Effort != "LOW" {
+		t.Errorf("expected sizes.small.reviewer.effort=LOW, got %+v", small.Reviewer)
+	}
+	large := result.Config.Models.Sizes["large"]
+	if large.ArchReviewer == nil || large.ArchReviewer.Effort != "MediuM" {
+		t.Errorf("expected sizes.large.arch_reviewer.effort=MediuM, got %+v", large.ArchReviewer)
+	}
+}
+
+func TestConfig_ModelsEffort_CaseInsensitive_Agents(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, ".acr.yaml")
+
+	content := `models:
+  agents:
+    codex:
+      reviewer: { model: gpt-5.4, effort: MEDIUM }
+    claude:
+      reviewer: { model: sonnet-4-6, effort: Max }
+`
+	if err := os.WriteFile(configPath, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := LoadFromPathWithWarnings(configPath)
+	if err != nil {
+		t.Fatalf("expected case-insensitive effort to be accepted in agents, got: %v", err)
+	}
+	codex := result.Config.Models.Agents["codex"]
+	if codex.Reviewer == nil || codex.Reviewer.Effort != "MEDIUM" {
+		t.Errorf("expected agents.codex.reviewer.effort=MEDIUM, got %+v", codex.Reviewer)
+	}
+	claude := result.Config.Models.Agents["claude"]
+	if claude.Reviewer == nil || claude.Reviewer.Effort != "Max" {
+		t.Errorf("expected agents.claude.reviewer.effort=Max, got %+v", claude.Reviewer)
+	}
+}
+
+func TestConfig_ModelsEffort_CaseInsensitive_StillRejectsInvalid(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, ".acr.yaml")
+
+	content := `models:
+  defaults:
+    reviewer: { model: gpt-5.4, effort: ULTRA }
+`
+	if err := os.WriteFile(configPath, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := LoadFromPathWithWarnings(configPath)
+	if err == nil {
+		t.Fatal("expected error for invalid effort 'ULTRA', got nil")
+	}
+	if !strings.Contains(err.Error(), "ULTRA") {
+		t.Errorf("expected error to mention 'ULTRA', got: %v", err)
+	}
+}

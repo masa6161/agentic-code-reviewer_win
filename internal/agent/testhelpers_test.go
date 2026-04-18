@@ -161,3 +161,40 @@ func prepareMockCLI(t *testing.T, name, mode string) {
 	t.Setenv(agentTestHelperEnv, "1")
 	t.Setenv(agentTestHelperModeEnv, mode)
 }
+
+// parseHelperArgs extracts the argv received by the mock CLI helper.
+// It accepts both "args" mode (raw newline-separated) and "args-prefix-stdin"
+// mode (each arg prefixed with "ARG:"). Lines that do not look like an arg
+// (e.g., copied stdin payload) are skipped. The returned slice preserves the
+// order in which the helper saw the arguments.
+func parseHelperArgs(output string) []string {
+	var args []string
+	prefix := "ARG:"
+	hasPrefix := strings.Contains(output, prefix)
+	for _, line := range strings.Split(output, "\n") {
+		if hasPrefix {
+			if strings.HasPrefix(line, prefix) {
+				args = append(args, strings.TrimPrefix(line, prefix))
+			}
+			continue
+		}
+		// Plain "args" mode: every non-empty line up until the first blank
+		// line is an arg. Stop at the first blank to avoid pulling in copied
+		// stdin payload (when the helper is in args-prefix-stdin variants).
+		if line == "" {
+			break
+		}
+		args = append(args, line)
+	}
+	return args
+}
+
+// argIndex returns the index of target in args, or -1 if missing.
+func argIndex(args []string, target string) int {
+	for i, a := range args {
+		if a == target {
+			return i
+		}
+	}
+	return -1
+}

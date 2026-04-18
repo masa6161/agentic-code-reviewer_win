@@ -59,28 +59,51 @@ func CreateAgents(names []string) ([]Agent, error) {
 // CreateAgentsWithModel creates Agent instances for the given names with an optional model override.
 // If model is empty, agents use their default models.
 // Validates all agent CLIs are available (fail fast).
+//
+// Deprecated: prefer CreateAgentsFromSpecs for new call sites so per-agent
+// effort and model can be resolved independently.
 func CreateAgentsWithModel(names []string, model string) ([]Agent, error) {
-	agents := make([]Agent, 0, len(names))
-	seen := make(map[string]Agent)
+	specs := make([]AgentSpec, len(names))
+	for i, n := range names {
+		specs[i] = AgentSpec{Name: n, Options: AgentOptions{Model: model}}
+	}
+	return CreateAgentsFromSpecs(specs)
+}
 
-	for _, name := range names {
-		// Reuse existing agent instance if same name appears multiple times
-		if existing, ok := seen[name]; ok {
+// AgentSpec pairs an agent name with its construction options. Used by
+// CreateAgentsFromSpecs to build a reviewer cohort where each agent instance
+// may have a distinct model/effort resolved from the (size, role, agent) tuple.
+type AgentSpec struct {
+	Name    string
+	Options AgentOptions
+}
+
+// CreateAgentsFromSpecs creates Agent instances for the given specs.
+// Agents are deduplicated by (Name, Options) so callers can pass repeated
+// entries (e.g., for reviewer round-robin) without constructing duplicate
+// backends. Validates all agent CLIs are available (fail fast).
+func CreateAgentsFromSpecs(specs []AgentSpec) ([]Agent, error) {
+	agents := make([]Agent, 0, len(specs))
+	seen := make(map[AgentSpec]Agent)
+
+	for _, spec := range specs {
+		// Reuse existing agent instance if same (name, options) tuple appears multiple times
+		if existing, ok := seen[spec]; ok {
 			agents = append(agents, existing)
 			continue
 		}
 
-		agent, err := NewAgentWithModel(name, model)
+		a, err := NewAgentWithOptions(spec.Name, spec.Options)
 		if err != nil {
 			return nil, err
 		}
 
-		if err := agent.IsAvailable(); err != nil {
-			return nil, fmt.Errorf("%s CLI not found: %w", name, err)
+		if err := a.IsAvailable(); err != nil {
+			return nil, fmt.Errorf("%s CLI not found: %w", spec.Name, err)
 		}
 
-		seen[name] = agent
-		agents = append(agents, agent)
+		seen[spec] = a
+		agents = append(agents, a)
 	}
 
 	return agents, nil
