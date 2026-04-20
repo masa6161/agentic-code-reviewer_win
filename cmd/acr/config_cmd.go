@@ -192,6 +192,11 @@ func newConfigValidateCmd() *cobra.Command {
 			resolved := config.Resolve(resolveConfig, envState, config.FlagState{}, config.Defaults)
 			validationErrs := resolved.ValidateAll()
 			errors = append(errors, validationErrs...)
+			// Round-9: enforce runtime-only contracts (cross-check model
+			// requirement when enabled) so `config validate` mirrors what
+			// the actual review run will reject.
+			runtimeErrs := resolved.ValidateRuntime()
+			errors = append(errors, runtimeErrs...)
 
 			// Validate guidance file is readable (uses same resolution logic as runtime)
 			_, guidanceErr := config.ResolveGuidance(cfg, envState, config.FlagState{}, config.Defaults, configDir)

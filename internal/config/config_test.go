@@ -1602,6 +1602,84 @@ func TestResolvedConfig_Validate_EmptyCrossCheckAgent(t *testing.T) {
 	}
 }
 
+// TestResolve_RejectsCrossCheckEnabledWithoutModel asserts the round-9 contract:
+// when cross_check.enabled=true (the default) AND cross_check.model is empty,
+// ValidateRuntime returns a fail-fast error directing the user to either supply
+// a model or explicitly disable cross-check. ValidateRuntime (not ValidateAll)
+// is used so YAML-only Config.Validate() does not false-positive on configs
+// that legitimately defer the model to env/CLI.
+func TestResolve_RejectsCrossCheckEnabledWithoutModel(t *testing.T) {
+	wantSubstr := "cross_check.enabled=true requires cross_check.model"
+
+	t.Run("defaults_only", func(t *testing.T) {
+		// Bare defaults: enabled=true, model="" -> must reject at runtime.
+		resolved := Resolve(&Config{}, EnvState{}, FlagState{}, Defaults)
+		errs := resolved.ValidateRuntime()
+		if !containsSubstr(errs, wantSubstr) {
+			t.Fatalf("expected error containing %q, got: %v", wantSubstr, errs)
+		}
+		// And ValidateAll must NOT include it (parse-time tests must stay green
+		// for users who supply the model via env/CLI later).
+		if containsSubstr(resolved.ValidateAll(), wantSubstr) {
+			t.Fatalf("ValidateAll must not enforce runtime cross-check guard")
+		}
+	})
+
+	t.Run("env_disable_only_no_model", func(t *testing.T) {
+		// User disables via env (resolved.CrossCheckEnabled=false) -> ok even
+		// when model is empty.
+		env := EnvState{CrossCheckEnabled: false, CrossCheckEnabledSet: true}
+		resolved := Resolve(&Config{}, env, FlagState{}, Defaults)
+		if errs := resolved.ValidateRuntime(); containsSubstr(errs, wantSubstr) {
+			t.Fatalf("did not expect cross-check error when disabled, got: %v", errs)
+		}
+	})
+
+	t.Run("flag_supplies_model", func(t *testing.T) {
+		flagState := FlagState{CrossCheckModelSet: true}
+		flagValues := Defaults
+		flagValues.CrossCheckModel = "gpt-flag"
+		resolved := Resolve(&Config{}, EnvState{}, flagState, flagValues)
+		if errs := resolved.ValidateRuntime(); containsSubstr(errs, wantSubstr) {
+			t.Fatalf("did not expect cross-check error when --cross-check-model set, got: %v", errs)
+		}
+	})
+
+	t.Run("env_supplies_model", func(t *testing.T) {
+		env := EnvState{CrossCheckModel: "env-model", CrossCheckModelSet: true}
+		resolved := Resolve(&Config{}, env, FlagState{}, Defaults)
+		if errs := resolved.ValidateRuntime(); containsSubstr(errs, wantSubstr) {
+			t.Fatalf("did not expect cross-check error when ACR_CROSS_CHECK_MODEL set, got: %v", errs)
+		}
+	})
+
+	t.Run("yaml_supplies_model", func(t *testing.T) {
+		cfg := &Config{CrossCheck: CrossCheckConfig{Model: strPtr("yaml-model")}}
+		resolved := Resolve(cfg, EnvState{}, FlagState{}, Defaults)
+		if errs := resolved.ValidateRuntime(); containsSubstr(errs, wantSubstr) {
+			t.Fatalf("did not expect cross-check error when yaml model set, got: %v", errs)
+		}
+	})
+
+	t.Run("whitespace_only_model_rejected", func(t *testing.T) {
+		// "   " is not a valid model: contract uses TrimSpace.
+		cfg := &Config{CrossCheck: CrossCheckConfig{Model: strPtr("   ")}}
+		resolved := Resolve(cfg, EnvState{}, FlagState{}, Defaults)
+		if errs := resolved.ValidateRuntime(); !containsSubstr(errs, wantSubstr) {
+			t.Fatalf("expected whitespace-only model to be rejected, got: %v", errs)
+		}
+	})
+}
+
+func containsSubstr(errs []string, want string) bool {
+	for _, e := range errs {
+		if strings.Contains(e, want) {
+			return true
+		}
+	}
+	return false
+}
+
 func TestResolve_CrossCheckPrecedence(t *testing.T) {
 	cfg := &Config{
 		CrossCheck: CrossCheckConfig{
@@ -2391,5 +2469,151 @@ func TestConfig_ModelsEffort_CaseInsensitive_StillRejectsInvalid(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "ULTRA") {
 		t.Errorf("expected error to mention 'ULTRA', got: %v", err)
+	}
+}
+
+// --- Round-9: per-phase reviewer agent override tests ---
+
+func TestResolve_ArchReviewerAgent_FromYAML(t *testing.T) {
+	cfg := &Config{
+		ReviewerAgents:    []string{"codex", "claude", "gemini"},
+		ArchReviewerAgent: strPtr("claude"),
+	}
+	result := Resolve(cfg, EnvState{}, FlagState{}, ResolvedConfig{})
+	if result.ArchReviewerAgent != "claude" {
+		t.Errorf("expected ArchReviewerAgent='claude', got %q", result.ArchReviewerAgent)
+	}
+	if len(result.ReviewerAgents) != 3 {
+		t.Errorf("reviewer_agents should be preserved, got %v", result.ReviewerAgents)
+	}
+}
+
+func TestResolve_DiffReviewerAgents_FromYAML(t *testing.T) {
+	cfg := &Config{
+		ReviewerAgents:     []string{"codex", "claude", "gemini"},
+		DiffReviewerAgents: []string{"codex", "claude"},
+	}
+	result := Resolve(cfg, EnvState{}, FlagState{}, ResolvedConfig{})
+	if len(result.DiffReviewerAgents) != 2 {
+		t.Fatalf("expected 2 diff reviewer agents, got %d", len(result.DiffReviewerAgents))
+	}
+	if result.DiffReviewerAgents[0] != "codex" || result.DiffReviewerAgents[1] != "claude" {
+		t.Errorf("expected [codex claude], got %v", result.DiffReviewerAgents)
+	}
+}
+
+func TestResolve_ArchReviewerAgent_CLIOverridesYAML(t *testing.T) {
+	cfg := &Config{
+		ReviewerAgents:    []string{"codex"},
+		ArchReviewerAgent: strPtr("claude"),
+	}
+	envState := EnvState{ArchReviewerAgent: "gemini", ArchReviewerAgentSet: true}
+	flagState := FlagState{ArchReviewerAgentSet: true}
+	flagValues := ResolvedConfig{ArchReviewerAgent: "codex"}
+
+	result := Resolve(cfg, envState, flagState, flagValues)
+
+	if result.ArchReviewerAgent != "codex" {
+		t.Errorf("expected CLI value 'codex' to win, got %q", result.ArchReviewerAgent)
+	}
+}
+
+func TestResolve_DiffReviewerAgents_EnvOverridesYAML(t *testing.T) {
+	cfg := &Config{
+		ReviewerAgents:     []string{"codex"},
+		DiffReviewerAgents: []string{"claude"},
+	}
+	envState := EnvState{
+		DiffReviewerAgents:    []string{"gemini", "codex"},
+		DiffReviewerAgentsSet: true,
+	}
+	result := Resolve(cfg, envState, FlagState{}, ResolvedConfig{})
+
+	if len(result.DiffReviewerAgents) != 2 {
+		t.Fatalf("expected 2 diff reviewer agents, got %v", result.DiffReviewerAgents)
+	}
+	if result.DiffReviewerAgents[0] != "gemini" {
+		t.Errorf("expected env value 'gemini' first, got %q", result.DiffReviewerAgents[0])
+	}
+}
+
+func TestResolve_DiffReviewerAgents_DefaultsEmpty(t *testing.T) {
+	cfg := &Config{ReviewerAgents: []string{"codex"}}
+	result := Resolve(cfg, EnvState{}, FlagState{}, ResolvedConfig{})
+	if len(result.DiffReviewerAgents) != 0 {
+		t.Errorf("expected empty DiffReviewerAgents when unset, got %v", result.DiffReviewerAgents)
+	}
+	if result.ArchReviewerAgent != "" {
+		t.Errorf("expected empty ArchReviewerAgent when unset, got %q", result.ArchReviewerAgent)
+	}
+}
+
+func TestResolve_ArchReviewerAgent_RejectsUnsupportedAgent(t *testing.T) {
+	cfg := &Config{
+		ReviewerAgents:    []string{"codex"},
+		ArchReviewerAgent: strPtr("notarealagent"),
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected validation error for unsupported arch_reviewer_agent")
+	} else if !strings.Contains(err.Error(), "arch_reviewer_agent") {
+		t.Errorf("expected error mentioning arch_reviewer_agent, got: %v", err)
+	}
+}
+
+func TestResolve_DiffReviewerAgents_RejectsUnsupportedAgent(t *testing.T) {
+	cfg := &Config{
+		ReviewerAgents:     []string{"codex"},
+		DiffReviewerAgents: []string{"codex", "notarealagent"},
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected validation error for unsupported diff_reviewer_agents entry")
+	} else if !strings.Contains(err.Error(), "diff_reviewer_agents") {
+		t.Errorf("expected error mentioning diff_reviewer_agents, got: %v", err)
+	}
+}
+
+func TestLoadEnvState_ArchReviewerAgent(t *testing.T) {
+	original := os.Getenv("ACR_ARCH_REVIEWER_AGENT")
+	defer func() {
+		if original != "" {
+			os.Setenv("ACR_ARCH_REVIEWER_AGENT", original)
+		} else {
+			os.Unsetenv("ACR_ARCH_REVIEWER_AGENT")
+		}
+	}()
+
+	os.Setenv("ACR_ARCH_REVIEWER_AGENT", "claude")
+	state, warnings := LoadEnvState()
+	if len(warnings) != 0 {
+		t.Errorf("expected no warnings, got %v", warnings)
+	}
+	if !state.ArchReviewerAgentSet {
+		t.Error("expected ArchReviewerAgentSet=true")
+	}
+	if state.ArchReviewerAgent != "claude" {
+		t.Errorf("expected ArchReviewerAgent='claude', got %q", state.ArchReviewerAgent)
+	}
+}
+
+func TestLoadEnvState_DiffReviewerAgents(t *testing.T) {
+	original := os.Getenv("ACR_DIFF_REVIEWER_AGENTS")
+	defer func() {
+		if original != "" {
+			os.Setenv("ACR_DIFF_REVIEWER_AGENTS", original)
+		} else {
+			os.Unsetenv("ACR_DIFF_REVIEWER_AGENTS")
+		}
+	}()
+
+	os.Setenv("ACR_DIFF_REVIEWER_AGENTS", "codex, claude")
+	state, warnings := LoadEnvState()
+	if len(warnings) != 0 {
+		t.Errorf("expected no warnings, got %v", warnings)
+	}
+	if !state.DiffReviewerAgentsSet {
+		t.Error("expected DiffReviewerAgentsSet=true")
+	}
+	if len(state.DiffReviewerAgents) != 2 || state.DiffReviewerAgents[0] != "codex" || state.DiffReviewerAgents[1] != "claude" {
+		t.Errorf("expected [codex claude], got %v", state.DiffReviewerAgents)
 	}
 }

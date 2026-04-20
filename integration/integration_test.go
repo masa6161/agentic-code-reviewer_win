@@ -414,6 +414,10 @@ func TestConfigSubcommands(t *testing.T) {
 	})
 
 	t.Run("config validate", func(t *testing.T) {
+		// Round-9: cross_check.enabled defaults true and now requires a
+		// model. Supply via env so this test exercises the happy path it
+		// claims to cover, not the cross-check guard.
+		t.Setenv("ACR_CROSS_CHECK_MODEL", "test-cc-model")
 		_, _, exitCode := env.run("config", "validate")
 		if exitCode != 0 {
 			t.Errorf("exit code = %d, want 0", exitCode)

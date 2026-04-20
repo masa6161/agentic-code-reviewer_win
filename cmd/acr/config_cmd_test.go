@@ -90,6 +90,11 @@ func TestConfigValidate_ValidConfig(t *testing.T) {
 	chdir(t, dir)
 	initGitRepo(t, dir)
 
+	// Round-9: cross_check defaults to enabled and now requires a model.
+	// Supply via env so this test exercises the "valid" path it claims to
+	// test, not the cross-check guard.
+	t.Setenv("ACR_CROSS_CHECK_MODEL", "test-cc-model")
+
 	cmd := newConfigCmd()
 	buf := new(bytes.Buffer)
 	cmd.SetOut(buf)
@@ -213,6 +218,8 @@ func TestConfigValidate_ValidGuidanceFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("ACR_GUIDANCE_FILE", guidancePath)
+	// Round-9: cross-check guard requires a model when enabled (default on).
+	t.Setenv("ACR_CROSS_CHECK_MODEL", "test-cc-model")
 
 	cmd := newConfigCmd()
 	buf := new(bytes.Buffer)

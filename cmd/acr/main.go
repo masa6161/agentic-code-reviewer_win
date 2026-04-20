@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -18,6 +19,27 @@ import (
 	"github.com/richhaase/agentic-code-reviewer/internal/github"
 	"github.com/richhaase/agentic-code-reviewer/internal/terminal"
 )
+
+// parseDiffReviewerAgentsFlag splits a comma-separated agent string into
+// trimmed names. Returns nil for an empty input so callers can distinguish
+// "flag set" from "flag set to empty" (the latter falls back to ReviewerAgents
+// in config.Resolve).
+func parseDiffReviewerAgentsFlag(input string) []string {
+	if strings.TrimSpace(input) == "" {
+		return nil
+	}
+	parts := strings.Split(input, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if name := strings.TrimSpace(p); name != "" {
+			out = append(out, name)
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
 
 var (
 	reviewers           int
@@ -37,6 +59,8 @@ var (
 	excludePatterns     []string
 	noConfig            bool
 	agentName           string
+	archReviewerAgent   string
+	diffReviewerAgents  string
 	summarizerAgentName string
 	reviewerModel       string
 	summarizerModel     string
@@ -119,6 +143,10 @@ Exit codes:
 		"Skip loading .acr.yaml config file")
 	rootCmd.Flags().StringVarP(&agentName, "reviewer-agent", "a", "codex",
 		"Agent(s) for reviews (comma-separated): codex, claude, gemini (env: ACR_REVIEWER_AGENT)")
+	rootCmd.Flags().StringVar(&archReviewerAgent, "arch-reviewer-agent", "",
+		"Single agent for arch phase in auto-phase grouped diff (default: same as first --reviewer-agent, env: ACR_ARCH_REVIEWER_AGENT)")
+	rootCmd.Flags().StringVar(&diffReviewerAgents, "diff-reviewer-agents", "",
+		"Agent(s) for diff phase in auto-phase grouped diff, comma-separated (default: same as --reviewer-agent, env: ACR_DIFF_REVIEWER_AGENTS)")
 	rootCmd.Flags().StringVarP(&summarizerAgentName, "summarizer-agent", "s", "codex",
 		"Agent to use for summarization: codex, claude, gemini (env: ACR_SUMMARIZER_AGENT)")
 	rootCmd.Flags().StringVar(&reviewerModel, "reviewer-model", "",
@@ -369,30 +397,32 @@ func loadAndResolveConfig(cmd *cobra.Command, wt worktreeResult, logger *termina
 	fetchFlagSet := cmd.Flags().Changed("fetch") || cmd.Flags().Changed("no-fetch")
 	autoPhaseAnySet := cmd.Flags().Changed("auto-phase") || cmd.Flags().Changed("no-auto-phase")
 	flagState := config.FlagState{
-		ReviewersSet:         cmd.Flags().Changed("reviewers"),
-		ConcurrencySet:       cmd.Flags().Changed("concurrency"),
-		BaseSet:              cmd.Flags().Changed("base") || wt.baseAutoDetected,
-		TimeoutSet:           cmd.Flags().Changed("timeout"),
-		RetriesSet:           cmd.Flags().Changed("retries"),
-		FetchSet:             fetchFlagSet,
-		ReviewerAgentsSet:    cmd.Flags().Changed("reviewer-agent"),
-		SummarizerAgentSet:   cmd.Flags().Changed("summarizer-agent"),
-		ReviewerModelSet:     cmd.Flags().Changed("reviewer-model"),
-		SummarizerModelSet:   cmd.Flags().Changed("summarizer-model"),
-		SummarizerTimeoutSet: cmd.Flags().Changed("summarizer-timeout"),
-		FPFilterTimeoutSet:   cmd.Flags().Changed("fp-filter-timeout"),
-		GuidanceSet:          cmd.Flags().Changed("guidance"),
-		GuidanceFileSet:      cmd.Flags().Changed("guidance-file"),
-		NoFPFilterSet:        cmd.Flags().Changed("no-fp-filter"),
-		FPThresholdSet:       cmd.Flags().Changed("fp-threshold"),
-		NoPRFeedbackSet:      cmd.Flags().Changed("no-pr-feedback"),
-		PRFeedbackAgentSet:   cmd.Flags().Changed("pr-feedback-agent"),
-		NoCrossCheckSet:      cmd.Flags().Changed("no-cross-check"),
-		CrossCheckAgentSet:   cmd.Flags().Changed("cross-check-agent"),
-		CrossCheckModelSet:   cmd.Flags().Changed("cross-check-model"),
-		CrossCheckTimeoutSet: cmd.Flags().Changed("cross-check-timeout"),
-		AutoPhaseSet:         autoPhaseAnySet,
-		StrictSet:            cmd.Flags().Changed("strict"),
+		ReviewersSet:          cmd.Flags().Changed("reviewers"),
+		ConcurrencySet:        cmd.Flags().Changed("concurrency"),
+		BaseSet:               cmd.Flags().Changed("base") || wt.baseAutoDetected,
+		TimeoutSet:            cmd.Flags().Changed("timeout"),
+		RetriesSet:            cmd.Flags().Changed("retries"),
+		FetchSet:              fetchFlagSet,
+		ReviewerAgentsSet:     cmd.Flags().Changed("reviewer-agent"),
+		ArchReviewerAgentSet:  cmd.Flags().Changed("arch-reviewer-agent"),
+		DiffReviewerAgentsSet: cmd.Flags().Changed("diff-reviewer-agents"),
+		SummarizerAgentSet:    cmd.Flags().Changed("summarizer-agent"),
+		ReviewerModelSet:      cmd.Flags().Changed("reviewer-model"),
+		SummarizerModelSet:    cmd.Flags().Changed("summarizer-model"),
+		SummarizerTimeoutSet:  cmd.Flags().Changed("summarizer-timeout"),
+		FPFilterTimeoutSet:    cmd.Flags().Changed("fp-filter-timeout"),
+		GuidanceSet:           cmd.Flags().Changed("guidance"),
+		GuidanceFileSet:       cmd.Flags().Changed("guidance-file"),
+		NoFPFilterSet:         cmd.Flags().Changed("no-fp-filter"),
+		FPThresholdSet:        cmd.Flags().Changed("fp-threshold"),
+		NoPRFeedbackSet:       cmd.Flags().Changed("no-pr-feedback"),
+		PRFeedbackAgentSet:    cmd.Flags().Changed("pr-feedback-agent"),
+		NoCrossCheckSet:       cmd.Flags().Changed("no-cross-check"),
+		CrossCheckAgentSet:    cmd.Flags().Changed("cross-check-agent"),
+		CrossCheckModelSet:    cmd.Flags().Changed("cross-check-model"),
+		CrossCheckTimeoutSet:  cmd.Flags().Changed("cross-check-timeout"),
+		AutoPhaseSet:          autoPhaseAnySet,
+		StrictSet:             cmd.Flags().Changed("strict"),
 	}
 
 	// Load env var state
@@ -414,30 +444,32 @@ func loadAndResolveConfig(cmd *cobra.Command, wt worktreeResult, logger *termina
 
 	autoPhaseValue := autoPhase && !noAutoPhase
 	flagValues := config.ResolvedConfig{
-		Reviewers:         reviewers,
-		Concurrency:       concurrency,
-		Base:              resolvedBaseRef,
-		Timeout:           timeout,
-		Retries:           retries,
-		Fetch:             fetchValue,
-		ReviewerAgents:    agent.ParseAgentNames(agentName),
-		SummarizerAgent:   summarizerAgentName,
-		ReviewerModel:     reviewerModel,
-		SummarizerModel:   summarizerModel,
-		SummarizerTimeout: summarizerTimeout,
-		FPFilterTimeout:   fpFilterTimeout,
-		Guidance:          guidance,
-		GuidanceFile:      guidanceFile,
-		FPFilterEnabled:   !noFPFilter,
-		FPThreshold:       fpThreshold,
-		PRFeedbackEnabled: !noPRFeedback,
-		PRFeedbackAgent:   prFeedbackAgent,
-		CrossCheckEnabled: !noCrossCheck,
-		CrossCheckAgent:   crossCheckAgent,
-		CrossCheckModel:   crossCheckModel,
-		CrossCheckTimeout: crossCheckTimeout,
-		AutoPhase:         autoPhaseValue,
-		Strict:            strict,
+		Reviewers:          reviewers,
+		Concurrency:        concurrency,
+		Base:               resolvedBaseRef,
+		Timeout:            timeout,
+		Retries:            retries,
+		Fetch:              fetchValue,
+		ReviewerAgents:     agent.ParseAgentNames(agentName),
+		ArchReviewerAgent:  strings.TrimSpace(archReviewerAgent),
+		DiffReviewerAgents: parseDiffReviewerAgentsFlag(diffReviewerAgents),
+		SummarizerAgent:    summarizerAgentName,
+		ReviewerModel:      reviewerModel,
+		SummarizerModel:    summarizerModel,
+		SummarizerTimeout:  summarizerTimeout,
+		FPFilterTimeout:    fpFilterTimeout,
+		Guidance:           guidance,
+		GuidanceFile:       guidanceFile,
+		FPFilterEnabled:    !noFPFilter,
+		FPThreshold:        fpThreshold,
+		PRFeedbackEnabled:  !noPRFeedback,
+		PRFeedbackAgent:    prFeedbackAgent,
+		CrossCheckEnabled:  !noCrossCheck,
+		CrossCheckAgent:    crossCheckAgent,
+		CrossCheckModel:    crossCheckModel,
+		CrossCheckTimeout:  crossCheckTimeout,
+		AutoPhase:          autoPhaseValue,
+		Strict:             strict,
 	}
 
 	// Resolve final configuration (precedence: flags > env vars > config file > defaults)
@@ -457,9 +489,19 @@ func loadAndResolveConfig(cmd *cobra.Command, wt worktreeResult, logger *termina
 		}
 	}
 
-	// Validate resolved config
+	// Validate resolved config (semantic checks shared with config validate).
 	if err := resolved.Validate(); err != nil {
 		logger.Logf(terminal.StyleError, "%v", err)
+		return configResult{}, exitCode(domain.ExitError)
+	}
+	// Round-9: enforce runtime-only contracts that need the merged view of
+	// flags+env+yaml (e.g., cross_check.enabled=true requires cross_check.model
+	// somewhere). Done as a separate pass so YAML-only Validate() does not
+	// false-positive on configs that defer the model to env/CLI.
+	if runtimeErrs := resolved.ValidateRuntime(); len(runtimeErrs) > 0 {
+		for _, e := range runtimeErrs {
+			logger.Logf(terminal.StyleError, "%s", e)
+		}
 		return configResult{}, exitCode(domain.ExitError)
 	}
 

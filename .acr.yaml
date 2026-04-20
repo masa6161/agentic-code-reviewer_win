@@ -25,6 +25,18 @@ reviewer_agents:
   - claude
   - gemini
 
+# NEW (Round-9): per-phase agent override for auto-phase grouped diff path.
+# - arch_reviewer_agent: single agent for the arch phase (sees full diff).
+#   If unset, falls back to the first entry of reviewer_agents.
+# - diff_reviewer_agents: list for the grouped diff phase (round-robin per group).
+#   If unset, falls back to reviewer_agents.
+# Use this to route unreliable backends (e.g., capacity-throttled providers)
+# away from grouped diff while keeping them in flat review.
+# arch_reviewer_agent: claude
+# diff_reviewer_agents:
+#   - codex
+#   - claude
+
 # Agent for summarization: codex, claude, gemini
 summarizer_agent: claude
 # Path to file containing review guidance
@@ -39,6 +51,13 @@ summarizer_agent: claude
 # fp_filter:
 #   enabled: true
 #   threshold: 75
+
+# Cross-check configuration (Round-9 contract: model is REQUIRED when enabled,
+# comma-separated count must match agent list, paired positionally).
+cross_check:
+  enabled: true
+  agent: "codex,claude,gemini"
+  model: "gpt-5.4,claude-opus-4-7,gemini-3.1-pro-preview"
 
 # PR feedback summarization
 # pr_feedback:
@@ -109,7 +128,7 @@ models:
   sizes:
     # 規模別の effort 上書き（model は agents 層に任せる）
     small:
-      reviewer:      { effort: low }
+      reviewer:      { effort: medium }
     large:
       arch_reviewer: { effort: high }
       diff_reviewer: { effort: high }

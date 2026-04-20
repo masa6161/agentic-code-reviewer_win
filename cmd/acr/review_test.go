@@ -151,7 +151,7 @@ func TestBuildGroupedDiffSpecs_BasicGroups(t *testing.T) {
 	fullDiff := git.JoinDiffSections(sections)
 
 	agents := []agent.Agent{agent.NewCodexAgent("")}
-	specs, err := buildGroupedDiffSpecs(fullDiff, "", true, agents, 4)
+	specs, err := buildGroupedDiffSpecs(fullDiff, "", true, agents[0], agents, 4)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -175,7 +175,7 @@ func TestBuildGroupedDiffSpecs_GroupKeysAssigned(t *testing.T) {
 	fullDiff := git.JoinDiffSections(sections)
 
 	agents := []agent.Agent{agent.NewCodexAgent("")}
-	specs, err := buildGroupedDiffSpecs(fullDiff, "", true, agents, 4)
+	specs, err := buildGroupedDiffSpecs(fullDiff, "", true, agents[0], agents, 4)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -198,7 +198,7 @@ func TestBuildGroupedDiffSpecs_TargetFilesSet(t *testing.T) {
 	fullDiff := git.JoinDiffSections(sections)
 
 	agents := []agent.Agent{agent.NewCodexAgent("")}
-	specs, err := buildGroupedDiffSpecs(fullDiff, "", true, agents, 4)
+	specs, err := buildGroupedDiffSpecs(fullDiff, "", true, agents[0], agents, 4)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -222,7 +222,7 @@ func TestBuildGroupedDiffSpecs_RespectsMaxGroups(t *testing.T) {
 	fullDiff := git.JoinDiffSections(sections)
 
 	agents := []agent.Agent{agent.NewCodexAgent("")}
-	specs, err := buildGroupedDiffSpecs(fullDiff, "", true, agents, 2)
+	specs, err := buildGroupedDiffSpecs(fullDiff, "", true, agents[0], agents, 2)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -238,7 +238,7 @@ func TestBuildGroupedDiffSpecs_SnapshotConsistency(t *testing.T) {
 	fullDiff := git.JoinDiffSections(sections)
 
 	agents := []agent.Agent{agent.NewCodexAgent("")}
-	specs, err := buildGroupedDiffSpecs(fullDiff, "", true, agents, 4)
+	specs, err := buildGroupedDiffSpecs(fullDiff, "", true, agents[0], agents, 4)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -260,7 +260,7 @@ func TestBuildGroupedDiffSpecs_SnapshotConsistency(t *testing.T) {
 
 func TestBuildGroupedDiffSpecs_FallbackOnError(t *testing.T) {
 	agents := []agent.Agent{agent.NewCodexAgent("")}
-	_, err := buildGroupedDiffSpecs("", "", true, agents, 4)
+	_, err := buildGroupedDiffSpecs("", "", true, agents[0], agents, 4)
 	if err == nil {
 		t.Fatal("expected error for empty diff, got nil")
 	}
@@ -274,7 +274,7 @@ func TestAutoPhase_Large_GroupedSpecs(t *testing.T) {
 	fullDiff := git.JoinDiffSections(sections)
 	agents := []agent.Agent{agent.NewCodexAgent("")}
 
-	apr := resolveAutoPhase(git.DiffSizeLarge, 3, fullDiff, "", true, agents)
+	apr := resolveAutoPhase(git.DiffSizeLarge, 3, fullDiff, "", true, agents[0], agents)
 
 	if !apr.UseGrouped {
 		t.Fatal("expected UseGrouped=true for large diff with 3 reviewers")
@@ -289,7 +289,7 @@ func TestAutoPhase_Large_GroupedSpecs(t *testing.T) {
 
 func TestAutoPhase_Large_FallbackTooFewReviewers(t *testing.T) {
 	// Large diff with reviewers=1 → fallback to arch,diff
-	apr := resolveAutoPhase(git.DiffSizeLarge, 1, "irrelevant", "", true, nil)
+	apr := resolveAutoPhase(git.DiffSizeLarge, 1, "irrelevant", "", true, nil, nil)
 
 	if apr.UseGrouped {
 		t.Fatal("expected UseGrouped=false for reviewers=1")
@@ -303,7 +303,7 @@ func TestAutoPhase_Large_FallbackOnError(t *testing.T) {
 	// Large diff but empty diff content → buildGroupedDiffSpecs fails → fallback
 	agents := []agent.Agent{agent.NewCodexAgent("")}
 
-	apr := resolveAutoPhase(git.DiffSizeLarge, 3, "", "", true, agents)
+	apr := resolveAutoPhase(git.DiffSizeLarge, 3, "", "", true, agents[0], agents)
 
 	if apr.UseGrouped {
 		t.Fatal("expected UseGrouped=false when buildGroupedDiffSpecs fails")
@@ -319,7 +319,7 @@ func TestAutoPhase_Large_MaxDiffGroupsClamped(t *testing.T) {
 	fullDiff := git.JoinDiffSections(sections)
 	agents := []agent.Agent{agent.NewCodexAgent("")}
 
-	apr := resolveAutoPhase(git.DiffSizeLarge, 6, fullDiff, "", true, agents)
+	apr := resolveAutoPhase(git.DiffSizeLarge, 6, fullDiff, "", true, agents[0], agents)
 
 	if !apr.UseGrouped {
 		t.Fatal("expected UseGrouped=true")
@@ -548,7 +548,7 @@ func TestResolveAutoPhase_AllGroupsEmpty_FallsBackToFlat(t *testing.T) {
 	fullDiff := git.JoinDiffSections(sections)
 	agents := []agent.Agent{agent.NewCodexAgent("")}
 
-	apr := resolveAutoPhase(git.DiffSizeLarge, 2, fullDiff, "", true, agents)
+	apr := resolveAutoPhase(git.DiffSizeLarge, 2, fullDiff, "", true, agents[0], agents)
 
 	if apr.UseGrouped {
 		t.Fatal("expected UseGrouped=false when diffGroupCount < 2")
@@ -569,7 +569,7 @@ func TestResolveAutoPhase_OneDiffGroup_FallsBackToFlat(t *testing.T) {
 	fullDiff := git.JoinDiffSections(sections)
 	agents := []agent.Agent{agent.NewCodexAgent("")}
 
-	apr := resolveAutoPhase(git.DiffSizeLarge, 2, fullDiff, "", true, agents)
+	apr := resolveAutoPhase(git.DiffSizeLarge, 2, fullDiff, "", true, agents[0], agents)
 
 	if apr.UseGrouped {
 		t.Fatal("expected UseGrouped=false for 1 diff group")
@@ -590,7 +590,7 @@ func TestResolveAutoPhase_TwoDiffGroups_KeepsGrouped(t *testing.T) {
 	fullDiff := git.JoinDiffSections(sections)
 	agents := []agent.Agent{agent.NewCodexAgent("")}
 
-	apr := resolveAutoPhase(git.DiffSizeLarge, 3, fullDiff, "", true, agents)
+	apr := resolveAutoPhase(git.DiffSizeLarge, 3, fullDiff, "", true, agents[0], agents)
 
 	if !apr.UseGrouped {
 		t.Fatal("expected UseGrouped=true for 2+ diff groups")
@@ -610,7 +610,7 @@ func TestLargeReview_GroupedSpecsProduceCrossCheckableTopology(t *testing.T) {
 	sections := makeSectionsForReview(8, 5)
 	fullDiff := git.JoinDiffSections(sections)
 	agents := []agent.Agent{agent.NewCodexAgent("")}
-	apr := resolveAutoPhase(git.DiffSizeLarge, 4, fullDiff, "", true, agents)
+	apr := resolveAutoPhase(git.DiffSizeLarge, 4, fullDiff, "", true, agents[0], agents)
 	if !apr.UseGrouped {
 		t.Fatal("expected UseGrouped=true for large diff with 4 reviewers")
 	}
@@ -647,9 +647,9 @@ func TestBuildCrossCheckContext_UsesSpecReviewerID(t *testing.T) {
 	}
 	aggregated := domain.AggregateFindings(rawFindings)
 	results := []domain.ReviewerResult{
-		{ReviewerID: 3, ExitCode: 0, Findings: []domain.Finding{rawFindings[0]}},  // arch succeeded
-		{ReviewerID: 5, ExitCode: 0, Findings: []domain.Finding{rawFindings[1]}},  // g01 succeeded
-		{ReviewerID: 7, ExitCode: -1, TimedOut: true},                              // g02 timed out
+		{ReviewerID: 3, ExitCode: 0, Findings: []domain.Finding{rawFindings[0]}}, // arch succeeded
+		{ReviewerID: 5, ExitCode: 0, Findings: []domain.Finding{rawFindings[1]}}, // g01 succeeded
+		{ReviewerID: 7, ExitCode: -1, TimedOut: true},                            // g02 timed out
 	}
 
 	ccCtx := buildCrossCheckContext(aggregated, specs, results)
@@ -1018,7 +1018,7 @@ func TestResolveAutoPhase_LargeReviewersOneTriggersOverride(t *testing.T) {
 	fullDiff := git.JoinDiffSections(sections)
 	agents := []agent.Agent{agent.NewCodexAgent("")}
 
-	apr := resolveAutoPhase(git.DiffSizeLarge, 1, fullDiff, "", true, agents)
+	apr := resolveAutoPhase(git.DiffSizeLarge, 1, fullDiff, "", true, agents[0], agents)
 
 	if apr.ReviewerOverride != 3 {
 		t.Errorf("expected ReviewerOverride=3, got %d", apr.ReviewerOverride)
@@ -1030,13 +1030,16 @@ func TestResolveAutoPhase_LargeReviewersOneTriggersOverride(t *testing.T) {
 
 // TestBuildGroupedDiffSpecs_EmptyGroupsSkipped_IDsContiguous verifies that when
 // buildGroupedDiffSpecs skips empty groups, the surviving specs have contiguous
-// ReviewerIDs (1,2,3,...) and each spec's agent matches AgentForReviewer(id).
+// ReviewerIDs (1,2,3,...). Round-9 contract: specs[0] is the arch spec
+// (always archAgent); specs[1..] round-robin through diffAgents starting from
+// diffAgents[0] for the 1st surviving diff group.
 func TestBuildGroupedDiffSpecs_EmptyGroupsSkipped_IDsContiguous(t *testing.T) {
 	sections := makeSectionsForReview(6, 10)
 	fullDiff := git.JoinDiffSections(sections)
-	agents := []agent.Agent{agent.NewCodexAgent(""), agent.NewCodexAgent("")}
+	diffAgents := []agent.Agent{agent.NewCodexAgent(""), agent.NewCodexAgent("")}
+	archAgent := agent.NewCodexAgent("")
 
-	specs, err := buildGroupedDiffSpecs(fullDiff, "", true, agents, 4)
+	specs, err := buildGroupedDiffSpecs(fullDiff, "", true, archAgent, diffAgents, 4)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1047,9 +1050,16 @@ func TestBuildGroupedDiffSpecs_EmptyGroupsSkipped_IDsContiguous(t *testing.T) {
 		if s.ReviewerID != wantID {
 			t.Errorf("specs[%d].ReviewerID = %d, want %d", i, s.ReviewerID, wantID)
 		}
-		wantAgent := agent.AgentForReviewer(agents, wantID)
-		if s.Agent != wantAgent {
-			t.Errorf("specs[%d].Agent mismatch: ReviewerID=%d should map to AgentForReviewer(%d)", i, s.ReviewerID, wantID)
+	}
+	// Arch spec uses archAgent.
+	if specs[0].Agent != archAgent {
+		t.Errorf("specs[0].Agent mismatch: expected archAgent")
+	}
+	// Diff specs round-robin diffAgents starting at index 0.
+	for i := 1; i < len(specs); i++ {
+		want := agent.AgentForReviewer(diffAgents, i)
+		if specs[i].Agent != want {
+			t.Errorf("specs[%d].Agent mismatch: expected diffAgents[%d]", i, (i-1)%len(diffAgents))
 		}
 	}
 }
@@ -1149,5 +1159,70 @@ func TestComputeVerdict_CrossCheckBlockingBeatsDegraded(t *testing.T) {
 	computeVerdictWithCCSignals(g, cc)
 	if g.Verdict != "blocking" {
 		t.Errorf("blocking finding must take precedence over degraded, got %q", g.Verdict)
+	}
+}
+
+// --- Round-9: per-phase reviewer agent override tests ---
+
+// TestBuildGroupedDiffSpecs_UsesArchAndDiffAgents verifies that when a
+// distinct archAgent and diffAgents slice are supplied, the arch spec uses
+// archAgent and the diff specs round-robin through diffAgents independently
+// of archAgent.
+func TestBuildGroupedDiffSpecs_UsesArchAndDiffAgents(t *testing.T) {
+	sections := makeSectionsForReview(8, 10)
+	fullDiff := git.JoinDiffSections(sections)
+
+	archAgent := agent.NewClaudeAgent("")
+	diffAgent1 := agent.NewCodexAgent("")
+	diffAgent2 := agent.NewGeminiAgent("")
+	diffAgents := []agent.Agent{diffAgent1, diffAgent2}
+
+	specs, err := buildGroupedDiffSpecs(fullDiff, "", true, archAgent, diffAgents, 4)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(specs) < 3 {
+		t.Fatalf("expected >=1 arch + 2 diff specs, got %d", len(specs))
+	}
+	if specs[0].Agent != archAgent {
+		t.Errorf("specs[0].Agent should be archAgent (claude), got %T name=%q", specs[0].Agent, specs[0].Agent.Name())
+	}
+	// Diff specs round-robin over diffAgents starting at index 0 (1-based reviewerIdx).
+	for i := 1; i < len(specs); i++ {
+		want := diffAgents[(i-1)%len(diffAgents)]
+		if specs[i].Agent != want {
+			t.Errorf("specs[%d].Agent = %s, want %s", i, specs[i].Agent.Name(), want.Name())
+		}
+	}
+}
+
+// TestBuildGroupedDiffSpecs_DiffAgentRoundRobinIndependent verifies that
+// the diff-phase round-robin starts from diffAgents[0] regardless of
+// archAgent identity (i.e. arch occupying ReviewerID=1 must not consume a
+// diff-agent slot).
+func TestBuildGroupedDiffSpecs_DiffAgentRoundRobinIndependent(t *testing.T) {
+	sections := makeSectionsForReview(6, 10)
+	fullDiff := git.JoinDiffSections(sections)
+
+	archAgent := agent.NewClaudeAgent("")
+	diffAgent1 := agent.NewCodexAgent("")
+	diffAgent2 := agent.NewGeminiAgent("")
+	diffAgents := []agent.Agent{diffAgent1, diffAgent2}
+
+	specs, err := buildGroupedDiffSpecs(fullDiff, "", true, archAgent, diffAgents, 4)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(specs) < 3 {
+		t.Fatalf("expected >=3 specs, got %d", len(specs))
+	}
+	// First diff spec (index 1) MUST be diffAgents[0] = codex,
+	// not gemini (which would happen if reviewerID=2 was used directly with
+	// the round-robin).
+	if specs[1].Agent != diffAgent1 {
+		t.Errorf("first diff spec should use diffAgents[0]=codex, got %s", specs[1].Agent.Name())
+	}
+	if specs[2].Agent != diffAgent2 {
+		t.Errorf("second diff spec should use diffAgents[1]=gemini, got %s", specs[2].Agent.Name())
 	}
 }
