@@ -145,21 +145,16 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 	}
 
 	// Resolve and validate cross-check agents (fail-fast).
-	ccAgentNames, ccModel := resolveCrossCheckAgents(opts)
-	// ccModel came from opts.CrossCheckModel (or SummarizerModel fallback inside
-	// resolveCrossCheckAgents). CrossCheckModelFromCLI reflects whether the raw
-	// opts.CrossCheckModel was a CLI/env override; when it's empty and we fell
-	// back to SummarizerModel, SummarizerModelFromCLI governs precedence instead.
-	ccFromCLI := opts.CrossCheckModelFromCLI
-	if opts.CrossCheckModel == "" {
-		ccFromCLI = opts.SummarizerModelFromCLI
+	ccAgentNames, ccModels, ccErr := resolveCrossCheckAgents(opts)
+	if ccErr != nil {
+		logger.Logf(terminal.StyleError, "%v", ccErr)
+		return domain.ExitError
 	}
-	// Resolve cross-check options per agent so that agents.<name>.cross_check
-	// overrides are honored when multiple agents are configured. The specs
-	// slice preserves caller order and is passed directly to CrossCheck.
+	// Per-agent model is positionally paired with the agent name.
+	// CrossCheckModel is now required, so no SummarizerModel fallback path remains.
 	ccSpecs := make([]summarizer.CrossCheckAgentSpec, 0, len(ccAgentNames))
-	for _, name := range ccAgentNames {
-		cliCCModel, legacyCCModel := cliOrLegacy(ccModel, ccFromCLI)
+	for i, name := range ccAgentNames {
+		cliCCModel, legacyCCModel := cliOrLegacy(ccModels[i], opts.CrossCheckModelFromCLI)
 		perSpec := modelconfig.Resolve(
 			opts.Models, sizeStr, modelconfig.RoleCrossCheck, name,
 			cliCCModel, "",
@@ -236,8 +231,8 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 		}
 		logger.Logf(terminal.StyleDim, "  summarizer        : %s", formatSpec(agent.AgentOptions{Model: summSpec.Model, Effort: summSpec.Effort}))
 		if opts.CrossCheckEnabled {
-			for _, name := range ccAgentNames {
-				cliCCModelLog, legacyCCModelLog := cliOrLegacy(ccModel, ccFromCLI)
+			for i, name := range ccAgentNames {
+				cliCCModelLog, legacyCCModelLog := cliOrLegacy(ccModels[i], opts.CrossCheckModelFromCLI)
 				perSpec := modelconfig.Resolve(
 					opts.Models, sizeStr, modelconfig.RoleCrossCheck, name,
 					cliCCModelLog, "",
@@ -729,25 +724,43 @@ func parsePhases(phaseStr string, totalReviewers int) ([]runner.PhaseConfig, err
 }
 
 // resolveCrossCheckAgents returns the resolved cross-check agent names and
-// model. Empty agent falls back to the summarizer agent; empty model falls
-// back to the summarizer model.
+// per-agent models. CrossCheckModel is REQUIRED when cross-check is enabled
+// and must be a comma-separated list whose count matches CrossCheckAgent
+// (after fallback to SummarizerAgent when CrossCheckAgent is unset). Agents
+// and models are paired positionally: agents[i] uses models[i].
+//
+// Returns (nil, nil, nil) when cross-check is disabled.
 //
 // NOTE: agent.ParseAgentNames("") returns []string{DefaultAgent} ("codex"),
 // so we must check the raw string BEFORE calling ParseAgentNames to detect
 // a truly-unset CrossCheckAgent and fall back to SummarizerAgent. This is
 // belt-and-suspenders even if config.Resolve already copies the value,
 // because the fallback here is the canonical resolution point.
-func resolveCrossCheckAgents(opts ReviewOpts) ([]string, string) {
+func resolveCrossCheckAgents(opts ReviewOpts) ([]string, []string, error) {
+	if !opts.CrossCheckEnabled {
+		return nil, nil, nil
+	}
+	if strings.TrimSpace(opts.CrossCheckModel) == "" {
+		return nil, nil, fmt.Errorf("--cross-check-model is required when cross-check is enabled (env: ACR_CROSS_CHECK_MODEL); supply a comma-separated model list paired 1:1 with --cross-check-agent")
+	}
+	rawModels := strings.Split(opts.CrossCheckModel, ",")
+	models := make([]string, 0, len(rawModels))
+	for _, m := range rawModels {
+		m = strings.TrimSpace(m)
+		if m == "" {
+			return nil, nil, fmt.Errorf("--cross-check-model contains an empty entry; check for leading/trailing/duplicate commas")
+		}
+		models = append(models, m)
+	}
 	agentSpec := opts.CrossCheckAgent
 	if strings.TrimSpace(agentSpec) == "" {
 		agentSpec = opts.SummarizerAgent
 	}
 	names := agent.ParseAgentNames(agentSpec)
-	model := opts.CrossCheckModel
-	if model == "" {
-		model = opts.SummarizerModel
+	if len(names) != len(models) {
+		return nil, nil, fmt.Errorf("--cross-check-agent (%d agents) and --cross-check-model (%d models) must have same count; agents and models are paired by position", len(names), len(models))
 	}
-	return names, model
+	return names, models, nil
 }
 
 // buildCrossCheckContext assembles the cross-check input context from review

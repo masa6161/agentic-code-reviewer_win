@@ -144,7 +144,7 @@ Exit codes:
 	rootCmd.Flags().StringVar(&crossCheckAgent, "cross-check-agent", "",
 		"Agent(s) for cross-check verification, comma-separated (default: same as --summarizer-agent, env: ACR_CROSS_CHECK_AGENT)")
 	rootCmd.Flags().StringVar(&crossCheckModel, "cross-check-model", "",
-		"LLM model for cross-check agent (default: same as --summarizer-model, env: ACR_CROSS_CHECK_MODEL)")
+		"LLM model(s) for cross-check, comma-separated, count must match --cross-check-agent (REQUIRED when cross-check enabled, env: ACR_CROSS_CHECK_MODEL)")
 	rootCmd.Flags().DurationVar(&crossCheckTimeout, "cross-check-timeout", 0,
 		"Timeout for cross-check phase (default: 5m, env: ACR_CROSS_CHECK_TIMEOUT)")
 	rootCmd.Flags().StringVar(&phase, "phase", "",

@@ -130,8 +130,47 @@ func replaceEnvVar(env []string, key, value string) ([]string, bool) {
 	return env, true
 }
 
+// isReviewInvocation reports whether `args` invokes the default review path
+// (rather than a subcommand like `config show`). The default review path is
+// the only one that triggers cross-check validation. We classify by the first
+// token: if it starts with '-', it's a flag for the root command (review).
+// Otherwise it's a subcommand name (e.g., "config", "version").
+func isReviewInvocation(args []string) bool {
+	if len(args) == 0 {
+		return false
+	}
+	return strings.HasPrefix(args[0], "-")
+}
+
+// hasCrossCheckOverride reports whether the caller already supplied any
+// cross-check related flag, in which case `run` should leave the args alone.
+func hasCrossCheckOverride(args []string) bool {
+	for _, a := range args {
+		switch {
+		case a == "--no-cross-check":
+			return true
+		case a == "--cross-check-model" || a == "--cross-check-agent" || a == "--cross-check-timeout":
+			return true
+		case strings.HasPrefix(a, "--cross-check-model=") ||
+			strings.HasPrefix(a, "--cross-check-agent=") ||
+			strings.HasPrefix(a, "--cross-check-timeout="):
+			return true
+		}
+	}
+	return false
+}
+
 // run executes acr with the given args and returns stdout, stderr, and exit code.
+//
+// Cross-check is auto-disabled unless the caller already configured it via
+// --cross-check-* flags. Round-9 made --cross-check-model required when
+// cross-check is enabled (default on); these integration tests exercise the
+// review pipeline and not cross-check, so opting out keeps them working
+// without forcing every callsite to spell out a model list.
 func (e *testEnv) run(args ...string) (stdout, stderr string, exitCode int) {
+	if isReviewInvocation(args) && !hasCrossCheckOverride(args) {
+		args = append([]string{"--no-cross-check"}, args...)
+	}
 	cmd := exec.Command(e.acrBin, args...)
 	cmd.Dir = e.repoDir
 	cmd.Env = e.withMockAgents()
@@ -672,7 +711,7 @@ func TestMissingAgentCLI(t *testing.T) {
 	copyIntegrationHelperBinary(t, noAgentDir, "gemini")
 	copyIntegrationHelperBinary(t, noAgentDir, "gh")
 
-	cmd := exec.Command(env.acrBin, "--local", "--reviewer-agent", "codex",
+	cmd := exec.Command(env.acrBin, "--local", "--no-cross-check", "--reviewer-agent", "codex",
 		"--summarizer-agent", "codex", "--base", "HEAD~1")
 	cmd.Dir = env.repoDir
 	// Prepend noAgentDir to PATH so the helper binaries shadow any real CLIs.

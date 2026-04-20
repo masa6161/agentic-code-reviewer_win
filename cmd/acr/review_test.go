@@ -430,116 +430,99 @@ func TestReviewPipeline_CrossCheckUsesAggregatedIDs(t *testing.T) {
 
 // --- resolveCrossCheckAgents tests ---
 
-func TestResolveCrossCheckAgents_EmptyFallsBackToSummarizer(t *testing.T) {
-	opts := ReviewOpts{
-		ResolvedConfig: config.ResolvedConfig{
-			SummarizerAgent: "codex",
-			SummarizerModel: "gpt-5",
-			CrossCheckAgent: "",
-			CrossCheckModel: "",
-		},
+func TestResolveCrossCheckAgents_DisabledReturnsNil(t *testing.T) {
+	opts := ReviewOpts{ResolvedConfig: config.ResolvedConfig{CrossCheckEnabled: false}}
+	names, models, err := resolveCrossCheckAgents(opts)
+	if err != nil {
+		t.Fatalf("disabled: unexpected error: %v", err)
 	}
-	names, model := resolveCrossCheckAgents(opts)
+	if names != nil || models != nil {
+		t.Errorf("disabled: expected nil names/models, got names=%v models=%v", names, models)
+	}
+}
+
+func TestResolveCrossCheckAgents_RequiresModel(t *testing.T) {
+	opts := ReviewOpts{ResolvedConfig: config.ResolvedConfig{
+		CrossCheckEnabled: true,
+		CrossCheckAgent:   "codex,claude",
+		CrossCheckModel:   "",
+	}}
+	_, _, err := resolveCrossCheckAgents(opts)
+	if err == nil {
+		t.Fatal("expected error when CrossCheckModel is empty")
+	}
+	if !strings.Contains(err.Error(), "required") {
+		t.Errorf("error should mention required, got: %v", err)
+	}
+}
+
+func TestResolveCrossCheckAgents_PairsAgentsAndModels(t *testing.T) {
+	opts := ReviewOpts{ResolvedConfig: config.ResolvedConfig{
+		CrossCheckEnabled: true,
+		CrossCheckAgent:   "codex,claude,gemini",
+		CrossCheckModel:   "gpt-5,opus,gemini-pro",
+	}}
+	names, models, err := resolveCrossCheckAgents(opts)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(names) != 3 || len(models) != 3 {
+		t.Fatalf("expected 3 agents and 3 models, got names=%v models=%v", names, models)
+	}
+	if names[0] != "codex" || models[0] != "gpt-5" {
+		t.Errorf("expected pair[0]=(codex,gpt-5), got (%s,%s)", names[0], models[0])
+	}
+	if names[1] != "claude" || models[1] != "opus" {
+		t.Errorf("expected pair[1]=(claude,opus), got (%s,%s)", names[1], models[1])
+	}
+	if names[2] != "gemini" || models[2] != "gemini-pro" {
+		t.Errorf("expected pair[2]=(gemini,gemini-pro), got (%s,%s)", names[2], models[2])
+	}
+}
+
+func TestResolveCrossCheckAgents_RejectsCountMismatch(t *testing.T) {
+	opts := ReviewOpts{ResolvedConfig: config.ResolvedConfig{
+		CrossCheckEnabled: true,
+		CrossCheckAgent:   "codex,claude,gemini",
+		CrossCheckModel:   "gpt-5,opus",
+	}}
+	_, _, err := resolveCrossCheckAgents(opts)
+	if err == nil {
+		t.Fatal("expected error when agent count != model count")
+	}
+	if !strings.Contains(err.Error(), "same count") {
+		t.Errorf("error should mention count mismatch, got: %v", err)
+	}
+}
+
+func TestResolveCrossCheckAgents_RejectsEmptyEntry(t *testing.T) {
+	opts := ReviewOpts{ResolvedConfig: config.ResolvedConfig{
+		CrossCheckEnabled: true,
+		CrossCheckAgent:   "codex,claude",
+		CrossCheckModel:   "gpt-5,",
+	}}
+	_, _, err := resolveCrossCheckAgents(opts)
+	if err == nil {
+		t.Fatal("expected error when CrossCheckModel has empty entry")
+	}
+}
+
+func TestResolveCrossCheckAgents_AgentDefaultsToSummarizer(t *testing.T) {
+	opts := ReviewOpts{ResolvedConfig: config.ResolvedConfig{
+		CrossCheckEnabled: true,
+		CrossCheckAgent:   "",
+		SummarizerAgent:   "codex",
+		CrossCheckModel:   "gpt-5",
+	}}
+	names, models, err := resolveCrossCheckAgents(opts)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if len(names) != 1 || names[0] != "codex" {
-		t.Errorf("expected fallback to summarizer agent, got %v", names)
+		t.Errorf("expected default to codex (summarizer agent), got %v", names)
 	}
-	if model != "gpt-5" {
-		t.Errorf("expected fallback to summarizer model, got %q", model)
-	}
-}
-
-func TestResolveCrossCheckAgents_Explicit(t *testing.T) {
-	opts := ReviewOpts{
-		ResolvedConfig: config.ResolvedConfig{
-			SummarizerAgent: "codex",
-			SummarizerModel: "gpt-5",
-			CrossCheckAgent: "claude,gemini",
-			CrossCheckModel: "opus",
-		},
-	}
-	names, model := resolveCrossCheckAgents(opts)
-	if len(names) != 2 || names[0] != "claude" || names[1] != "gemini" {
-		t.Errorf("expected [claude gemini], got %v", names)
-	}
-	if model != "opus" {
-		t.Errorf("expected 'opus', got %q", model)
-	}
-}
-
-func TestResolveCrossCheckAgents_EmptyFallsBackToSummarizer_NonCodex(t *testing.T) {
-	// Verifies fallback when SummarizerAgent is a non-default value (e.g. "claude").
-	// Before the fix, ParseAgentNames("") returned ["codex"] regardless.
-	opts := ReviewOpts{
-		ResolvedConfig: config.ResolvedConfig{
-			SummarizerAgent: "claude",
-			SummarizerModel: "opus",
-			CrossCheckAgent: "",
-			CrossCheckModel: "",
-		},
-	}
-	names, model := resolveCrossCheckAgents(opts)
-	if len(names) != 1 || names[0] != "claude" {
-		t.Errorf("expected fallback to summarizer agent [claude], got %v", names)
-	}
-	if model != "opus" {
-		t.Errorf("expected fallback to summarizer model 'opus', got %q", model)
-	}
-}
-
-func TestResolveCrossCheckAgents_EmptyFallsBackToSummarizerMultiValue(t *testing.T) {
-	// Verifies comma-separated SummarizerAgent is preserved when CrossCheckAgent is empty.
-	opts := ReviewOpts{
-		ResolvedConfig: config.ResolvedConfig{
-			SummarizerAgent: "codex,claude",
-			SummarizerModel: "gpt-5",
-			CrossCheckAgent: "",
-			CrossCheckModel: "",
-		},
-	}
-	names, model := resolveCrossCheckAgents(opts)
-	if len(names) != 2 || names[0] != "codex" || names[1] != "claude" {
-		t.Errorf("expected [codex claude], got %v", names)
-	}
-	if model != "gpt-5" {
-		t.Errorf("expected 'gpt-5', got %q", model)
-	}
-}
-
-func TestResolveCrossCheckAgents_ExplicitOverridesSummarizer(t *testing.T) {
-	// Verifies that a non-empty CrossCheckAgent takes precedence over SummarizerAgent.
-	opts := ReviewOpts{
-		ResolvedConfig: config.ResolvedConfig{
-			SummarizerAgent: "claude",
-			SummarizerModel: "opus",
-			CrossCheckAgent: "gemini",
-			CrossCheckModel: "",
-		},
-	}
-	names, model := resolveCrossCheckAgents(opts)
-	if len(names) != 1 || names[0] != "gemini" {
-		t.Errorf("expected [gemini], got %v", names)
-	}
-	if model != "opus" {
-		t.Errorf("expected model fallback to summarizer 'opus', got %q", model)
-	}
-}
-
-func TestResolveCrossCheckAgents_WhitespaceFallsBack(t *testing.T) {
-	// Verifies that a whitespace-only CrossCheckAgent is treated as unset.
-	opts := ReviewOpts{
-		ResolvedConfig: config.ResolvedConfig{
-			SummarizerAgent: "claude",
-			SummarizerModel: "sonnet",
-			CrossCheckAgent: "   ",
-			CrossCheckModel: "",
-		},
-	}
-	names, model := resolveCrossCheckAgents(opts)
-	if len(names) != 1 || names[0] != "claude" {
-		t.Errorf("expected fallback to [claude], got %v", names)
-	}
-	if model != "sonnet" {
-		t.Errorf("expected fallback to 'sonnet', got %q", model)
+	if len(models) != 1 || models[0] != "gpt-5" {
+		t.Errorf("expected single model, got %v", models)
 	}
 }
 
@@ -664,9 +647,9 @@ func TestBuildCrossCheckContext_UsesSpecReviewerID(t *testing.T) {
 	}
 	aggregated := domain.AggregateFindings(rawFindings)
 	results := []domain.ReviewerResult{
-		{ReviewerID: 3, ExitCode: 0, Findings: []domain.Finding{rawFindings[0]}}, // arch succeeded
-		{ReviewerID: 5, ExitCode: 0, Findings: []domain.Finding{rawFindings[1]}}, // g01 succeeded
-		{ReviewerID: 7, ExitCode: -1, TimedOut: true},                            // g02 timed out
+		{ReviewerID: 3, ExitCode: 0, Findings: []domain.Finding{rawFindings[0]}},  // arch succeeded
+		{ReviewerID: 5, ExitCode: 0, Findings: []domain.Finding{rawFindings[1]}},  // g01 succeeded
+		{ReviewerID: 7, ExitCode: -1, TimedOut: true},                              // g02 timed out
 	}
 
 	ccCtx := buildCrossCheckContext(aggregated, specs, results)
@@ -741,7 +724,7 @@ func TestReviewGate_NoFindings_AllAdvisory_StillLGTM(t *testing.T) {
 }
 
 // TestReviewGate_GroupedFindingsOnly_NotLGTM: grouped has findings (no cc) →
-// gate must return false (existing behavior preserved).
+// gate must return false (existing behaviour preserved).
 func TestReviewGate_GroupedFindingsOnly_NotLGTM(t *testing.T) {
 	grouped := domain.GroupedFindings{
 		Findings: []domain.FindingGroup{
@@ -1107,7 +1090,10 @@ func TestNoAutoPhase_ProducesFlatPath_WithVerdict(t *testing.T) {
 // only for testing; the production path lives at cmd/acr/review.go:~420.
 func computeVerdictWithCCSignals(g *domain.GroupedFindings, cc *summarizer.CrossCheckResult) {
 	ccBlocking := cc.HasBlockingFindings()
-	ccAdvisory := cc != nil && !ccBlocking && (cc.HasAdvisoryFindings() || cc.IsDegraded())
+	ccAdvisory := false
+	if cc != nil && !ccBlocking && (cc.HasAdvisoryFindings() || cc.IsDegraded()) {
+		ccAdvisory = true
+	}
 	g.ComputeVerdict(ccBlocking, ccAdvisory)
 }
 
