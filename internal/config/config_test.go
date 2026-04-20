@@ -1202,7 +1202,8 @@ func TestResolveGuidance_ConfigFileAbsolutePath(t *testing.T) {
 func clearACREnv(t *testing.T) {
 	t.Helper()
 	for _, key := range []string{
-		"ACR_REVIEWERS", "ACR_CONCURRENCY", "ACR_BASE_REF", "ACR_TIMEOUT",
+		"ACR_REVIEWERS", "ACR_DIFF_GROUPS", "ACR_MEDIUM_DIFF_REVIEWERS",
+		"ACR_CONCURRENCY", "ACR_BASE_REF", "ACR_TIMEOUT",
 		"ACR_RETRIES", "ACR_FETCH", "ACR_REVIEWER_AGENT", "ACR_SUMMARIZER_AGENT",
 		"ACR_SUMMARIZER_TIMEOUT", "ACR_FP_FILTER_TIMEOUT",
 		"ACR_GUIDANCE", "ACR_GUIDANCE_FILE", "ACR_FP_FILTER", "ACR_FP_THRESHOLD",
@@ -2615,5 +2616,163 @@ func TestLoadEnvState_DiffReviewerAgents(t *testing.T) {
 	}
 	if len(state.DiffReviewerAgents) != 2 || state.DiffReviewerAgents[0] != "codex" || state.DiffReviewerAgents[1] != "claude" {
 		t.Errorf("expected [codex claude], got %v", state.DiffReviewerAgents)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Tests for diff_groups and medium_diff_reviewers (auto-phase reviewer knobs)
+// ---------------------------------------------------------------------------
+
+func TestResolve_DiffGroups_FromYAML(t *testing.T) {
+	cfg := &Config{DiffGroups: ptr(7)}
+	result := Resolve(cfg, EnvState{}, FlagState{}, ResolvedConfig{})
+	if result.DiffGroups != 7 {
+		t.Errorf("expected diff_groups=7 from yaml, got %d", result.DiffGroups)
+	}
+}
+
+func TestResolve_DiffGroups_EnvOverridesYAML(t *testing.T) {
+	cfg := &Config{DiffGroups: ptr(7)}
+	envState := EnvState{DiffGroups: 9, DiffGroupsSet: true}
+	result := Resolve(cfg, envState, FlagState{}, ResolvedConfig{})
+	if result.DiffGroups != 9 {
+		t.Errorf("expected env diff_groups=9 to override yaml, got %d", result.DiffGroups)
+	}
+}
+
+func TestResolve_DiffGroups_CLIOverridesEnv(t *testing.T) {
+	cfg := &Config{DiffGroups: ptr(7)}
+	envState := EnvState{DiffGroups: 9, DiffGroupsSet: true}
+	flagState := FlagState{DiffGroupsSet: true}
+	flagValues := ResolvedConfig{DiffGroups: 12}
+	result := Resolve(cfg, envState, flagState, flagValues)
+	if result.DiffGroups != 12 {
+		t.Errorf("expected CLI diff_groups=12 to override env, got %d", result.DiffGroups)
+	}
+}
+
+func TestResolve_DiffGroups_DefaultsTo4(t *testing.T) {
+	result := Resolve(&Config{}, EnvState{}, FlagState{}, ResolvedConfig{})
+	if result.DiffGroups != 4 {
+		t.Errorf("expected default diff_groups=4, got %d", result.DiffGroups)
+	}
+	if Defaults.DiffGroups != 4 {
+		t.Errorf("expected Defaults.DiffGroups=4, got %d", Defaults.DiffGroups)
+	}
+}
+
+func TestResolve_MediumDiffReviewers_FromYAML(t *testing.T) {
+	cfg := &Config{MediumDiffReviewers: ptr(5)}
+	result := Resolve(cfg, EnvState{}, FlagState{}, ResolvedConfig{})
+	if result.MediumDiffReviewers != 5 {
+		t.Errorf("expected medium_diff_reviewers=5 from yaml, got %d", result.MediumDiffReviewers)
+	}
+}
+
+func TestResolve_MediumDiffReviewers_EnvOverridesYAML(t *testing.T) {
+	cfg := &Config{MediumDiffReviewers: ptr(5)}
+	envState := EnvState{MediumDiffReviewers: 8, MediumDiffReviewersSet: true}
+	result := Resolve(cfg, envState, FlagState{}, ResolvedConfig{})
+	if result.MediumDiffReviewers != 8 {
+		t.Errorf("expected env medium_diff_reviewers=8 to override yaml, got %d", result.MediumDiffReviewers)
+	}
+}
+
+func TestResolve_MediumDiffReviewers_CLIOverridesEnv(t *testing.T) {
+	cfg := &Config{MediumDiffReviewers: ptr(5)}
+	envState := EnvState{MediumDiffReviewers: 8, MediumDiffReviewersSet: true}
+	flagState := FlagState{MediumDiffReviewersSet: true}
+	flagValues := ResolvedConfig{MediumDiffReviewers: 11}
+	result := Resolve(cfg, envState, flagState, flagValues)
+	if result.MediumDiffReviewers != 11 {
+		t.Errorf("expected CLI medium_diff_reviewers=11 to override env, got %d", result.MediumDiffReviewers)
+	}
+}
+
+func TestResolve_MediumDiffReviewers_DefaultsTo2(t *testing.T) {
+	result := Resolve(&Config{}, EnvState{}, FlagState{}, ResolvedConfig{})
+	if result.MediumDiffReviewers != 2 {
+		t.Errorf("expected default medium_diff_reviewers=2, got %d", result.MediumDiffReviewers)
+	}
+	if Defaults.MediumDiffReviewers != 2 {
+		t.Errorf("expected Defaults.MediumDiffReviewers=2, got %d", Defaults.MediumDiffReviewers)
+	}
+}
+
+func TestValidate_RejectsZeroDiffGroups(t *testing.T) {
+	cfg := Defaults
+	cfg.DiffGroups = 0
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected error for diff_groups=0, got nil")
+	}
+	if !strings.Contains(err.Error(), "diff_groups must be >= 1") {
+		t.Errorf("expected 'diff_groups must be >= 1' in error, got: %v", err)
+	}
+}
+
+func TestValidate_RejectsZeroMediumDiffReviewers(t *testing.T) {
+	cfg := Defaults
+	cfg.MediumDiffReviewers = 0
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected error for medium_diff_reviewers=0, got nil")
+	}
+	if !strings.Contains(err.Error(), "medium_diff_reviewers must be >= 1") {
+		t.Errorf("expected 'medium_diff_reviewers must be >= 1' in error, got: %v", err)
+	}
+}
+
+func TestLoadEnvState_DiffGroups(t *testing.T) {
+	clearACREnv(t)
+	t.Setenv("ACR_DIFF_GROUPS", "6")
+	state, warnings := LoadEnvState()
+	if len(warnings) != 0 {
+		t.Errorf("expected no warnings, got %v", warnings)
+	}
+	if !state.DiffGroupsSet {
+		t.Error("expected DiffGroupsSet=true")
+	}
+	if state.DiffGroups != 6 {
+		t.Errorf("expected DiffGroups=6, got %d", state.DiffGroups)
+	}
+}
+
+func TestLoadEnvState_DiffGroups_Malformed(t *testing.T) {
+	clearACREnv(t)
+	t.Setenv("ACR_DIFF_GROUPS", "abc")
+	state, warnings := LoadEnvState()
+	if state.DiffGroupsSet {
+		t.Error("expected DiffGroupsSet=false for invalid value")
+	}
+	if !hasWarningContaining(warnings, "ACR_DIFF_GROUPS") {
+		t.Errorf("expected warning about ACR_DIFF_GROUPS, got %v", warnings)
+	}
+}
+
+func TestLoadEnvState_MediumDiffReviewers(t *testing.T) {
+	clearACREnv(t)
+	t.Setenv("ACR_MEDIUM_DIFF_REVIEWERS", "3")
+	state, warnings := LoadEnvState()
+	if len(warnings) != 0 {
+		t.Errorf("expected no warnings, got %v", warnings)
+	}
+	if !state.MediumDiffReviewersSet {
+		t.Error("expected MediumDiffReviewersSet=true")
+	}
+	if state.MediumDiffReviewers != 3 {
+		t.Errorf("expected MediumDiffReviewers=3, got %d", state.MediumDiffReviewers)
+	}
+}
+
+func TestLoadEnvState_MediumDiffReviewers_Malformed(t *testing.T) {
+	clearACREnv(t)
+	t.Setenv("ACR_MEDIUM_DIFF_REVIEWERS", "xyz")
+	state, warnings := LoadEnvState()
+	if state.MediumDiffReviewersSet {
+		t.Error("expected MediumDiffReviewersSet=false for invalid value")
+	}
+	if !hasWarningContaining(warnings, "ACR_MEDIUM_DIFF_REVIEWERS") {
+		t.Errorf("expected warning about ACR_MEDIUM_DIFF_REVIEWERS, got %v", warnings)
 	}
 }

@@ -43,6 +43,8 @@ func parseDiffReviewerAgentsFlag(input string) []string {
 
 var (
 	reviewers           int
+	diffGroups          int
+	mediumDiffReviewers int
 	concurrency         int
 	baseRef             string
 	timeout             time.Duration
@@ -107,7 +109,11 @@ Exit codes:
 
 	// Configuration flags (defaults are resolved via config.Resolve with precedence: flag > env > config > default)
 	rootCmd.Flags().IntVarP(&reviewers, "reviewers", "r", 0,
-		"Number of parallel reviewers (default: 5, env: ACR_REVIEWERS). Auto-phase bumps to minimum (medium:2, large:3) and clamps large to changed_files+1.")
+		"Number of parallel reviewers for flat review path (auto-phase OFF / size=small / explicit --phase). Auto-phase grouped/medium use --diff-groups / --medium-diff-reviewers instead. (default: 5, env: ACR_REVIEWERS)")
+	rootCmd.Flags().IntVar(&diffGroups, "diff-groups", 0,
+		"Number of diff groups in auto-phase grouped path (large diff) (default: 4, env: ACR_DIFF_GROUPS)")
+	rootCmd.Flags().IntVar(&mediumDiffReviewers, "medium-diff-reviewers", 0,
+		"Number of diff reviewers in auto-phase medium path (default: 2, env: ACR_MEDIUM_DIFF_REVIEWERS)")
 	rootCmd.Flags().IntVarP(&concurrency, "concurrency", "c", 0,
 		"Max concurrent reviewers (default: same as --reviewers, env: ACR_CONCURRENCY)")
 	rootCmd.Flags().StringVarP(&baseRef, "base", "b", "",
@@ -397,32 +403,34 @@ func loadAndResolveConfig(cmd *cobra.Command, wt worktreeResult, logger *termina
 	fetchFlagSet := cmd.Flags().Changed("fetch") || cmd.Flags().Changed("no-fetch")
 	autoPhaseAnySet := cmd.Flags().Changed("auto-phase") || cmd.Flags().Changed("no-auto-phase")
 	flagState := config.FlagState{
-		ReviewersSet:          cmd.Flags().Changed("reviewers"),
-		ConcurrencySet:        cmd.Flags().Changed("concurrency"),
-		BaseSet:               cmd.Flags().Changed("base") || wt.baseAutoDetected,
-		TimeoutSet:            cmd.Flags().Changed("timeout"),
-		RetriesSet:            cmd.Flags().Changed("retries"),
-		FetchSet:              fetchFlagSet,
-		ReviewerAgentsSet:     cmd.Flags().Changed("reviewer-agent"),
-		ArchReviewerAgentSet:  cmd.Flags().Changed("arch-reviewer-agent"),
-		DiffReviewerAgentsSet: cmd.Flags().Changed("diff-reviewer-agents"),
-		SummarizerAgentSet:    cmd.Flags().Changed("summarizer-agent"),
-		ReviewerModelSet:      cmd.Flags().Changed("reviewer-model"),
-		SummarizerModelSet:    cmd.Flags().Changed("summarizer-model"),
-		SummarizerTimeoutSet:  cmd.Flags().Changed("summarizer-timeout"),
-		FPFilterTimeoutSet:    cmd.Flags().Changed("fp-filter-timeout"),
-		GuidanceSet:           cmd.Flags().Changed("guidance"),
-		GuidanceFileSet:       cmd.Flags().Changed("guidance-file"),
-		NoFPFilterSet:         cmd.Flags().Changed("no-fp-filter"),
-		FPThresholdSet:        cmd.Flags().Changed("fp-threshold"),
-		NoPRFeedbackSet:       cmd.Flags().Changed("no-pr-feedback"),
-		PRFeedbackAgentSet:    cmd.Flags().Changed("pr-feedback-agent"),
-		NoCrossCheckSet:       cmd.Flags().Changed("no-cross-check"),
-		CrossCheckAgentSet:    cmd.Flags().Changed("cross-check-agent"),
-		CrossCheckModelSet:    cmd.Flags().Changed("cross-check-model"),
-		CrossCheckTimeoutSet:  cmd.Flags().Changed("cross-check-timeout"),
-		AutoPhaseSet:          autoPhaseAnySet,
-		StrictSet:             cmd.Flags().Changed("strict"),
+		ReviewersSet:           cmd.Flags().Changed("reviewers"),
+		DiffGroupsSet:          cmd.Flags().Changed("diff-groups"),
+		MediumDiffReviewersSet: cmd.Flags().Changed("medium-diff-reviewers"),
+		ConcurrencySet:         cmd.Flags().Changed("concurrency"),
+		BaseSet:                cmd.Flags().Changed("base") || wt.baseAutoDetected,
+		TimeoutSet:             cmd.Flags().Changed("timeout"),
+		RetriesSet:             cmd.Flags().Changed("retries"),
+		FetchSet:               fetchFlagSet,
+		ReviewerAgentsSet:      cmd.Flags().Changed("reviewer-agent"),
+		ArchReviewerAgentSet:   cmd.Flags().Changed("arch-reviewer-agent"),
+		DiffReviewerAgentsSet:  cmd.Flags().Changed("diff-reviewer-agents"),
+		SummarizerAgentSet:     cmd.Flags().Changed("summarizer-agent"),
+		ReviewerModelSet:       cmd.Flags().Changed("reviewer-model"),
+		SummarizerModelSet:     cmd.Flags().Changed("summarizer-model"),
+		SummarizerTimeoutSet:   cmd.Flags().Changed("summarizer-timeout"),
+		FPFilterTimeoutSet:     cmd.Flags().Changed("fp-filter-timeout"),
+		GuidanceSet:            cmd.Flags().Changed("guidance"),
+		GuidanceFileSet:        cmd.Flags().Changed("guidance-file"),
+		NoFPFilterSet:          cmd.Flags().Changed("no-fp-filter"),
+		FPThresholdSet:         cmd.Flags().Changed("fp-threshold"),
+		NoPRFeedbackSet:        cmd.Flags().Changed("no-pr-feedback"),
+		PRFeedbackAgentSet:     cmd.Flags().Changed("pr-feedback-agent"),
+		NoCrossCheckSet:        cmd.Flags().Changed("no-cross-check"),
+		CrossCheckAgentSet:     cmd.Flags().Changed("cross-check-agent"),
+		CrossCheckModelSet:     cmd.Flags().Changed("cross-check-model"),
+		CrossCheckTimeoutSet:   cmd.Flags().Changed("cross-check-timeout"),
+		AutoPhaseSet:           autoPhaseAnySet,
+		StrictSet:              cmd.Flags().Changed("strict"),
 	}
 
 	// Load env var state
@@ -444,32 +452,34 @@ func loadAndResolveConfig(cmd *cobra.Command, wt worktreeResult, logger *termina
 
 	autoPhaseValue := autoPhase && !noAutoPhase
 	flagValues := config.ResolvedConfig{
-		Reviewers:          reviewers,
-		Concurrency:        concurrency,
-		Base:               resolvedBaseRef,
-		Timeout:            timeout,
-		Retries:            retries,
-		Fetch:              fetchValue,
-		ReviewerAgents:     agent.ParseAgentNames(agentName),
-		ArchReviewerAgent:  strings.TrimSpace(archReviewerAgent),
-		DiffReviewerAgents: parseDiffReviewerAgentsFlag(diffReviewerAgents),
-		SummarizerAgent:    summarizerAgentName,
-		ReviewerModel:      reviewerModel,
-		SummarizerModel:    summarizerModel,
-		SummarizerTimeout:  summarizerTimeout,
-		FPFilterTimeout:    fpFilterTimeout,
-		Guidance:           guidance,
-		GuidanceFile:       guidanceFile,
-		FPFilterEnabled:    !noFPFilter,
-		FPThreshold:        fpThreshold,
-		PRFeedbackEnabled:  !noPRFeedback,
-		PRFeedbackAgent:    prFeedbackAgent,
-		CrossCheckEnabled:  !noCrossCheck,
-		CrossCheckAgent:    crossCheckAgent,
-		CrossCheckModel:    crossCheckModel,
-		CrossCheckTimeout:  crossCheckTimeout,
-		AutoPhase:          autoPhaseValue,
-		Strict:             strict,
+		Reviewers:           reviewers,
+		DiffGroups:          diffGroups,
+		MediumDiffReviewers: mediumDiffReviewers,
+		Concurrency:         concurrency,
+		Base:                resolvedBaseRef,
+		Timeout:             timeout,
+		Retries:             retries,
+		Fetch:               fetchValue,
+		ReviewerAgents:      agent.ParseAgentNames(agentName),
+		ArchReviewerAgent:   strings.TrimSpace(archReviewerAgent),
+		DiffReviewerAgents:  parseDiffReviewerAgentsFlag(diffReviewerAgents),
+		SummarizerAgent:     summarizerAgentName,
+		ReviewerModel:       reviewerModel,
+		SummarizerModel:     summarizerModel,
+		SummarizerTimeout:   summarizerTimeout,
+		FPFilterTimeout:     fpFilterTimeout,
+		Guidance:            guidance,
+		GuidanceFile:        guidanceFile,
+		FPFilterEnabled:     !noFPFilter,
+		FPThreshold:         fpThreshold,
+		PRFeedbackEnabled:   !noPRFeedback,
+		PRFeedbackAgent:     prFeedbackAgent,
+		CrossCheckEnabled:   !noCrossCheck,
+		CrossCheckAgent:     crossCheckAgent,
+		CrossCheckModel:     crossCheckModel,
+		CrossCheckTimeout:   crossCheckTimeout,
+		AutoPhase:           autoPhaseValue,
+		Strict:              strict,
 	}
 
 	// Resolve final configuration (precedence: flags > env vars > config file > defaults)

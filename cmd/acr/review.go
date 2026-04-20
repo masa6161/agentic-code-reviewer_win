@@ -279,6 +279,9 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 	phaseFromAuto := false
 	var useGroupedSpecs bool
 	var groupedSpecs []runner.ReviewerSpec
+	// mediumDiffCount > 0 → auto-phase chose arch,diff and the diff phase
+	// reviewer count must come from medium_diff_reviewers (not opts.Reviewers).
+	mediumDiffCount := 0
 	if shouldUseAutoPhase(opts) {
 		if !diffSizeClassified {
 			if opts.Verbose {
@@ -300,17 +303,13 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 				logger.Logf(terminal.StyleError, "Failed to build per-phase reviewer agents: %v", agentBuildErr)
 				return domain.ExitError
 			}
-			apr := resolveAutoPhase(size, opts.Reviewers, diff, opts.Guidance, diffPrecomputed, archAgentForPhase, diffAgentsForPhase)
-			// Apply reviewer-count override BEFORE any downstream consumer of
-			// opts.Reviewers (concurrency resolution, runner config, etc.).
-			if apr.ReviewerOverride > 0 && apr.ReviewerOverride != opts.Reviewers {
-				logger.Logf(terminal.StyleInfo, "[auto-phase] reviewers bumped %d -> %d (%s)",
-					opts.Reviewers, apr.ReviewerOverride, apr.FallbackReason)
-				opts.Reviewers = apr.ReviewerOverride
-			}
+			apr := resolveAutoPhase(size, diff, opts.Guidance, diffPrecomputed,
+				archAgentForPhase, diffAgentsForPhase,
+				opts.DiffGroups, opts.MediumDiffReviewers)
 			phaseStr = apr.PhaseStr
 			groupedSpecs = apr.GroupedSpecs
 			useGroupedSpecs = apr.UseGrouped
+			mediumDiffCount = apr.MediumDiffCount
 			// Enable per-phase role rebinding (arch_reviewer/diff_reviewer) only
 			// for medium/large diffs. Small diffs use flat diff review with the
 			// generic reviewer role.
@@ -318,13 +317,17 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 			if opts.Verbose {
 				switch {
 				case apr.UseGrouped:
-					logger.Logf(terminal.StyleDim, "Auto-phase: grouped (%d diff groups + arch)", len(groupedSpecs)-1)
-				case size == git.DiffSizeLarge && opts.Reviewers < 2:
-					logger.Logf(terminal.StyleWarning, "Auto-phase: --reviewers=%d too low for grouped diff, falling back to arch,diff", opts.Reviewers)
+					logger.Logf(terminal.StyleInfo, "Auto-phase: grouped (diff_groups=%d, arch+%d diff groups)",
+						opts.DiffGroups, len(groupedSpecs)-1)
+				case apr.MediumDiffCount > 0 && apr.FallbackReason != "":
+					logger.Logf(terminal.StyleWarning,
+						"Auto-phase: arch,diff (medium_diff_reviewers=%d) — fallback: %s",
+						apr.MediumDiffCount, apr.FallbackReason)
+				case apr.MediumDiffCount > 0:
+					logger.Logf(terminal.StyleInfo,
+						"Auto-phase: arch,diff (medium_diff_reviewers=%d)", apr.MediumDiffCount)
 				case apr.FallbackReason != "":
 					logger.Logf(terminal.StyleWarning, "Auto-phase: falling back to arch,diff (%s)", apr.FallbackReason)
-				case size == git.DiffSizeLarge && !apr.UseGrouped:
-					logger.Logf(terminal.StyleWarning, "Auto-phase: grouped diff setup failed, falling back to arch,diff")
 				}
 			}
 		}
@@ -357,7 +360,14 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 		actualReviewers = len(groupedSpecs)
 		r, err = runner.NewWithSpecs(runnerConfig, groupedSpecs, logger)
 	} else if phaseStr != "" {
-		phases, phaseErr := parsePhases(phaseStr, opts.Reviewers)
+		// Auto-phase medium/large fallback paths supply MediumDiffCount so the
+		// diff phase reviewer count comes from medium_diff_reviewers (NOT
+		// --reviewers, which is reserved for flat / explicit --phase paths).
+		totalForParse := opts.Reviewers
+		if mediumDiffCount > 0 {
+			totalForParse = mediumDiffCount + 1 // +1 for arch
+		}
+		phases, phaseErr := parsePhases(phaseStr, totalForParse)
 		if phaseErr != nil {
 			logger.Logf(terminal.StyleError, "Invalid --phase: %v", phaseErr)
 			return domain.ExitError
@@ -845,112 +855,84 @@ func buildCrossCheckContext(findings []domain.AggregatedFinding, specs []runner.
 
 // autoPhaseResult holds the outcome of resolveAutoPhase.
 type autoPhaseResult struct {
-	PhaseStr         string                // non-empty → use legacy phase path
-	GroupedSpecs     []runner.ReviewerSpec // non-nil → use grouped diff path
-	UseGrouped       bool
-	FallbackReason   string // non-empty when UseGrouped was downgraded to false
-	ReviewerOverride int    // 0 = no override; otherwise the enforced reviewer count
+	PhaseStr        string                // non-empty → use legacy phase path
+	GroupedSpecs    []runner.ReviewerSpec // non-nil → use grouped diff path
+	UseGrouped      bool
+	FallbackReason  string // non-empty when UseGrouped was downgraded to false
+	MediumDiffCount int    // 0 = not an arch,diff fallback; otherwise the diff-phase reviewer count to use with parsePhases (arch=1 + this)
 }
 
-// enforceReviewerBoundsForSize enforces per-size reviewer count bounds.
-//   - small: no change
-//   - medium: floor 2
-//   - large: floor 3, upper = fileCount + 1 (floored at 3)
+// resolveAutoPhase determines phase configuration based on diff size and the
+// new auto-phase knobs.
 //
-// Returns the final reviewer count and a short reason string when an override
-// applies. An empty reason means reviewers was already within bounds.
-func enforceReviewerBoundsForSize(size git.DiffSize, reviewers, fileCount int) (int, string) {
-	switch size {
-	case git.DiffSizeSmall:
-		return reviewers, ""
-	case git.DiffSizeMedium:
-		if reviewers < 2 {
-			return 2, fmt.Sprintf("medium diff requires >=2 reviewers; bumped from %d to 2", reviewers)
-		}
-		return reviewers, ""
-	case git.DiffSizeLarge:
-		const floor = 3
-		upper := fileCount + 1
-		if upper < floor {
-			upper = floor
-		}
-		if reviewers < floor {
-			return floor, fmt.Sprintf("large diff requires >=%d reviewers; bumped from %d to %d", floor, reviewers, floor)
-		}
-		if reviewers > upper {
-			return upper, fmt.Sprintf("large diff clamped to file_count+1 = %d; was %d", upper, reviewers)
-		}
-		return reviewers, ""
-	}
-	return reviewers, ""
-}
-
-// resolveAutoPhase determines phase configuration based on diff size and reviewer budget.
+//   - diffGroups: target group count for the grouped (large) path; capped by
+//     the actual file count to keep at least 1 file per group.
+//   - mediumDiffReviewers: diff-phase reviewer count for the medium path
+//     (arch,diff) and for any large fallback to arch,diff.
 //
 // archAgent and diffAgents are passed through to buildGroupedDiffSpecs so the
 // arch and diff phases can use distinct agent backends per
 // arch_reviewer_agent / diff_reviewer_agents config.
-func resolveAutoPhase(size git.DiffSize, reviewers int, diff, guidance string, diffPrecomputed bool, archAgent agent.Agent, diffAgents []agent.Agent) autoPhaseResult {
+//
+// `reviewers` is intentionally NOT a parameter: --reviewers is now reserved
+// for the flat path (auto-phase OFF / small / explicit --phase). Auto-phase
+// medium/large paths derive their concurrency from these dedicated knobs.
+func resolveAutoPhase(
+	size git.DiffSize,
+	diff, guidance string,
+	diffPrecomputed bool,
+	archAgent agent.Agent, diffAgents []agent.Agent,
+	diffGroups int,
+	mediumDiffReviewers int,
+) autoPhaseResult {
 	switch size {
 	case git.DiffSizeSmall:
-		// Small: no reviewer-count override; flat diff path.
+		// Small: flat diff path; reviewer count is taken from --reviewers by caller.
 		return autoPhaseResult{PhaseStr: "diff"}
 	case git.DiffSizeLarge:
-		// Count files for bounds enforcement (file_count+1 upper bound on large).
 		fileCount := len(git.ParseDiffSections(diff))
-		effectiveReviewers, boundsReason := enforceReviewerBoundsForSize(size, reviewers, fileCount)
-
-		apr := autoPhaseResult{}
-		if effectiveReviewers != reviewers {
-			apr.ReviewerOverride = effectiveReviewers
+		// Sanity cap: 1 group must contain at least 1 file.
+		effectiveGroups := diffGroups
+		if effectiveGroups > fileCount {
+			effectiveGroups = fileCount
 		}
-		appendReason := func(extra string) {
-			if extra == "" {
-				return
+		if effectiveGroups < 2 {
+			// Grouped path needs >=2 diff groups to be meaningful.
+			return autoPhaseResult{
+				PhaseStr:        "arch,diff",
+				MediumDiffCount: mediumDiffReviewers,
+				FallbackReason: fmt.Sprintf(
+					"only %d non-empty diff group(s) possible (file_count=%d, diff_groups=%d)",
+					effectiveGroups, fileCount, diffGroups),
 			}
-			if apr.FallbackReason == "" {
-				apr.FallbackReason = extra
-				return
-			}
-			apr.FallbackReason = apr.FallbackReason + "; " + extra
 		}
-		appendReason(boundsReason)
-
-		if effectiveReviewers < 2 {
-			apr.PhaseStr = "arch,diff"
-			return apr
-		}
-		maxDiffGroups := effectiveReviewers - 1
-		if maxDiffGroups > 4 {
-			maxDiffGroups = 4
-		}
-		specs, err := buildGroupedDiffSpecs(diff, guidance, diffPrecomputed, archAgent, diffAgents, maxDiffGroups)
+		specs, err := buildGroupedDiffSpecs(diff, guidance, diffPrecomputed, archAgent, diffAgents, effectiveGroups)
 		if err != nil {
-			apr.PhaseStr = "arch,diff"
-			return apr
+			return autoPhaseResult{
+				PhaseStr:        "arch,diff",
+				MediumDiffCount: mediumDiffReviewers,
+				FallbackReason:  fmt.Sprintf("buildGroupedDiffSpecs failed: %v", err),
+			}
 		}
 		// specs[0] is always the arch spec; remaining entries are diff groups.
-		// Grouped path requires at least 2 diff groups for a meaningful cross-check.
 		diffGroupCount := len(specs) - 1
 		if diffGroupCount < 2 {
-			apr.PhaseStr = "arch,diff"
-			appendReason(fmt.Sprintf("only %d non-empty diff group(s)", diffGroupCount))
-			return apr
+			return autoPhaseResult{
+				PhaseStr:        "arch,diff",
+				MediumDiffCount: mediumDiffReviewers,
+				FallbackReason:  fmt.Sprintf("only %d non-empty diff group(s) after building", diffGroupCount),
+			}
 		}
-		apr.GroupedSpecs = specs
-		apr.UseGrouped = true
-		return apr
+		return autoPhaseResult{
+			GroupedSpecs: specs,
+			UseGrouped:   true,
+		}
 	default: // medium
-		// Medium requires >=2 reviewers for meaningful arch+diff coverage.
-		effectiveReviewers, boundsReason := enforceReviewerBoundsForSize(size, reviewers, 0)
-		apr := autoPhaseResult{PhaseStr: "arch,diff"}
-		if effectiveReviewers != reviewers {
-			apr.ReviewerOverride = effectiveReviewers
+		// Medium: arch (1) + diff (mediumDiffReviewers).
+		return autoPhaseResult{
+			PhaseStr:        "arch,diff",
+			MediumDiffCount: mediumDiffReviewers,
 		}
-		if boundsReason != "" {
-			apr.FallbackReason = boundsReason
-		}
-		return apr
 	}
 }
 
@@ -1011,7 +993,9 @@ func buildPhaseAgents(opts ReviewOpts, sizeStr string) (agent.Agent, []agent.Age
 //   - N diff specs (per-group filtered diff, GroupKey="g01"..."gNN") with
 //     diffAgents assigned round-robin per non-empty diff group
 //
-// maxDiffGroups is clamped to min(--reviewers - 1, 4) by the caller.
+// maxDiffGroups is supplied by the caller (resolveAutoPhase) from the
+// dedicated `diff_groups` knob, capped at the actual file count so that
+// every group has at least 1 file.
 //
 // archAgent and diffAgents are independent so per-phase reviewer overrides
 // (arch_reviewer_agent / diff_reviewer_agents) can route phases to different

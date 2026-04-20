@@ -85,14 +85,16 @@ type ModelsConfig struct {
 }
 
 type Config struct {
-	Reviewers      *int      `yaml:"reviewers"`
-	Concurrency    *int      `yaml:"concurrency"`
-	Base           *string   `yaml:"base"`
-	Timeout        *Duration `yaml:"timeout"`
-	Retries        *int      `yaml:"retries"`
-	Fetch          *bool     `yaml:"fetch"`
-	ReviewerAgent  *string   `yaml:"reviewer_agent"`
-	ReviewerAgents []string  `yaml:"reviewer_agents"`
+	Reviewers           *int      `yaml:"reviewers"`
+	DiffGroups          *int      `yaml:"diff_groups"`
+	MediumDiffReviewers *int      `yaml:"medium_diff_reviewers"`
+	Concurrency         *int      `yaml:"concurrency"`
+	Base                *string   `yaml:"base"`
+	Timeout             *Duration `yaml:"timeout"`
+	Retries             *int      `yaml:"retries"`
+	Fetch               *bool     `yaml:"fetch"`
+	ReviewerAgent       *string   `yaml:"reviewer_agent"`
+	ReviewerAgents      []string  `yaml:"reviewer_agents"`
 	// ArchReviewerAgent is the optional per-phase override for the arch phase
 	// in auto-phase grouped diff. When unset (nil), it falls back to the first
 	// entry of ReviewerAgents.
@@ -221,7 +223,7 @@ func (c *Config) validatePatterns() error {
 	return nil
 }
 
-var knownTopLevelKeys = []string{"reviewers", "concurrency", "base", "timeout", "retries", "fetch", "reviewer_agent", "reviewer_agents", "arch_reviewer_agent", "diff_reviewer_agents", "summarizer_agent", "reviewer_model", "summarizer_model", "summarizer_timeout", "fp_filter_timeout", "cross_check_timeout", "guidance_file", "auto_phase", "filters", "fp_filter", "pr_feedback", "cross_check", "models"}
+var knownTopLevelKeys = []string{"reviewers", "diff_groups", "medium_diff_reviewers", "concurrency", "base", "timeout", "retries", "fetch", "reviewer_agent", "reviewer_agents", "arch_reviewer_agent", "diff_reviewer_agents", "summarizer_agent", "reviewer_model", "summarizer_model", "summarizer_timeout", "fp_filter_timeout", "cross_check_timeout", "guidance_file", "auto_phase", "filters", "fp_filter", "pr_feedback", "cross_check", "models"}
 
 var knownFPFilterKeys = []string{"enabled", "threshold"}
 
@@ -483,6 +485,12 @@ func (r *ResolvedConfig) ValidateAll() []string {
 	if r.Reviewers < 1 {
 		errs = append(errs, fmt.Sprintf("reviewers must be >= 1, got %d", r.Reviewers))
 	}
+	if r.DiffGroups < 1 {
+		errs = append(errs, fmt.Sprintf("diff_groups must be >= 1, got %d", r.DiffGroups))
+	}
+	if r.MediumDiffReviewers < 1 {
+		errs = append(errs, fmt.Sprintf("medium_diff_reviewers must be >= 1, got %d", r.MediumDiffReviewers))
+	}
 	if r.Concurrency < 0 {
 		errs = append(errs, fmt.Sprintf("concurrency must be >= 0, got %d", r.Concurrency))
 	}
@@ -657,36 +665,40 @@ func (r *ResolvedConfig) Validate() error {
 }
 
 var Defaults = ResolvedConfig{
-	Reviewers:         5,
-	Concurrency:       0,
-	Base:              "main",
-	Timeout:           10 * time.Minute,
-	Retries:           1,
-	Fetch:             true,
-	ReviewerAgents:    []string{agent.DefaultAgent},
-	SummarizerAgent:   agent.DefaultSummarizerAgent,
-	SummarizerTimeout: 5 * time.Minute,
-	FPFilterTimeout:   5 * time.Minute,
-	CrossCheckTimeout: 5 * time.Minute,
-	FPFilterEnabled:   true,
-	FPThreshold:       75,
-	PRFeedbackEnabled: true,
-	PRFeedbackAgent:   "", // empty means use summarizer agent
-	CrossCheckEnabled: true,
-	CrossCheckAgent:   "", // empty means use summarizer agent
-	CrossCheckModel:   "", // empty means use summarizer model
-	AutoPhase:         true,
-	Strict:            false,
+	Reviewers:           5,
+	DiffGroups:          4,
+	MediumDiffReviewers: 2,
+	Concurrency:         0,
+	Base:                "main",
+	Timeout:             10 * time.Minute,
+	Retries:             1,
+	Fetch:               true,
+	ReviewerAgents:      []string{agent.DefaultAgent},
+	SummarizerAgent:     agent.DefaultSummarizerAgent,
+	SummarizerTimeout:   5 * time.Minute,
+	FPFilterTimeout:     5 * time.Minute,
+	CrossCheckTimeout:   5 * time.Minute,
+	FPFilterEnabled:     true,
+	FPThreshold:         75,
+	PRFeedbackEnabled:   true,
+	PRFeedbackAgent:     "", // empty means use summarizer agent
+	CrossCheckEnabled:   true,
+	CrossCheckAgent:     "", // empty means use summarizer agent
+	CrossCheckModel:     "", // empty means use summarizer model
+	AutoPhase:           true,
+	Strict:              false,
 }
 
 type ResolvedConfig struct {
-	Reviewers      int
-	Concurrency    int
-	Base           string
-	Timeout        time.Duration
-	Retries        int
-	Fetch          bool
-	ReviewerAgents []string
+	Reviewers           int
+	DiffGroups          int
+	MediumDiffReviewers int
+	Concurrency         int
+	Base                string
+	Timeout             time.Duration
+	Retries             int
+	Fetch               bool
+	ReviewerAgents      []string
 	// ArchReviewerAgent is the per-phase override for the arch phase in
 	// auto-phase grouped diff. Empty string means fall back to the first
 	// entry of ReviewerAgents.
@@ -722,87 +734,93 @@ type ResolvedConfig struct {
 }
 
 type FlagState struct {
-	ReviewersSet          bool
-	ConcurrencySet        bool
-	BaseSet               bool
-	TimeoutSet            bool
-	RetriesSet            bool
-	FetchSet              bool
-	ReviewerAgentsSet     bool
-	ArchReviewerAgentSet  bool
-	DiffReviewerAgentsSet bool
-	SummarizerAgentSet    bool
-	ReviewerModelSet      bool
-	SummarizerModelSet    bool
-	SummarizerTimeoutSet  bool
-	FPFilterTimeoutSet    bool
-	CrossCheckTimeoutSet  bool
-	GuidanceSet           bool
-	GuidanceFileSet       bool
-	NoFPFilterSet         bool
-	FPThresholdSet        bool
-	NoPRFeedbackSet       bool
-	PRFeedbackAgentSet    bool
-	NoCrossCheckSet       bool
-	CrossCheckAgentSet    bool
-	CrossCheckModelSet    bool
-	AutoPhaseSet          bool
-	StrictSet             bool
+	ReviewersSet           bool
+	DiffGroupsSet          bool
+	MediumDiffReviewersSet bool
+	ConcurrencySet         bool
+	BaseSet                bool
+	TimeoutSet             bool
+	RetriesSet             bool
+	FetchSet               bool
+	ReviewerAgentsSet      bool
+	ArchReviewerAgentSet   bool
+	DiffReviewerAgentsSet  bool
+	SummarizerAgentSet     bool
+	ReviewerModelSet       bool
+	SummarizerModelSet     bool
+	SummarizerTimeoutSet   bool
+	FPFilterTimeoutSet     bool
+	CrossCheckTimeoutSet   bool
+	GuidanceSet            bool
+	GuidanceFileSet        bool
+	NoFPFilterSet          bool
+	FPThresholdSet         bool
+	NoPRFeedbackSet        bool
+	PRFeedbackAgentSet     bool
+	NoCrossCheckSet        bool
+	CrossCheckAgentSet     bool
+	CrossCheckModelSet     bool
+	AutoPhaseSet           bool
+	StrictSet              bool
 }
 
 type EnvState struct {
-	Reviewers             int
-	ReviewersSet          bool
-	Concurrency           int
-	ConcurrencySet        bool
-	Base                  string
-	BaseSet               bool
-	Timeout               time.Duration
-	TimeoutSet            bool
-	Retries               int
-	RetriesSet            bool
-	Fetch                 bool
-	FetchSet              bool
-	ReviewerAgents        []string
-	ReviewerAgentsSet     bool
-	ArchReviewerAgent     string
-	ArchReviewerAgentSet  bool
-	DiffReviewerAgents    []string
-	DiffReviewerAgentsSet bool
-	SummarizerAgent       string
-	SummarizerAgentSet    bool
-	ReviewerModel         string
-	ReviewerModelSet      bool
-	SummarizerModel       string
-	SummarizerModelSet    bool
-	SummarizerTimeout     time.Duration
-	SummarizerTimeoutSet  bool
-	FPFilterTimeout       time.Duration
-	FPFilterTimeoutSet    bool
-	Guidance              string
-	GuidanceSet           bool
-	GuidanceFile          string
-	GuidanceFileSet       bool
-	FPFilterEnabled       bool
-	FPFilterSet           bool
-	FPThreshold           int
-	FPThresholdSet        bool
-	PRFeedbackEnabled     bool
-	PRFeedbackEnabledSet  bool
-	PRFeedbackAgent       string
-	PRFeedbackAgentSet    bool
-	CrossCheckEnabled     bool
-	CrossCheckEnabledSet  bool
-	CrossCheckAgent       string
-	CrossCheckAgentSet    bool
-	CrossCheckModel       string
-	CrossCheckModelSet    bool
-	CrossCheckTimeout     time.Duration
-	CrossCheckTimeoutSet  bool
-	AutoPhase             bool
-	AutoPhaseSet          bool
-	Strict                bool
-	StrictSet             bool
+	Reviewers              int
+	ReviewersSet           bool
+	DiffGroups             int
+	DiffGroupsSet          bool
+	MediumDiffReviewers    int
+	MediumDiffReviewersSet bool
+	Concurrency            int
+	ConcurrencySet         bool
+	Base                   string
+	BaseSet                bool
+	Timeout                time.Duration
+	TimeoutSet             bool
+	Retries                int
+	RetriesSet             bool
+	Fetch                  bool
+	FetchSet               bool
+	ReviewerAgents         []string
+	ReviewerAgentsSet      bool
+	ArchReviewerAgent      string
+	ArchReviewerAgentSet   bool
+	DiffReviewerAgents     []string
+	DiffReviewerAgentsSet  bool
+	SummarizerAgent        string
+	SummarizerAgentSet     bool
+	ReviewerModel          string
+	ReviewerModelSet       bool
+	SummarizerModel        string
+	SummarizerModelSet     bool
+	SummarizerTimeout      time.Duration
+	SummarizerTimeoutSet   bool
+	FPFilterTimeout        time.Duration
+	FPFilterTimeoutSet     bool
+	Guidance               string
+	GuidanceSet            bool
+	GuidanceFile           string
+	GuidanceFileSet        bool
+	FPFilterEnabled        bool
+	FPFilterSet            bool
+	FPThreshold            int
+	FPThresholdSet         bool
+	PRFeedbackEnabled      bool
+	PRFeedbackEnabledSet   bool
+	PRFeedbackAgent        string
+	PRFeedbackAgentSet     bool
+	CrossCheckEnabled      bool
+	CrossCheckEnabledSet   bool
+	CrossCheckAgent        string
+	CrossCheckAgentSet     bool
+	CrossCheckModel        string
+	CrossCheckModelSet     bool
+	CrossCheckTimeout      time.Duration
+	CrossCheckTimeoutSet   bool
+	AutoPhase              bool
+	AutoPhaseSet           bool
+	Strict                 bool
+	StrictSet              bool
 }
 
 // LoadEnvState reads environment variables and returns their state.
@@ -817,6 +835,22 @@ func LoadEnvState() (EnvState, []string) {
 			state.ReviewersSet = true
 		} else {
 			warnings = append(warnings, fmt.Sprintf("ACR_REVIEWERS=%q is not a valid integer, ignoring", v))
+		}
+	}
+	if v := os.Getenv("ACR_DIFF_GROUPS"); v != "" {
+		if i, err := strconv.Atoi(v); err == nil {
+			state.DiffGroups = i
+			state.DiffGroupsSet = true
+		} else {
+			warnings = append(warnings, fmt.Sprintf("ACR_DIFF_GROUPS=%q is not a valid integer, ignoring", v))
+		}
+	}
+	if v := os.Getenv("ACR_MEDIUM_DIFF_REVIEWERS"); v != "" {
+		if i, err := strconv.Atoi(v); err == nil {
+			state.MediumDiffReviewers = i
+			state.MediumDiffReviewersSet = true
+		} else {
+			warnings = append(warnings, fmt.Sprintf("ACR_MEDIUM_DIFF_REVIEWERS=%q is not a valid integer, ignoring", v))
 		}
 	}
 	if v := os.Getenv("ACR_CONCURRENCY"); v != "" {
@@ -1037,6 +1071,12 @@ func Resolve(cfg *Config, envState EnvState, flagState FlagState, flagValues Res
 		if cfg.Reviewers != nil {
 			result.Reviewers = *cfg.Reviewers
 		}
+		if cfg.DiffGroups != nil {
+			result.DiffGroups = *cfg.DiffGroups
+		}
+		if cfg.MediumDiffReviewers != nil {
+			result.MediumDiffReviewers = *cfg.MediumDiffReviewers
+		}
 		if cfg.Concurrency != nil {
 			result.Concurrency = *cfg.Concurrency
 		}
@@ -1114,6 +1154,12 @@ func Resolve(cfg *Config, envState EnvState, flagState FlagState, flagValues Res
 	if envState.ReviewersSet {
 		result.Reviewers = envState.Reviewers
 	}
+	if envState.DiffGroupsSet {
+		result.DiffGroups = envState.DiffGroups
+	}
+	if envState.MediumDiffReviewersSet {
+		result.MediumDiffReviewers = envState.MediumDiffReviewers
+	}
 	if envState.ConcurrencySet {
 		result.Concurrency = envState.Concurrency
 	}
@@ -1186,6 +1232,12 @@ func Resolve(cfg *Config, envState EnvState, flagState FlagState, flagValues Res
 
 	if flagState.ReviewersSet {
 		result.Reviewers = flagValues.Reviewers
+	}
+	if flagState.DiffGroupsSet {
+		result.DiffGroups = flagValues.DiffGroups
+	}
+	if flagState.MediumDiffReviewersSet {
+		result.MediumDiffReviewers = flagValues.MediumDiffReviewers
 	}
 	if flagState.ConcurrencySet {
 		result.Concurrency = flagValues.Concurrency
