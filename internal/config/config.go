@@ -566,10 +566,133 @@ func (r *ResolvedConfig) ValidateRuntime() []string {
 	// also disables auto-phase grouped review consistency), the user MUST pick
 	// a model. Defaults intentionally leaves CrossCheckModel empty so this
 	// guard fires for users who never configured cross-check at all.
+	//
+	// Exception: if the user has populated cross_check entries in the `models`
+	// tree (models.agents.*.cross_check / models.sizes.*.cross_check /
+	// models.defaults.cross_check), modelconfig.Resolve can produce a non-empty
+	// model at runtime for the selected agent(s), so the top-level legacy
+	// field is redundant. Round-13 F#3 tightens the check from "ANY tree
+	// entry exists" to "EVERY selected cross_check agent resolves", so partial
+	// tree configuration (one agent covered, others not) is caught at validate
+	// time rather than leaking through to runtime.
 	if r.CrossCheckEnabled && strings.TrimSpace(r.CrossCheckModel) == "" {
-		errs = append(errs, "cross_check.enabled=true requires cross_check.model (or --cross-check-model / ACR_CROSS_CHECK_MODEL); supply a comma-separated model list paired 1:1 with cross_check.agent, or disable cross-check explicitly with cross_check.enabled=false / --no-cross-check (note: disabling cross-check forfeits auto-phase grouped review consistency)")
+		missing := missingCrossCheckAgentsInModelsTree(r)
+		if len(missing) > 0 {
+			errs = append(errs, fmt.Sprintf(
+				"cross_check.enabled=true requires cross_check.model for agent(s) %v "+
+					"(supply via --cross-check-model / ACR_CROSS_CHECK_MODEL as a "+
+					"comma-separated list paired 1:1 with cross_check.agent, or via "+
+					"models.{agents.<name>,sizes.large,defaults}.cross_check.model "+
+					"— note: cross-check runs only at size=large, so sizes.small/medium "+
+					"entries are dead config and rejected); "+
+					"or disable cross-check explicitly with cross_check.enabled=false / "+
+					"--no-cross-check (note: disabling cross-check forfeits auto-phase "+
+					"grouped review consistency)",
+				missing))
+		}
+	}
+	// Additional cross_check pairing validation when model IS specified.
+	if r.CrossCheckEnabled && strings.TrimSpace(r.CrossCheckModel) != "" {
+		models := strings.Split(r.CrossCheckModel, ",")
+		for i, m := range models {
+			if strings.TrimSpace(m) == "" {
+				errs = append(errs, fmt.Sprintf("cross_check.model contains empty entry at position %d; check for leading/trailing/duplicate commas", i+1))
+			}
+		}
+
+		agentSpec := r.CrossCheckAgent
+		if strings.TrimSpace(agentSpec) == "" {
+			agentSpec = r.SummarizerAgent
+		}
+		agentTokens := strings.Split(agentSpec, ",")
+		agentCount := 0
+		for _, tok := range agentTokens {
+			if strings.TrimSpace(tok) != "" {
+				agentCount++
+			}
+		}
+		modelCount := 0
+		for _, m := range models {
+			if strings.TrimSpace(m) != "" {
+				modelCount++
+			}
+		}
+		if agentCount != modelCount {
+			errs = append(errs, fmt.Sprintf("cross_check.agent (%d agents) and cross_check.model (%d models) must have same count; agents and models are paired by position", agentCount, modelCount))
+		}
 	}
 	return errs
+}
+
+// canResolveCrossCheckModelForAgent reports whether the models cascade can
+// produce a non-empty cross_check.model for the given agentName.
+//
+// Round-14 F#1 (案 V): cross-check runs exclusively at size=large (gated by
+// `useGroupedSpecs && opts.CrossCheckEnabled` in cmd/acr/review.go, where
+// useGroupedSpecs=true is only reachable via DiffSizeLarge in resolveAutoPhase).
+// Therefore non-large size layers (sizes.small / sizes.medium) are dead code
+// for the cross_check role: configuring them never affects runtime resolution.
+// The validate-time check now mirrors this constraint by consulting only
+// sizes["large"], guaranteeing complete validate↔runtime symmetry.
+//
+// Cascade order mirrored from modelconfig.Resolve for RoleCrossCheck at
+// size=large:
+//  1. agents[name].cross_check.model  (agent-specific override)
+//  2. sizes["large"].cross_check.model (size-specific, large only)
+//  3. defaults.cross_check.model      (global default for the role)
+//
+// Effort-only entries are ignored: Effort alone never satisfies the runtime
+// requirement for a non-empty Model.
+func canResolveCrossCheckModelForAgent(m ModelsConfig, agentName string) bool {
+	// Layer 1: agents.
+	if rm, ok := m.Agents[agentName]; ok {
+		if rm.CrossCheck != nil && strings.TrimSpace(rm.CrossCheck.Model) != "" {
+			return true
+		}
+	}
+	// Layer 2: sizes["large"] only — cross-check runs exclusively at size=large.
+	// Other size layers (sizes.small / sizes.medium) are dead code for this role
+	// and intentionally rejected here so users get a clear validate-time error
+	// rather than a silent "validates OK but cross-check never runs".
+	if rm, ok := m.Sizes["large"]; ok {
+		if rm.CrossCheck != nil && strings.TrimSpace(rm.CrossCheck.Model) != "" {
+			return true
+		}
+	}
+	// Layer 3: defaults.
+	if m.Defaults.CrossCheck != nil && strings.TrimSpace(m.Defaults.CrossCheck.Model) != "" {
+		return true
+	}
+	return false
+}
+
+// missingCrossCheckAgentsInModelsTree returns the selected cross_check agent
+// names for which the models cascade cannot produce a non-empty cross_check
+// model. Empty slice means every selected agent is covered by the tree, in
+// which case the top-level cross_check.model requirement can be waived.
+//
+// Agent selection mirrors resolveCrossCheckAgents (runtime): CrossCheckAgent
+// takes precedence; empty falls back to SummarizerAgent. Whitespace-only
+// entries are skipped to match the runtime parser behaviour.
+//
+// Returns nil (not []) when no agents are selected, so callers can distinguish
+// "no selection yet" from "selection fully covered by tree".
+func missingCrossCheckAgentsInModelsTree(r *ResolvedConfig) []string {
+	agentSpec := r.CrossCheckAgent
+	if strings.TrimSpace(agentSpec) == "" {
+		agentSpec = r.SummarizerAgent
+	}
+	var missing []string
+	for _, raw := range strings.Split(agentSpec, ",") {
+		name := strings.TrimSpace(raw)
+		if name == "" {
+			continue
+		}
+		if !canResolveCrossCheckModelForAgent(r.Models, name) {
+			missing = append(missing, name)
+		}
+	}
+	return missing
 }
 
 // validateModelsAgents checks that all agent keys in models.agents are supported agents.

@@ -160,14 +160,34 @@ func newConfigValidateCmd() *cobra.Command {
 			var errors []string
 			var warnings []string
 
-			// Load and validate config file (don't early-return so env var issues are also reported)
+			// Load and validate config file (don't early-return so env var issues are also reported).
+			//
+			// LoadWithWarnings returns two distinct error shapes:
+			//   (1) syntax / regex / IO error → (nil, err). cfg is unusable; we fall
+			//       back to Defaults for the rest of validation and skip
+			//       ValidateRuntime (running it against synthetic defaults would
+			//       false-positive on cross_check.model when the user's actual
+			//       intent is hidden behind the broken YAML).
+			//   (2) semantic error (cfg.Validate failure) → (result, err) where
+			//       result.Config has the user's parseable cfg. We DO want to run
+			//       ValidateRuntime against cfg+env here so env-only cross_check
+			//       issues are not masked by the semantic-error branch (Round-13 F#2).
+			//
+			// Round-12 had a single `configFileError` flag that conflated both
+			// shapes, which made `config validate` silently skip runtime checks in
+			// case (2). Round-13 splits the two and keeps ValidateAll's behavior
+			// (use empty resolveConfig in case 2 to avoid duplicating cfg's
+			// semantic errors that already appear in the lump "config file: ..."
+			// line) while restoring ValidateRuntime for case (2).
 			cfg := &config.Config{}
 			configDir := ""
-			configFileError := false
+			syntaxError := false
 			result, err := config.LoadWithWarnings()
 			if err != nil {
 				errors = append(errors, fmt.Sprintf("config file: %v", err))
-				configFileError = true
+				if result == nil {
+					syntaxError = true
+				}
 			}
 			if result != nil {
 				cfg = result.Config
@@ -181,22 +201,35 @@ func newConfigValidateCmd() *cobra.Command {
 			envState, envWarnings := config.LoadEnvState()
 			errors = append(errors, envWarnings...)
 
-			// Resolve full config and validate semantically.
-			// When the config file has errors, resolve env vars against defaults only
-			// (skip the broken config) to avoid duplicating config-file errors while
-			// still catching env-var semantic issues like ACR_REVIEWERS=0.
+			// ValidateAll path: when the config file has semantic errors we use an
+			// empty config so the individual semantic errors (already surfaced in
+			// the lump "config file: ..." line above) are not re-enumerated here.
+			// Syntax-error case behaves identically: empty config, env still
+			// validated against Defaults.
 			resolveConfig := cfg
-			if configFileError {
+			if syntaxError || (err != nil && result != nil) {
 				resolveConfig = &config.Config{}
 			}
 			resolved := config.Resolve(resolveConfig, envState, config.FlagState{}, config.Defaults)
 			validationErrs := resolved.ValidateAll()
 			errors = append(errors, validationErrs...)
-			// Round-9: enforce runtime-only contracts (cross-check model
-			// requirement when enabled) so `config validate` mirrors what
-			// the actual review run will reject.
-			runtimeErrs := resolved.ValidateRuntime()
-			errors = append(errors, runtimeErrs...)
+			// Round-13 F#2: run ValidateRuntime against cfg+env whenever cfg is at
+			// least parseable (result != nil), so env-only cross_check issues are
+			// caught even when the YAML has unrelated semantic errors. Skip only
+			// on true syntax error where we have no usable cfg — ValidateRuntime
+			// against Defaults would false-positive (e.g. cross_check.enabled=true
+			// default + cross_check.model="" default).
+			if !syntaxError {
+				runtimeResolved := resolved
+				if err != nil && result != nil {
+					// Semantic-error case: ValidateAll ran against empty cfg to
+					// avoid duplication, but ValidateRuntime needs the real cfg
+					// to honour user intent for cross_check config.
+					runtimeResolved = config.Resolve(cfg, envState, config.FlagState{}, config.Defaults)
+				}
+				runtimeErrs := runtimeResolved.ValidateRuntime()
+				errors = append(errors, runtimeErrs...)
+			}
 
 			// Validate guidance file is readable (uses same resolution logic as runtime)
 			_, guidanceErr := config.ResolveGuidance(cfg, envState, config.FlagState{}, config.Defaults, configDir)
