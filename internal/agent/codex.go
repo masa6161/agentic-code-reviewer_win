@@ -51,6 +51,11 @@ func (c *CodexAgent) Name() string {
 	return "codex"
 }
 
+// Options returns the AgentOptions the agent was constructed with.
+func (c *CodexAgent) Options() AgentOptions {
+	return AgentOptions{Model: c.model, Effort: c.effort}
+}
+
 // IsAvailable checks if the codex CLI is installed and accessible.
 func (c *CodexAgent) IsAvailable() error {
 	_, err := exec.LookPath("codex")

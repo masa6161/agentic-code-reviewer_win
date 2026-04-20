@@ -266,6 +266,8 @@ func (m *mockAgent) ExecuteSummary(_ context.Context, _ string, _ []byte) (*agen
 	return nil, nil
 }
 
+func (m *mockAgent) Options() agent.AgentOptions { return agent.AgentOptions{} }
+
 // mockStreamingAgent implements agent.Agent for testing streaming output parsing.
 type mockStreamingAgent struct {
 	name   string
@@ -291,6 +293,8 @@ func (m *mockStreamingAgent) ExecuteReview(_ context.Context, _ *agent.ReviewCon
 func (m *mockStreamingAgent) ExecuteSummary(_ context.Context, _ string, _ []byte) (*agent.ExecutionResult, error) {
 	return nil, nil
 }
+
+func (m *mockStreamingAgent) Options() agent.AgentOptions { return agent.AgentOptions{} }
 
 func TestRunReviewer_ParserErrorRecovery(t *testing.T) {
 	// Create mock agent that returns JSONL with one bad line in the middle
@@ -400,6 +404,8 @@ func (m *mockAuthFailAgent) ExecuteReview(_ context.Context, _ *agent.ReviewConf
 func (m *mockAuthFailAgent) ExecuteSummary(_ context.Context, _ string, _ []byte) (*agent.ExecutionResult, error) {
 	return nil, nil
 }
+
+func (m *mockAuthFailAgent) Options() agent.AgentOptions { return agent.AgentOptions{} }
 
 func TestRunReviewerWithRetry_SkipsRetryOnAuthFailure(t *testing.T) {
 	mock := &mockAuthFailAgent{name: "gemini", exitCode: 41, stderr: ""}

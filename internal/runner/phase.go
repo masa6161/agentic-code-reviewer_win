@@ -47,8 +47,21 @@ func BuildReviewerSpecs(phases []PhaseConfig, defaultAgents []agent.Agent, globa
 			} else {
 				base := agent.AgentForReviewer(defaultAgents, reviewerIdx)
 				if pc.Effort != "" || pc.Model != "" {
+					// Merge: pc.Effort/Model が空のときは base agent の既存値を継承する。
+					// 部分 override (例: pc.Effort="high" のみ) で base agent の model
+					// 設定が落ちないようにするための cascade。現状 caller はこの分岐に
+					// 到達しないが (parsePhases / auto-phase はいずれも pc.Effort/Model
+					// を空に保つ)、将来 caller が増えたときの regression を予防する。
+					baseOpts := base.Options()
+					merged := agent.AgentOptions{Model: pc.Model, Effort: pc.Effort}
+					if merged.Model == "" {
+						merged.Model = baseOpts.Model
+					}
+					if merged.Effort == "" {
+						merged.Effort = baseOpts.Effort
+					}
 					var rebindErr error
-					a, rebindErr = agent.NewAgentWithOptions(base.Name(), agent.AgentOptions{Model: pc.Model, Effort: pc.Effort})
+					a, rebindErr = agent.NewAgentWithOptions(base.Name(), merged)
 					if rebindErr != nil {
 						return nil, fmt.Errorf("phase %q effort rebind: %w", pc.Phase, rebindErr)
 					}

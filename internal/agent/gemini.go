@@ -41,6 +41,11 @@ func (g *GeminiAgent) Name() string {
 	return "gemini"
 }
 
+// Options returns the AgentOptions the agent was constructed with.
+func (g *GeminiAgent) Options() AgentOptions {
+	return AgentOptions{Model: g.model, Effort: g.effort}
+}
+
 // IsAvailable checks if the gemini CLI is installed and accessible.
 func (g *GeminiAgent) IsAvailable() error {
 	_, err := exec.LookPath("gemini")
