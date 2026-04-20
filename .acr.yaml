@@ -10,7 +10,7 @@ reviewers: 5
 # Number of diff groups in auto-phase grouped path (large diff). Default: 4.
 # Each group reviews a subset of changed files. arch reviewer is always 1
 # (sees full diff). Total reviewers in grouped path = 1 + diff_groups.
-# diff_groups: 4
+diff_groups: 4
 
 # Number of diff reviewers in auto-phase medium path. Default: 2.
 # arch reviewer is always 1. Total reviewers in medium path =
@@ -45,9 +45,9 @@ reviewer_agents:
 #   If unset, falls back to reviewer_agents.
 # Use this to route unreliable backends (e.g., capacity-throttled providers)
 # away from grouped diff while keeping them in flat review.
-# arch_reviewer_agent: claude
-# diff_reviewer_agents:
-#   - codex
+arch_reviewer_agent: claude
+diff_reviewer_agents:
+  - codex
 #   - claude
 
 # Agent for summarization: codex, claude, gemini
@@ -155,8 +155,9 @@ models:
       cross_check:   { model: gpt-5.4 }
     claude:
       reviewer:      { model: claude-sonnet-4-6 }
+      arch_reviewer: { model: claude-sonnet-4-6 }
       summarizer:    { model: claude-opus-4-7 }
-      cross_check:   { model: claude-opus-4-7 }
+      cross_check:   { model: claude-opus-4-6 }
     gemini:
       # gemini は effort 未対応。model のみ指定
       reviewer:      { model: gemini-3.1-pro-preview }
