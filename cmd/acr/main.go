@@ -515,12 +515,16 @@ func loadAndResolveConfig(cmd *cobra.Command, wt worktreeResult, logger *termina
 		return configResult{}, exitCode(domain.ExitError)
 	}
 
-	// Default concurrency to reviewers if not specified (0 means same as reviewers)
+	// Default concurrency to the maximum number of reviewers that may run
+	// across all auto-phase paths (flat / medium / grouped). When the user
+	// explicitly sets --concurrency, honour it but cap at the same maximum
+	// to avoid spawning more goroutines than there are reviewers.
+	maxReviewers := maxPotentialReviewers(resolved)
 	if resolved.Concurrency <= 0 {
-		resolved.Concurrency = resolved.Reviewers
+		resolved.Concurrency = maxReviewers
 	}
-	if resolved.Concurrency > resolved.Reviewers {
-		resolved.Concurrency = resolved.Reviewers
+	if resolved.Concurrency > maxReviewers {
+		resolved.Concurrency = maxReviewers
 	}
 
 	// Merge exclude patterns (config patterns + CLI patterns)
@@ -538,6 +542,20 @@ func loadAndResolveConfig(cmd *cobra.Command, wt worktreeResult, logger *termina
 		resolved:        resolved,
 		excludePatterns: allExcludePatterns,
 	}, nil
+}
+
+// maxPotentialReviewers returns the maximum number of concurrent reviewers
+// that may run across all auto-phase paths (flat, medium, grouped).
+// Used to default/clamp Concurrency so no phase is bottlenecked.
+func maxPotentialReviewers(r config.ResolvedConfig) int {
+	m := r.Reviewers
+	if v := 1 + r.DiffGroups; v > m {
+		m = v
+	}
+	if v := 1 + r.MediumDiffReviewers; v > m {
+		m = v
+	}
+	return m
 }
 
 func runReview(cmd *cobra.Command, _ []string) error {

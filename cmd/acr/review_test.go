@@ -1183,3 +1183,40 @@ func TestBuildGroupedDiffSpecs_DiffAgentRoundRobinIndependent(t *testing.T) {
 		t.Errorf("second diff spec should use diffAgents[1]=gemini, got %s", specs[2].Agent.Name())
 	}
 }
+
+func TestMaxPotentialReviewers(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  config.ResolvedConfig
+		want int
+	}{
+		{
+			name: "flat dominates",
+			cfg:  config.ResolvedConfig{Reviewers: 5, DiffGroups: 3, MediumDiffReviewers: 2},
+			want: 5, // max(5, 1+3, 1+2) = 5
+		},
+		{
+			name: "grouped dominates",
+			cfg:  config.ResolvedConfig{Reviewers: 3, DiffGroups: 8, MediumDiffReviewers: 2},
+			want: 9, // max(3, 1+8, 1+2) = 9
+		},
+		{
+			name: "medium dominates",
+			cfg:  config.ResolvedConfig{Reviewers: 2, DiffGroups: 1, MediumDiffReviewers: 5},
+			want: 6, // max(2, 1+1, 1+5) = 6
+		},
+		{
+			name: "all equal",
+			cfg:  config.ResolvedConfig{Reviewers: 3, DiffGroups: 2, MediumDiffReviewers: 2},
+			want: 3, // max(3, 1+2, 1+2) = 3
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := maxPotentialReviewers(tt.cfg)
+			if got != tt.want {
+				t.Errorf("maxPotentialReviewers() = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}
