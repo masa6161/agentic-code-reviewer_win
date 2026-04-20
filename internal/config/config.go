@@ -600,6 +600,10 @@ func (r *ResolvedConfig) ValidateRuntime() []string {
 			}
 		}
 
+		// Fall back to SummarizerAgent when CrossCheckAgent is unset, mirroring
+		// resolveCrossCheckAgents. Note: config.Defaults always sets
+		// SummarizerAgent ("codex"), so the empty-string edge case
+		// (strings.Split("",",") → [""] → count 0) is unreachable in practice.
 		agentSpec := r.CrossCheckAgent
 		if strings.TrimSpace(agentSpec) == "" {
 			agentSpec = r.SummarizerAgent
