@@ -203,19 +203,31 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 		// cascade layer via ResolveReviewer). Without a classified size, these
 		// rows would be misleading since auto-phase will skip per-phase routing.
 		if opts.AutoPhase && opts.Phase == "" && diffSizeClassified && diffSize != git.DiffSizeSmall {
-			for _, name := range opts.ReviewerAgents {
-				cliRevModelLog, legacyRevModelLog := cliOrLegacy(opts.ReviewerModel, opts.ReviewerModelFromCLI)
+			cliRevModelLog, legacyRevModelLog := cliOrLegacy(opts.ReviewerModel, opts.ReviewerModelFromCLI)
+			// Arch: single agent — explicit override or first reviewer agent.
+			archNames := []string{opts.ReviewerAgents[0]}
+			if opts.ArchReviewerAgent != "" {
+				archNames = []string{opts.ArchReviewerAgent}
+			}
+			for _, name := range archNames {
 				archSpec := modelconfig.ResolveReviewer(
 					opts.Models, sizeStr, "arch", name,
 					cliRevModelLog, "",
 					legacyRevModelLog, "",
 				)
+				logger.Logf(terminal.StyleDim, "  arch_reviewer[%s]  : %s", name, formatSpec(agent.AgentOptions{Model: archSpec.Model, Effort: archSpec.Effort}))
+			}
+			// Diff: all diff-phase agents — explicit override or all reviewer agents.
+			diffNames := opts.ReviewerAgents
+			if len(opts.DiffReviewerAgents) > 0 {
+				diffNames = opts.DiffReviewerAgents
+			}
+			for _, name := range diffNames {
 				diffSpec := modelconfig.ResolveReviewer(
 					opts.Models, sizeStr, "diff", name,
 					cliRevModelLog, "",
 					legacyRevModelLog, "",
 				)
-				logger.Logf(terminal.StyleDim, "  arch_reviewer[%s]  : %s", name, formatSpec(agent.AgentOptions{Model: archSpec.Model, Effort: archSpec.Effort}))
 				logger.Logf(terminal.StyleDim, "  diff_reviewer[%s]  : %s", name, formatSpec(agent.AgentOptions{Model: diffSpec.Model, Effort: diffSpec.Effort}))
 			}
 		}
@@ -962,6 +974,9 @@ func buildPhaseAgents(opts ReviewOpts, sizeStr string) (agent.Agent, []agent.Age
 	if err != nil {
 		return nil, nil, fmt.Errorf("arch reviewer %q: %w", archAgentName, err)
 	}
+	if err := archAgent.IsAvailable(); err != nil {
+		return nil, nil, fmt.Errorf("arch reviewer %q unavailable: %w", archAgentName, err)
+	}
 
 	// Diff agent names: explicit override > all reviewer agents.
 	diffAgentNames := opts.DiffReviewerAgents
@@ -981,6 +996,9 @@ func buildPhaseAgents(opts ReviewOpts, sizeStr string) (agent.Agent, []agent.Age
 		a, err := agent.NewAgentWithOptions(name, agent.AgentOptions{Model: spec.Model, Effort: spec.Effort})
 		if err != nil {
 			return nil, nil, fmt.Errorf("diff reviewer %q: %w", name, err)
+		}
+		if err := a.IsAvailable(); err != nil {
+			return nil, nil, fmt.Errorf("diff reviewer %q unavailable: %w", name, err)
 		}
 		diffAgents = append(diffAgents, a)
 	}

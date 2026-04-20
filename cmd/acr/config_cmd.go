@@ -136,6 +136,12 @@ func newConfigInitCmd() *cobra.Command {
 # pr_feedback:
 #   enabled: true
 #   agent: ""
+
+# Cross-check for grouped review consistency (model is REQUIRED when enabled)
+# cross_check:
+#   enabled: true
+#   agent: codex
+#   model: gpt-5
 `
 			if err := os.WriteFile(configPath, []byte(starter), 0644); err != nil {
 				return fmt.Errorf("failed to write %s: %w", configPath, err)
