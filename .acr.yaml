@@ -155,9 +155,9 @@ models:
       cross_check:   { model: gpt-5.4 }
     claude:
       reviewer:      { model: claude-sonnet-4-6 }
-      arch_reviewer: { model: claude-sonnet-4-6 }
+      arch_reviewer: { model: claude-opus-4-7 }
       summarizer:    { model: claude-opus-4-7 }
-      cross_check:   { model: claude-opus-4-6 }
+      cross_check:   { model: claude-opus-4-7 }
     gemini:
       # gemini は effort 未対応。model のみ指定
       reviewer:      { model: gemini-3.1-pro-preview }
