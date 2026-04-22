@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -19,8 +20,31 @@ import (
 	"github.com/richhaase/agentic-code-reviewer/internal/terminal"
 )
 
+// parseDiffReviewerAgentsFlag splits a comma-separated agent string into
+// trimmed names. Returns nil for an empty input so callers can distinguish
+// "flag set" from "flag set to empty" (the latter falls back to ReviewerAgents
+// in config.Resolve).
+func parseDiffReviewerAgentsFlag(input string) []string {
+	if strings.TrimSpace(input) == "" {
+		return nil
+	}
+	parts := strings.Split(input, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if name := strings.TrimSpace(p); name != "" {
+			out = append(out, name)
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
 var (
 	reviewers           int
+	diffGroups          int
+	mediumDiffReviewers int
 	concurrency         int
 	baseRef             string
 	timeout             time.Duration
@@ -37,6 +61,8 @@ var (
 	excludePatterns     []string
 	noConfig            bool
 	agentName           string
+	archReviewerAgent   string
+	diffReviewerAgents  string
 	summarizerAgentName string
 	reviewerModel       string
 	summarizerModel     string
@@ -83,7 +109,11 @@ Exit codes:
 
 	// Configuration flags (defaults are resolved via config.Resolve with precedence: flag > env > config > default)
 	rootCmd.Flags().IntVarP(&reviewers, "reviewers", "r", 0,
-		"Number of parallel reviewers (default: 5, env: ACR_REVIEWERS). Auto-phase bumps to minimum (medium:2, large:3) and clamps large to changed_files+1.")
+		"Number of parallel reviewers for flat review path (auto-phase OFF / size=small / explicit --phase). Auto-phase grouped/medium use --diff-groups / --medium-diff-reviewers instead. (default: 5, env: ACR_REVIEWERS)")
+	rootCmd.Flags().IntVar(&diffGroups, "diff-groups", 0,
+		"Number of diff groups in auto-phase grouped path (large diff) (default: 4, env: ACR_DIFF_GROUPS)")
+	rootCmd.Flags().IntVar(&mediumDiffReviewers, "medium-diff-reviewers", 0,
+		"Number of diff reviewers in auto-phase medium path (default: 2, env: ACR_MEDIUM_DIFF_REVIEWERS)")
 	rootCmd.Flags().IntVarP(&concurrency, "concurrency", "c", 0,
 		"Max concurrent reviewers (default: same as --reviewers, env: ACR_CONCURRENCY)")
 	rootCmd.Flags().StringVarP(&baseRef, "base", "b", "",
@@ -119,6 +149,10 @@ Exit codes:
 		"Skip loading .acr.yaml config file")
 	rootCmd.Flags().StringVarP(&agentName, "reviewer-agent", "a", "codex",
 		"Agent(s) for reviews (comma-separated): codex, claude, gemini (env: ACR_REVIEWER_AGENT)")
+	rootCmd.Flags().StringVar(&archReviewerAgent, "arch-reviewer-agent", "",
+		"Single agent for arch phase in auto-phase grouped diff (default: same as first --reviewer-agent, env: ACR_ARCH_REVIEWER_AGENT)")
+	rootCmd.Flags().StringVar(&diffReviewerAgents, "diff-reviewer-agents", "",
+		"Agent(s) for diff phase in auto-phase grouped diff, comma-separated (default: same as --reviewer-agent, env: ACR_DIFF_REVIEWER_AGENTS)")
 	rootCmd.Flags().StringVarP(&summarizerAgentName, "summarizer-agent", "s", "codex",
 		"Agent to use for summarization: codex, claude, gemini (env: ACR_SUMMARIZER_AGENT)")
 	rootCmd.Flags().StringVar(&reviewerModel, "reviewer-model", "",
@@ -144,7 +178,7 @@ Exit codes:
 	rootCmd.Flags().StringVar(&crossCheckAgent, "cross-check-agent", "",
 		"Agent(s) for cross-check verification, comma-separated (default: same as --summarizer-agent, env: ACR_CROSS_CHECK_AGENT)")
 	rootCmd.Flags().StringVar(&crossCheckModel, "cross-check-model", "",
-		"LLM model for cross-check agent (default: same as --summarizer-model, env: ACR_CROSS_CHECK_MODEL)")
+		"LLM model(s) for cross-check, comma-separated, count must match --cross-check-agent (REQUIRED when cross-check enabled, env: ACR_CROSS_CHECK_MODEL)")
 	rootCmd.Flags().DurationVar(&crossCheckTimeout, "cross-check-timeout", 0,
 		"Timeout for cross-check phase (default: 5m, env: ACR_CROSS_CHECK_TIMEOUT)")
 	rootCmd.Flags().StringVar(&phase, "phase", "",
@@ -369,30 +403,34 @@ func loadAndResolveConfig(cmd *cobra.Command, wt worktreeResult, logger *termina
 	fetchFlagSet := cmd.Flags().Changed("fetch") || cmd.Flags().Changed("no-fetch")
 	autoPhaseAnySet := cmd.Flags().Changed("auto-phase") || cmd.Flags().Changed("no-auto-phase")
 	flagState := config.FlagState{
-		ReviewersSet:         cmd.Flags().Changed("reviewers"),
-		ConcurrencySet:       cmd.Flags().Changed("concurrency"),
-		BaseSet:              cmd.Flags().Changed("base") || wt.baseAutoDetected,
-		TimeoutSet:           cmd.Flags().Changed("timeout"),
-		RetriesSet:           cmd.Flags().Changed("retries"),
-		FetchSet:             fetchFlagSet,
-		ReviewerAgentsSet:    cmd.Flags().Changed("reviewer-agent"),
-		SummarizerAgentSet:   cmd.Flags().Changed("summarizer-agent"),
-		ReviewerModelSet:     cmd.Flags().Changed("reviewer-model"),
-		SummarizerModelSet:   cmd.Flags().Changed("summarizer-model"),
-		SummarizerTimeoutSet: cmd.Flags().Changed("summarizer-timeout"),
-		FPFilterTimeoutSet:   cmd.Flags().Changed("fp-filter-timeout"),
-		GuidanceSet:          cmd.Flags().Changed("guidance"),
-		GuidanceFileSet:      cmd.Flags().Changed("guidance-file"),
-		NoFPFilterSet:        cmd.Flags().Changed("no-fp-filter"),
-		FPThresholdSet:       cmd.Flags().Changed("fp-threshold"),
-		NoPRFeedbackSet:      cmd.Flags().Changed("no-pr-feedback"),
-		PRFeedbackAgentSet:   cmd.Flags().Changed("pr-feedback-agent"),
-		NoCrossCheckSet:      cmd.Flags().Changed("no-cross-check"),
-		CrossCheckAgentSet:   cmd.Flags().Changed("cross-check-agent"),
-		CrossCheckModelSet:   cmd.Flags().Changed("cross-check-model"),
-		CrossCheckTimeoutSet: cmd.Flags().Changed("cross-check-timeout"),
-		AutoPhaseSet:         autoPhaseAnySet,
-		StrictSet:            cmd.Flags().Changed("strict"),
+		ReviewersSet:           cmd.Flags().Changed("reviewers"),
+		DiffGroupsSet:          cmd.Flags().Changed("diff-groups"),
+		MediumDiffReviewersSet: cmd.Flags().Changed("medium-diff-reviewers"),
+		ConcurrencySet:         cmd.Flags().Changed("concurrency"),
+		BaseSet:                cmd.Flags().Changed("base") || wt.baseAutoDetected,
+		TimeoutSet:             cmd.Flags().Changed("timeout"),
+		RetriesSet:             cmd.Flags().Changed("retries"),
+		FetchSet:               fetchFlagSet,
+		ReviewerAgentsSet:      cmd.Flags().Changed("reviewer-agent"),
+		ArchReviewerAgentSet:   cmd.Flags().Changed("arch-reviewer-agent"),
+		DiffReviewerAgentsSet:  cmd.Flags().Changed("diff-reviewer-agents"),
+		SummarizerAgentSet:     cmd.Flags().Changed("summarizer-agent"),
+		ReviewerModelSet:       cmd.Flags().Changed("reviewer-model"),
+		SummarizerModelSet:     cmd.Flags().Changed("summarizer-model"),
+		SummarizerTimeoutSet:   cmd.Flags().Changed("summarizer-timeout"),
+		FPFilterTimeoutSet:     cmd.Flags().Changed("fp-filter-timeout"),
+		GuidanceSet:            cmd.Flags().Changed("guidance"),
+		GuidanceFileSet:        cmd.Flags().Changed("guidance-file"),
+		NoFPFilterSet:          cmd.Flags().Changed("no-fp-filter"),
+		FPThresholdSet:         cmd.Flags().Changed("fp-threshold"),
+		NoPRFeedbackSet:        cmd.Flags().Changed("no-pr-feedback"),
+		PRFeedbackAgentSet:     cmd.Flags().Changed("pr-feedback-agent"),
+		NoCrossCheckSet:        cmd.Flags().Changed("no-cross-check"),
+		CrossCheckAgentSet:     cmd.Flags().Changed("cross-check-agent"),
+		CrossCheckModelSet:     cmd.Flags().Changed("cross-check-model"),
+		CrossCheckTimeoutSet:   cmd.Flags().Changed("cross-check-timeout"),
+		AutoPhaseSet:           autoPhaseAnySet,
+		StrictSet:              cmd.Flags().Changed("strict"),
 	}
 
 	// Load env var state
@@ -414,30 +452,34 @@ func loadAndResolveConfig(cmd *cobra.Command, wt worktreeResult, logger *termina
 
 	autoPhaseValue := autoPhase && !noAutoPhase
 	flagValues := config.ResolvedConfig{
-		Reviewers:         reviewers,
-		Concurrency:       concurrency,
-		Base:              resolvedBaseRef,
-		Timeout:           timeout,
-		Retries:           retries,
-		Fetch:             fetchValue,
-		ReviewerAgents:    agent.ParseAgentNames(agentName),
-		SummarizerAgent:   summarizerAgentName,
-		ReviewerModel:     reviewerModel,
-		SummarizerModel:   summarizerModel,
-		SummarizerTimeout: summarizerTimeout,
-		FPFilterTimeout:   fpFilterTimeout,
-		Guidance:          guidance,
-		GuidanceFile:      guidanceFile,
-		FPFilterEnabled:   !noFPFilter,
-		FPThreshold:       fpThreshold,
-		PRFeedbackEnabled: !noPRFeedback,
-		PRFeedbackAgent:   prFeedbackAgent,
-		CrossCheckEnabled: !noCrossCheck,
-		CrossCheckAgent:   crossCheckAgent,
-		CrossCheckModel:   crossCheckModel,
-		CrossCheckTimeout: crossCheckTimeout,
-		AutoPhase:         autoPhaseValue,
-		Strict:            strict,
+		Reviewers:           reviewers,
+		DiffGroups:          diffGroups,
+		MediumDiffReviewers: mediumDiffReviewers,
+		Concurrency:         concurrency,
+		Base:                resolvedBaseRef,
+		Timeout:             timeout,
+		Retries:             retries,
+		Fetch:               fetchValue,
+		ReviewerAgents:      agent.ParseAgentNames(agentName),
+		ArchReviewerAgent:   strings.TrimSpace(archReviewerAgent),
+		DiffReviewerAgents:  parseDiffReviewerAgentsFlag(diffReviewerAgents),
+		SummarizerAgent:     summarizerAgentName,
+		ReviewerModel:       reviewerModel,
+		SummarizerModel:     summarizerModel,
+		SummarizerTimeout:   summarizerTimeout,
+		FPFilterTimeout:     fpFilterTimeout,
+		Guidance:            guidance,
+		GuidanceFile:        guidanceFile,
+		FPFilterEnabled:     !noFPFilter,
+		FPThreshold:         fpThreshold,
+		PRFeedbackEnabled:   !noPRFeedback,
+		PRFeedbackAgent:     prFeedbackAgent,
+		CrossCheckEnabled:   !noCrossCheck,
+		CrossCheckAgent:     crossCheckAgent,
+		CrossCheckModel:     crossCheckModel,
+		CrossCheckTimeout:   crossCheckTimeout,
+		AutoPhase:           autoPhaseValue,
+		Strict:              strict,
 	}
 
 	// Resolve final configuration (precedence: flags > env vars > config file > defaults)
@@ -457,18 +499,40 @@ func loadAndResolveConfig(cmd *cobra.Command, wt worktreeResult, logger *termina
 		}
 	}
 
-	// Validate resolved config
+	// Validate resolved config (semantic checks shared with config validate).
 	if err := resolved.Validate(); err != nil {
 		logger.Logf(terminal.StyleError, "%v", err)
 		return configResult{}, exitCode(domain.ExitError)
 	}
-
-	// Default concurrency to reviewers if not specified (0 means same as reviewers)
-	if resolved.Concurrency <= 0 {
-		resolved.Concurrency = resolved.Reviewers
+	// Round-9: enforce runtime-only contracts that need the merged view of
+	// flags+env+yaml (e.g., cross_check.enabled=true requires cross_check.model
+	// somewhere). Done as a separate pass so YAML-only Validate() does not
+	// false-positive on configs that defer the model to env/CLI.
+	//
+	// Cross-check runs exclusively on the auto-phase grouped (large) path.
+	// When auto-phase is disabled or an explicit --phase overrides it,
+	// cross-check can never execute, so skip validation to avoid rejecting
+	// valid flat/arch,diff workflows that omit cross_check.model.
+	phaseFlag, _ := cmd.Flags().GetString("phase")
+	if resolved.AutoPhase && phaseFlag == "" {
+		if runtimeErrs := resolved.ValidateRuntime(); len(runtimeErrs) > 0 {
+			for _, e := range runtimeErrs {
+				logger.Logf(terminal.StyleError, "%s", e)
+			}
+			return configResult{}, exitCode(domain.ExitError)
+		}
 	}
-	if resolved.Concurrency > resolved.Reviewers {
-		resolved.Concurrency = resolved.Reviewers
+
+	// Default concurrency to the maximum number of reviewers that may run
+	// across all auto-phase paths (flat / medium / grouped). When the user
+	// explicitly sets --concurrency, honor it but cap at the same maximum
+	// to avoid spawning more goroutines than there are reviewers.
+	maxReviewers := maxPotentialReviewers(resolved)
+	if resolved.Concurrency <= 0 {
+		resolved.Concurrency = maxReviewers
+	}
+	if resolved.Concurrency > maxReviewers {
+		resolved.Concurrency = maxReviewers
 	}
 
 	// Merge exclude patterns (config patterns + CLI patterns)
@@ -486,6 +550,20 @@ func loadAndResolveConfig(cmd *cobra.Command, wt worktreeResult, logger *termina
 		resolved:        resolved,
 		excludePatterns: allExcludePatterns,
 	}, nil
+}
+
+// maxPotentialReviewers returns the maximum number of concurrent reviewers
+// that may run across all auto-phase paths (flat, medium, grouped).
+// Used to default/clamp Concurrency so no phase is bottlenecked.
+func maxPotentialReviewers(r config.ResolvedConfig) int {
+	m := r.Reviewers
+	if v := 1 + r.DiffGroups; v > m {
+		m = v
+	}
+	if v := 1 + r.MediumDiffReviewers; v > m {
+		m = v
+	}
+	return m
 }
 
 func runReview(cmd *cobra.Command, _ []string) error {

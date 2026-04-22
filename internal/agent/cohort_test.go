@@ -261,3 +261,5 @@ func (m *mockAgent) ExecuteReview(_ context.Context, _ *ReviewConfig) (*Executio
 func (m *mockAgent) ExecuteSummary(_ context.Context, _ string, _ []byte) (*ExecutionResult, error) {
 	return nil, nil
 }
+
+func (m *mockAgent) Options() AgentOptions { return AgentOptions{} }

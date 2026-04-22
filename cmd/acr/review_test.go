@@ -12,6 +12,7 @@ import (
 	"github.com/richhaase/agentic-code-reviewer/internal/git"
 	"github.com/richhaase/agentic-code-reviewer/internal/runner"
 	"github.com/richhaase/agentic-code-reviewer/internal/summarizer"
+	"github.com/richhaase/agentic-code-reviewer/internal/terminal"
 )
 
 func TestParsePhases(t *testing.T) {
@@ -151,7 +152,7 @@ func TestBuildGroupedDiffSpecs_BasicGroups(t *testing.T) {
 	fullDiff := git.JoinDiffSections(sections)
 
 	agents := []agent.Agent{agent.NewCodexAgent("")}
-	specs, err := buildGroupedDiffSpecs(fullDiff, "", true, agents, 4)
+	specs, err := buildGroupedDiffSpecs(fullDiff, "", true, agents[0], agents, 4)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -175,7 +176,7 @@ func TestBuildGroupedDiffSpecs_GroupKeysAssigned(t *testing.T) {
 	fullDiff := git.JoinDiffSections(sections)
 
 	agents := []agent.Agent{agent.NewCodexAgent("")}
-	specs, err := buildGroupedDiffSpecs(fullDiff, "", true, agents, 4)
+	specs, err := buildGroupedDiffSpecs(fullDiff, "", true, agents[0], agents, 4)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -198,7 +199,7 @@ func TestBuildGroupedDiffSpecs_TargetFilesSet(t *testing.T) {
 	fullDiff := git.JoinDiffSections(sections)
 
 	agents := []agent.Agent{agent.NewCodexAgent("")}
-	specs, err := buildGroupedDiffSpecs(fullDiff, "", true, agents, 4)
+	specs, err := buildGroupedDiffSpecs(fullDiff, "", true, agents[0], agents, 4)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -222,7 +223,7 @@ func TestBuildGroupedDiffSpecs_RespectsMaxGroups(t *testing.T) {
 	fullDiff := git.JoinDiffSections(sections)
 
 	agents := []agent.Agent{agent.NewCodexAgent("")}
-	specs, err := buildGroupedDiffSpecs(fullDiff, "", true, agents, 2)
+	specs, err := buildGroupedDiffSpecs(fullDiff, "", true, agents[0], agents, 2)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -238,7 +239,7 @@ func TestBuildGroupedDiffSpecs_SnapshotConsistency(t *testing.T) {
 	fullDiff := git.JoinDiffSections(sections)
 
 	agents := []agent.Agent{agent.NewCodexAgent("")}
-	specs, err := buildGroupedDiffSpecs(fullDiff, "", true, agents, 4)
+	specs, err := buildGroupedDiffSpecs(fullDiff, "", true, agents[0], agents, 4)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -260,24 +261,38 @@ func TestBuildGroupedDiffSpecs_SnapshotConsistency(t *testing.T) {
 
 func TestBuildGroupedDiffSpecs_FallbackOnError(t *testing.T) {
 	agents := []agent.Agent{agent.NewCodexAgent("")}
-	_, err := buildGroupedDiffSpecs("", "", true, agents, 4)
+	_, err := buildGroupedDiffSpecs("", "", true, agents[0], agents, 4)
 	if err == nil {
 		t.Fatal("expected error for empty diff, got nil")
 	}
 }
 
 // --- resolveAutoPhase tests ---
+//
+// Signature: resolveAutoPhase(size, diff, guidance, diffPrecomputed,
+//   buildAgents func() (agent.Agent, []agent.Agent, error),
+//   diffGroups, mediumDiffReviewers) (autoPhaseResult, error)
+//
+// Tests use testBuildAgents to return pre-constructed agents synchronously.
+// The closure is only invoked when the large grouped path decides to proceed,
+// so medium/small/fallback tests can pass nil values safely.
+
+func testBuildAgents(arch agent.Agent, diffs []agent.Agent) func() (agent.Agent, []agent.Agent, error) {
+	return func() (agent.Agent, []agent.Agent, error) {
+		return arch, diffs, nil
+	}
+}
 
 func TestAutoPhase_Large_GroupedSpecs(t *testing.T) {
-	// Large diff with enough reviewers → grouped specs
+	// Large diff with diff_groups=3 → grouped specs
 	sections := makeSectionsForReview(12, 10)
 	fullDiff := git.JoinDiffSections(sections)
 	agents := []agent.Agent{agent.NewCodexAgent("")}
 
-	apr := resolveAutoPhase(git.DiffSizeLarge, 3, fullDiff, "", true, agents)
+	apr, _ := resolveAutoPhase(git.DiffSizeLarge, fullDiff, "", true, testBuildAgents(agents[0], agents), 3, 2)
 
 	if !apr.UseGrouped {
-		t.Fatal("expected UseGrouped=true for large diff with 3 reviewers")
+		t.Fatal("expected UseGrouped=true for large diff with diff_groups=3")
 	}
 	if apr.PhaseStr != "" {
 		t.Errorf("expected empty PhaseStr, got %q", apr.PhaseStr)
@@ -287,23 +302,11 @@ func TestAutoPhase_Large_GroupedSpecs(t *testing.T) {
 	}
 }
 
-func TestAutoPhase_Large_FallbackTooFewReviewers(t *testing.T) {
-	// Large diff with reviewers=1 → fallback to arch,diff
-	apr := resolveAutoPhase(git.DiffSizeLarge, 1, "irrelevant", "", true, nil)
-
-	if apr.UseGrouped {
-		t.Fatal("expected UseGrouped=false for reviewers=1")
-	}
-	if apr.PhaseStr != "arch,diff" {
-		t.Errorf("expected PhaseStr 'arch,diff', got %q", apr.PhaseStr)
-	}
-}
-
 func TestAutoPhase_Large_FallbackOnError(t *testing.T) {
 	// Large diff but empty diff content → buildGroupedDiffSpecs fails → fallback
 	agents := []agent.Agent{agent.NewCodexAgent("")}
 
-	apr := resolveAutoPhase(git.DiffSizeLarge, 3, "", "", true, agents)
+	apr, _ := resolveAutoPhase(git.DiffSizeLarge, "", "", true, testBuildAgents(agents[0], agents), 3, 2)
 
 	if apr.UseGrouped {
 		t.Fatal("expected UseGrouped=false when buildGroupedDiffSpecs fails")
@@ -311,23 +314,8 @@ func TestAutoPhase_Large_FallbackOnError(t *testing.T) {
 	if apr.PhaseStr != "arch,diff" {
 		t.Errorf("expected PhaseStr 'arch,diff', got %q", apr.PhaseStr)
 	}
-}
-
-func TestAutoPhase_Large_MaxDiffGroupsClamped(t *testing.T) {
-	// reviewers=6 → maxDiffGroups should be clamped to 4 (not 5)
-	sections := makeSectionsForReview(20, 10)
-	fullDiff := git.JoinDiffSections(sections)
-	agents := []agent.Agent{agent.NewCodexAgent("")}
-
-	apr := resolveAutoPhase(git.DiffSizeLarge, 6, fullDiff, "", true, agents)
-
-	if !apr.UseGrouped {
-		t.Fatal("expected UseGrouped=true")
-	}
-	// 1 arch + at most 4 diff groups = max 5 specs
-	diffGroupCount := len(apr.GroupedSpecs) - 1 // subtract arch
-	if diffGroupCount > 4 {
-		t.Errorf("expected at most 4 diff groups (clamped), got %d", diffGroupCount)
+	if apr.MediumDiffCount != 2 {
+		t.Errorf("expected MediumDiffCount=2 (from medium_diff_reviewers), got %d", apr.MediumDiffCount)
 	}
 }
 
@@ -430,184 +418,244 @@ func TestReviewPipeline_CrossCheckUsesAggregatedIDs(t *testing.T) {
 
 // --- resolveCrossCheckAgents tests ---
 
-func TestResolveCrossCheckAgents_EmptyFallsBackToSummarizer(t *testing.T) {
-	opts := ReviewOpts{
-		ResolvedConfig: config.ResolvedConfig{
-			SummarizerAgent: "codex",
-			SummarizerModel: "gpt-5",
-			CrossCheckAgent: "",
-			CrossCheckModel: "",
-		},
+func TestResolveCrossCheckAgents_DisabledReturnsNil(t *testing.T) {
+	opts := ReviewOpts{ResolvedConfig: config.ResolvedConfig{CrossCheckEnabled: false}}
+	names, models, err := resolveCrossCheckAgents(opts, "")
+	if err != nil {
+		t.Fatalf("disabled: unexpected error: %v", err)
 	}
-	names, model := resolveCrossCheckAgents(opts)
+	if names != nil || models != nil {
+		t.Errorf("disabled: expected nil names/models, got names=%v models=%v", names, models)
+	}
+}
+
+func TestResolveCrossCheckAgents_RequiresModel(t *testing.T) {
+	// Top-level CrossCheckModel empty AND models tree empty: every selected
+	// agent fails per-agent resolution → error must name the missing agent(s)
+	// so users know which slot to fill.
+	opts := ReviewOpts{ResolvedConfig: config.ResolvedConfig{
+		CrossCheckEnabled: true,
+		CrossCheckAgent:   "codex,claude",
+		CrossCheckModel:   "",
+	}}
+	_, _, err := resolveCrossCheckAgents(opts, "")
+	if err == nil {
+		t.Fatal("expected error when CrossCheckModel is empty and models tree is empty")
+	}
+	if !strings.Contains(err.Error(), "requires cross_check.model") {
+		t.Errorf("error should mention cross_check.model requirement, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "codex") || !strings.Contains(err.Error(), "claude") {
+		t.Errorf("error should name both missing agents, got: %v", err)
+	}
+}
+
+// --- Round-13 F#1: per-agent fallback via models tree ---
+
+func TestResolveCrossCheckAgents_ResolvesFromAgentsModelsTree(t *testing.T) {
+	// Top-level CrossCheckModel empty but agents.<name>.cross_check.model set
+	// for every selected agent → success. This is the canonical "structured
+	// models tree instead of legacy flat field" configuration.
+	opts := ReviewOpts{ResolvedConfig: config.ResolvedConfig{
+		CrossCheckEnabled: true,
+		CrossCheckAgent:   "codex,claude",
+		CrossCheckModel:   "",
+		Models: config.ModelsConfig{
+			Agents: map[string]config.RoleModels{
+				"codex":  {CrossCheck: &config.ModelSpec{Model: "gpt-5.4-mini"}},
+				"claude": {CrossCheck: &config.ModelSpec{Model: "claude-opus-4-7"}},
+			},
+		},
+	}}
+	names, models, err := resolveCrossCheckAgents(opts, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(names) != 2 || len(models) != 2 {
+		t.Fatalf("expected 2 agents and 2 models, got names=%v models=%v", names, models)
+	}
+	if models[0] != "gpt-5.4-mini" || models[1] != "claude-opus-4-7" {
+		t.Errorf("expected models from agents tree, got %v", models)
+	}
+}
+
+func TestResolveCrossCheckAgents_ResolvesFromDefaultsModelsTree(t *testing.T) {
+	// Top-level empty + only defaults.cross_check.model set → all agents get
+	// the default model.
+	opts := ReviewOpts{ResolvedConfig: config.ResolvedConfig{
+		CrossCheckEnabled: true,
+		CrossCheckAgent:   "codex,claude",
+		CrossCheckModel:   "",
+		Models: config.ModelsConfig{
+			Defaults: config.RoleModels{CrossCheck: &config.ModelSpec{Model: "shared-cc-model"}},
+		},
+	}}
+	_, models, err := resolveCrossCheckAgents(opts, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(models) != 2 || models[0] != "shared-cc-model" || models[1] != "shared-cc-model" {
+		t.Errorf("expected both agents to resolve to shared default, got %v", models)
+	}
+}
+
+func TestResolveCrossCheckAgents_ResolvesFromSizesModelsTree(t *testing.T) {
+	// Top-level empty + sizes.large.cross_check.model only → resolves when
+	// sizeStr matches (this exercises the runtime size-layer fallback path
+	// that validate-time cannot verify deterministically).
+	opts := ReviewOpts{ResolvedConfig: config.ResolvedConfig{
+		CrossCheckEnabled: true,
+		CrossCheckAgent:   "codex",
+		CrossCheckModel:   "",
+		Models: config.ModelsConfig{
+			Sizes: map[string]config.RoleModels{
+				"large": {CrossCheck: &config.ModelSpec{Model: "gpt-5.4-large"}},
+			},
+		},
+	}}
+	_, models, err := resolveCrossCheckAgents(opts, "large")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(models) != 1 || models[0] != "gpt-5.4-large" {
+		t.Errorf("expected model from sizes tree at size=large, got %v", models)
+	}
+}
+
+// TestResolveCrossCheckAgents_PartialTreeReportsMissingAgent verifies the
+// Round-13 F#3 tightening: when the models tree covers some selected agents
+// but not all, runtime must name the uncovered agent(s) rather than silently
+// succeeding for the covered subset.
+func TestResolveCrossCheckAgents_PartialTreeReportsMissingAgent(t *testing.T) {
+	opts := ReviewOpts{ResolvedConfig: config.ResolvedConfig{
+		CrossCheckEnabled: true,
+		CrossCheckAgent:   "codex,claude",
+		CrossCheckModel:   "",
+		Models: config.ModelsConfig{
+			Agents: map[string]config.RoleModels{
+				"codex": {CrossCheck: &config.ModelSpec{Model: "gpt-5.4-mini"}},
+				// "claude" intentionally absent and no defaults fallback.
+			},
+		},
+	}}
+	_, _, err := resolveCrossCheckAgents(opts, "")
+	if err == nil {
+		t.Fatal("expected error when one selected agent is uncovered by the models tree")
+	}
+	if !strings.Contains(err.Error(), "claude") {
+		t.Errorf("error should name the uncovered agent 'claude', got: %v", err)
+	}
+	if strings.Contains(err.Error(), "[codex]") {
+		t.Errorf("error should NOT name the covered agent 'codex', got: %v", err)
+	}
+}
+
+func TestResolveCrossCheckAgents_PairsAgentsAndModels(t *testing.T) {
+	opts := ReviewOpts{ResolvedConfig: config.ResolvedConfig{
+		CrossCheckEnabled: true,
+		CrossCheckAgent:   "codex,claude,gemini",
+		CrossCheckModel:   "gpt-5,opus,gemini-pro",
+	}}
+	names, models, err := resolveCrossCheckAgents(opts, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(names) != 3 || len(models) != 3 {
+		t.Fatalf("expected 3 agents and 3 models, got names=%v models=%v", names, models)
+	}
+	if names[0] != "codex" || models[0] != "gpt-5" {
+		t.Errorf("expected pair[0]=(codex,gpt-5), got (%s,%s)", names[0], models[0])
+	}
+	if names[1] != "claude" || models[1] != "opus" {
+		t.Errorf("expected pair[1]=(claude,opus), got (%s,%s)", names[1], models[1])
+	}
+	if names[2] != "gemini" || models[2] != "gemini-pro" {
+		t.Errorf("expected pair[2]=(gemini,gemini-pro), got (%s,%s)", names[2], models[2])
+	}
+}
+
+func TestResolveCrossCheckAgents_RejectsCountMismatch(t *testing.T) {
+	opts := ReviewOpts{ResolvedConfig: config.ResolvedConfig{
+		CrossCheckEnabled: true,
+		CrossCheckAgent:   "codex,claude,gemini",
+		CrossCheckModel:   "gpt-5,opus",
+	}}
+	_, _, err := resolveCrossCheckAgents(opts, "")
+	if err == nil {
+		t.Fatal("expected error when agent count != model count")
+	}
+	if !strings.Contains(err.Error(), "same count") {
+		t.Errorf("error should mention count mismatch, got: %v", err)
+	}
+}
+
+func TestResolveCrossCheckAgents_RejectsEmptyEntry(t *testing.T) {
+	opts := ReviewOpts{ResolvedConfig: config.ResolvedConfig{
+		CrossCheckEnabled: true,
+		CrossCheckAgent:   "codex,claude",
+		CrossCheckModel:   "gpt-5,",
+	}}
+	_, _, err := resolveCrossCheckAgents(opts, "")
+	if err == nil {
+		t.Fatal("expected error when CrossCheckModel has empty entry")
+	}
+}
+
+func TestResolveCrossCheckAgents_AgentDefaultsToSummarizer(t *testing.T) {
+	opts := ReviewOpts{ResolvedConfig: config.ResolvedConfig{
+		CrossCheckEnabled: true,
+		CrossCheckAgent:   "",
+		SummarizerAgent:   "codex",
+		CrossCheckModel:   "gpt-5",
+	}}
+	names, models, err := resolveCrossCheckAgents(opts, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if len(names) != 1 || names[0] != "codex" {
-		t.Errorf("expected fallback to summarizer agent, got %v", names)
+		t.Errorf("expected default to codex (summarizer agent), got %v", names)
 	}
-	if model != "gpt-5" {
-		t.Errorf("expected fallback to summarizer model, got %q", model)
-	}
-}
-
-func TestResolveCrossCheckAgents_Explicit(t *testing.T) {
-	opts := ReviewOpts{
-		ResolvedConfig: config.ResolvedConfig{
-			SummarizerAgent: "codex",
-			SummarizerModel: "gpt-5",
-			CrossCheckAgent: "claude,gemini",
-			CrossCheckModel: "opus",
-		},
-	}
-	names, model := resolveCrossCheckAgents(opts)
-	if len(names) != 2 || names[0] != "claude" || names[1] != "gemini" {
-		t.Errorf("expected [claude gemini], got %v", names)
-	}
-	if model != "opus" {
-		t.Errorf("expected 'opus', got %q", model)
-	}
-}
-
-func TestResolveCrossCheckAgents_EmptyFallsBackToSummarizer_NonCodex(t *testing.T) {
-	// Verifies fallback when SummarizerAgent is a non-default value (e.g. "claude").
-	// Before the fix, ParseAgentNames("") returned ["codex"] regardless.
-	opts := ReviewOpts{
-		ResolvedConfig: config.ResolvedConfig{
-			SummarizerAgent: "claude",
-			SummarizerModel: "opus",
-			CrossCheckAgent: "",
-			CrossCheckModel: "",
-		},
-	}
-	names, model := resolveCrossCheckAgents(opts)
-	if len(names) != 1 || names[0] != "claude" {
-		t.Errorf("expected fallback to summarizer agent [claude], got %v", names)
-	}
-	if model != "opus" {
-		t.Errorf("expected fallback to summarizer model 'opus', got %q", model)
-	}
-}
-
-func TestResolveCrossCheckAgents_EmptyFallsBackToSummarizerMultiValue(t *testing.T) {
-	// Verifies comma-separated SummarizerAgent is preserved when CrossCheckAgent is empty.
-	opts := ReviewOpts{
-		ResolvedConfig: config.ResolvedConfig{
-			SummarizerAgent: "codex,claude",
-			SummarizerModel: "gpt-5",
-			CrossCheckAgent: "",
-			CrossCheckModel: "",
-		},
-	}
-	names, model := resolveCrossCheckAgents(opts)
-	if len(names) != 2 || names[0] != "codex" || names[1] != "claude" {
-		t.Errorf("expected [codex claude], got %v", names)
-	}
-	if model != "gpt-5" {
-		t.Errorf("expected 'gpt-5', got %q", model)
-	}
-}
-
-func TestResolveCrossCheckAgents_ExplicitOverridesSummarizer(t *testing.T) {
-	// Verifies that a non-empty CrossCheckAgent takes precedence over SummarizerAgent.
-	opts := ReviewOpts{
-		ResolvedConfig: config.ResolvedConfig{
-			SummarizerAgent: "claude",
-			SummarizerModel: "opus",
-			CrossCheckAgent: "gemini",
-			CrossCheckModel: "",
-		},
-	}
-	names, model := resolveCrossCheckAgents(opts)
-	if len(names) != 1 || names[0] != "gemini" {
-		t.Errorf("expected [gemini], got %v", names)
-	}
-	if model != "opus" {
-		t.Errorf("expected model fallback to summarizer 'opus', got %q", model)
-	}
-}
-
-func TestResolveCrossCheckAgents_WhitespaceFallsBack(t *testing.T) {
-	// Verifies that a whitespace-only CrossCheckAgent is treated as unset.
-	opts := ReviewOpts{
-		ResolvedConfig: config.ResolvedConfig{
-			SummarizerAgent: "claude",
-			SummarizerModel: "sonnet",
-			CrossCheckAgent: "   ",
-			CrossCheckModel: "",
-		},
-	}
-	names, model := resolveCrossCheckAgents(opts)
-	if len(names) != 1 || names[0] != "claude" {
-		t.Errorf("expected fallback to [claude], got %v", names)
-	}
-	if model != "sonnet" {
-		t.Errorf("expected fallback to 'sonnet', got %q", model)
+	if len(models) != 1 || models[0] != "gpt-5" {
+		t.Errorf("expected single model, got %v", models)
 	}
 }
 
 // --- resolveAutoPhase fallback-on-few-groups tests ---
 
-// TestResolveAutoPhase_AllGroupsEmpty_FallsBackToFlat covers the case where
-// buildGroupedDiffSpecs returns only the arch spec (0 diff groups) because
-// every group's JoinDiffSections produced an empty string.
-// We simulate this by passing a diff that parses to exactly 1 section
-// and maxDiffGroups=1: grouping yields one group, but we craft a scenario
-// where len(specs)-1 == 0.  The easiest reproducible path is reviewers=2
-// (maxDiffGroups=1) with a tiny single-file diff so grouping folds it into
-// one group, then assert diffGroupCount < 2 triggers the fallback.
-// In practice 0 diff groups only happens when every JoinDiffSections call
-// returns ""; that code path is already exercised by the guard in
-// buildGroupedDiffSpecs which uses continue on empty groupDiff.
-// This test validates the guard in resolveAutoPhase via an arch-only spec
-// slice crafted directly (testing the decision boundary, not the builder).
-func TestResolveAutoPhase_AllGroupsEmpty_FallsBackToFlat(t *testing.T) {
-	// A single-section diff with reviewers=2 → maxDiffGroups=1.
-	// buildGroupedDiffSpecs will produce 1 arch + 1 diff spec (diffGroupCount=1 < 2).
-	sections := makeSectionsForReview(1, 10)
-	fullDiff := git.JoinDiffSections(sections)
-	agents := []agent.Agent{agent.NewCodexAgent("")}
-
-	apr := resolveAutoPhase(git.DiffSizeLarge, 2, fullDiff, "", true, agents)
-
-	if apr.UseGrouped {
-		t.Fatal("expected UseGrouped=false when diffGroupCount < 2")
-	}
-	if apr.PhaseStr != "arch,diff" {
-		t.Errorf("expected PhaseStr 'arch,diff', got %q", apr.PhaseStr)
-	}
-	if apr.FallbackReason == "" {
-		t.Error("expected non-empty FallbackReason")
-	}
-}
-
 // TestResolveAutoPhase_OneDiffGroup_FallsBackToFlat verifies that exactly
-// 1 non-empty diff group (< 2) still triggers the fallback.
+// 1 non-empty diff group (< 2) still triggers the fallback. With
+// diff_groups=1 the file_count cap also kicks in early.
 func TestResolveAutoPhase_OneDiffGroup_FallsBackToFlat(t *testing.T) {
-	// 2 files, reviewers=2 → maxDiffGroups=1 → 1 diff group → fallback.
+	// 2 files, diff_groups=1 → file_count cap → effectiveGroups=1 → fallback.
 	sections := makeSectionsForReview(2, 10)
 	fullDiff := git.JoinDiffSections(sections)
 	agents := []agent.Agent{agent.NewCodexAgent("")}
 
-	apr := resolveAutoPhase(git.DiffSizeLarge, 2, fullDiff, "", true, agents)
+	apr, _ := resolveAutoPhase(git.DiffSizeLarge, fullDiff, "", true, testBuildAgents(agents[0], agents), 1, 2)
 
 	if apr.UseGrouped {
-		t.Fatal("expected UseGrouped=false for 1 diff group")
+		t.Fatal("expected UseGrouped=false for diff_groups=1")
 	}
 	if apr.PhaseStr != "arch,diff" {
 		t.Errorf("expected PhaseStr 'arch,diff', got %q", apr.PhaseStr)
 	}
 	if apr.FallbackReason == "" {
 		t.Error("expected non-empty FallbackReason")
+	}
+	if apr.MediumDiffCount != 2 {
+		t.Errorf("expected MediumDiffCount=2 from medium_diff_reviewers, got %d", apr.MediumDiffCount)
 	}
 }
 
 // TestResolveAutoPhase_TwoDiffGroups_KeepsGrouped verifies that 2 or more
 // non-empty diff groups result in UseGrouped=true (no fallback).
 func TestResolveAutoPhase_TwoDiffGroups_KeepsGrouped(t *testing.T) {
-	// 6 files, reviewers=3 → maxDiffGroups=2 → expect 2 diff groups.
+	// 6 files, diff_groups=2 → expect 2 diff groups.
 	sections := makeSectionsForReview(6, 10)
 	fullDiff := git.JoinDiffSections(sections)
 	agents := []agent.Agent{agent.NewCodexAgent("")}
 
-	apr := resolveAutoPhase(git.DiffSizeLarge, 3, fullDiff, "", true, agents)
+	apr, _ := resolveAutoPhase(git.DiffSizeLarge, fullDiff, "", true, testBuildAgents(agents[0], agents), 2, 2)
 
 	if !apr.UseGrouped {
 		t.Fatal("expected UseGrouped=true for 2+ diff groups")
@@ -627,9 +675,9 @@ func TestLargeReview_GroupedSpecsProduceCrossCheckableTopology(t *testing.T) {
 	sections := makeSectionsForReview(8, 5)
 	fullDiff := git.JoinDiffSections(sections)
 	agents := []agent.Agent{agent.NewCodexAgent("")}
-	apr := resolveAutoPhase(git.DiffSizeLarge, 4, fullDiff, "", true, agents)
+	apr, _ := resolveAutoPhase(git.DiffSizeLarge, fullDiff, "", true, testBuildAgents(agents[0], agents), 3, 2)
 	if !apr.UseGrouped {
-		t.Fatal("expected UseGrouped=true for large diff with 4 reviewers")
+		t.Fatal("expected UseGrouped=true for large diff with diff_groups=3")
 	}
 	if apr.GroupedSpecs[0].GroupKey != "arch" {
 		t.Errorf("expected first spec GroupKey=arch, got %q", apr.GroupedSpecs[0].GroupKey)
@@ -945,115 +993,128 @@ func TestFlatPath_VerdictRendered(t *testing.T) {
 	}
 }
 
-// --- enforceReviewerBoundsForSize tests (CC#4) ---
+// --- New auto-phase knob tests (diff_groups / medium_diff_reviewers) ---
 
-func TestEnforceReviewerBounds_SmallUnchanged(t *testing.T) {
-	got, reason := enforceReviewerBoundsForSize(git.DiffSizeSmall, 1, 0)
-	if got != 1 {
-		t.Errorf("small: got %d, want 1", got)
-	}
-	if reason != "" {
-		t.Errorf("small: expected empty reason, got %q", reason)
-	}
-}
-
-func TestEnforceReviewerBounds_MediumOneBumpedToTwo(t *testing.T) {
-	got, reason := enforceReviewerBoundsForSize(git.DiffSizeMedium, 1, 0)
-	if got != 2 {
-		t.Errorf("medium+1 → want 2, got %d", got)
-	}
-	if reason == "" {
-		t.Error("medium+1: expected non-empty reason")
-	}
-}
-
-func TestEnforceReviewerBounds_MediumTwoUnchanged(t *testing.T) {
-	got, reason := enforceReviewerBoundsForSize(git.DiffSizeMedium, 2, 0)
-	if got != 2 {
-		t.Errorf("medium+2 → want 2, got %d", got)
-	}
-	if reason != "" {
-		t.Errorf("medium+2: expected empty reason, got %q", reason)
-	}
-}
-
-func TestEnforceReviewerBounds_LargeOneBumpedToThree(t *testing.T) {
-	got, reason := enforceReviewerBoundsForSize(git.DiffSizeLarge, 1, 5)
-	if got != 3 {
-		t.Errorf("large+1 → want 3, got %d", got)
-	}
-	if reason == "" {
-		t.Error("large+1: expected non-empty reason")
-	}
-}
-
-func TestEnforceReviewerBounds_LargeTwoBumpedToThree(t *testing.T) {
-	got, reason := enforceReviewerBoundsForSize(git.DiffSizeLarge, 2, 5)
-	if got != 3 {
-		t.Errorf("large+2 → want 3, got %d", got)
-	}
-	if reason == "" {
-		t.Error("large+2: expected non-empty reason")
-	}
-}
-
-func TestEnforceReviewerBounds_LargeThreeUnchanged(t *testing.T) {
-	got, reason := enforceReviewerBoundsForSize(git.DiffSizeLarge, 3, 5)
-	if got != 3 {
-		t.Errorf("large+3 → want 3, got %d", got)
-	}
-	if reason != "" {
-		t.Errorf("large+3: expected empty reason, got %q", reason)
-	}
-}
-
-func TestEnforceReviewerBounds_LargeClampedToFileCountPlusOne(t *testing.T) {
-	got, reason := enforceReviewerBoundsForSize(git.DiffSizeLarge, 15, 9)
-	if got != 10 {
-		t.Errorf("large+15/files=9 → want 10, got %d", got)
-	}
-	if !strings.Contains(reason, "clamp") {
-		t.Errorf("large clamp: expected reason to mention 'clamp', got %q", reason)
-	}
-}
-
-func TestEnforceReviewerBounds_LargeSmallFileCountDefaultsToFloor(t *testing.T) {
-	// upper = fileCount+1 = 2, below floor=3 → clamp back up to 3.
-	got, reason := enforceReviewerBoundsForSize(git.DiffSizeLarge, 10, 1)
-	if got != 3 {
-		t.Errorf("large+10/files=1 → want 3 (floor), got %d", got)
-	}
-	if reason == "" {
-		t.Error("large+10/files=1: expected non-empty reason")
-	}
-}
-
-// TestResolveAutoPhase_LargeReviewersOneTriggersOverride verifies that a large
-// diff with reviewers=1 sets ReviewerOverride=3 and records the bump reason.
-func TestResolveAutoPhase_LargeReviewersOneTriggersOverride(t *testing.T) {
-	sections := makeSectionsForReview(8, 10)
+// TestResolveAutoPhase_LargeUsesDiffGroupsKnob verifies that the diff_groups
+// knob caps the grouped diff path. With many files / lines the greedy packer
+// would normally produce > diffGroups groups; diffGroups=3 caps the result.
+func TestResolveAutoPhase_LargeUsesDiffGroupsKnob(t *testing.T) {
+	// 25 files × 50 lines (1250 lines, default 200/group) → ~7 groups
+	// without cap; diff_groups=3 caps to 3.
+	sections := makeSectionsForReview(25, 50)
 	fullDiff := git.JoinDiffSections(sections)
 	agents := []agent.Agent{agent.NewCodexAgent("")}
 
-	apr := resolveAutoPhase(git.DiffSizeLarge, 1, fullDiff, "", true, agents)
+	apr, _ := resolveAutoPhase(git.DiffSizeLarge, fullDiff, "", true, testBuildAgents(agents[0], agents), 3, 2)
 
-	if apr.ReviewerOverride != 3 {
-		t.Errorf("expected ReviewerOverride=3, got %d", apr.ReviewerOverride)
+	if !apr.UseGrouped {
+		t.Fatalf("expected UseGrouped=true; FallbackReason=%q", apr.FallbackReason)
 	}
-	if !strings.Contains(apr.FallbackReason, "bumped from 1 to 3") {
-		t.Errorf("expected FallbackReason to include bump text, got %q", apr.FallbackReason)
+	diffGroupCount := len(apr.GroupedSpecs) - 1
+	if diffGroupCount > 3 {
+		t.Errorf("expected at most 3 diff groups (diff_groups=3 cap), got %d", diffGroupCount)
+	}
+	if diffGroupCount < 2 {
+		t.Errorf("expected >=2 diff groups, got %d", diffGroupCount)
+	}
+}
+
+// TestResolveAutoPhase_LargeFallbackToArchDiff_WhenFileCountTooSmall verifies
+// that when file_count<2 the grouped path is impossible and falls back to
+// arch,diff carrying medium_diff_reviewers as MediumDiffCount.
+func TestResolveAutoPhase_LargeFallbackToArchDiff_WhenFileCountTooSmall(t *testing.T) {
+	// 1 file, diff_groups=4 → effectiveGroups=1 → fallback.
+	sections := makeSectionsForReview(1, 10)
+	fullDiff := git.JoinDiffSections(sections)
+	agents := []agent.Agent{agent.NewCodexAgent("")}
+
+	apr, _ := resolveAutoPhase(git.DiffSizeLarge, fullDiff, "", true, testBuildAgents(agents[0], agents), 4, 3)
+
+	if apr.UseGrouped {
+		t.Fatal("expected UseGrouped=false when fileCount<2")
+	}
+	if apr.PhaseStr != "arch,diff" {
+		t.Errorf("expected PhaseStr 'arch,diff', got %q", apr.PhaseStr)
+	}
+	if apr.MediumDiffCount != 3 {
+		t.Errorf("expected MediumDiffCount=3 (from medium_diff_reviewers), got %d", apr.MediumDiffCount)
+	}
+	if apr.FallbackReason == "" {
+		t.Error("expected non-empty FallbackReason")
+	}
+}
+
+// TestResolveAutoPhase_MediumUsesMediumDiffReviewersKnob verifies that medium
+// path returns arch,diff with MediumDiffCount=mediumDiffReviewers.
+func TestResolveAutoPhase_MediumUsesMediumDiffReviewersKnob(t *testing.T) {
+	apr, _ := resolveAutoPhase(git.DiffSizeMedium, "", "", true, testBuildAgents(nil, nil), 4, 4)
+
+	if apr.UseGrouped {
+		t.Fatal("expected UseGrouped=false on medium")
+	}
+	if apr.PhaseStr != "arch,diff" {
+		t.Errorf("expected PhaseStr 'arch,diff', got %q", apr.PhaseStr)
+	}
+	if apr.MediumDiffCount != 4 {
+		t.Errorf("expected MediumDiffCount=4, got %d", apr.MediumDiffCount)
+	}
+}
+
+// TestResolveAutoPhase_LargeRespectsFileCountUpperBound verifies that
+// effectiveGroups = min(diffGroups, fileCount). With diff_groups>>fileCount
+// the cap is fileCount; the resulting group count never exceeds fileCount.
+func TestResolveAutoPhase_LargeRespectsFileCountUpperBound(t *testing.T) {
+	// 12 files (> default 5 files/group) so the greedy packer naturally
+	// produces multiple groups; diff_groups=10 is capped to fileCount=12.
+	// We assert the resulting count never exceeds fileCount and remains
+	// within the diff_groups cap.
+	sections := makeSectionsForReview(12, 10)
+	fullDiff := git.JoinDiffSections(sections)
+	agents := []agent.Agent{agent.NewCodexAgent("")}
+
+	apr, _ := resolveAutoPhase(git.DiffSizeLarge, fullDiff, "", true, testBuildAgents(agents[0], agents), 10, 2)
+
+	if !apr.UseGrouped {
+		t.Fatalf("expected UseGrouped=true with 12 files / diff_groups=10; FallbackReason=%q", apr.FallbackReason)
+	}
+	diffGroupCount := len(apr.GroupedSpecs) - 1
+	if diffGroupCount > 12 {
+		t.Errorf("expected diff group count capped at fileCount=12, got %d", diffGroupCount)
+	}
+	if diffGroupCount > 10 {
+		t.Errorf("expected diff group count capped at diff_groups=10, got %d", diffGroupCount)
+	}
+	if diffGroupCount < 2 {
+		t.Errorf("expected >=2 diff groups, got %d", diffGroupCount)
+	}
+}
+
+// TestResolveAutoPhase_Small returns flat diff regardless of knobs.
+func TestResolveAutoPhase_Small(t *testing.T) {
+	apr, _ := resolveAutoPhase(git.DiffSizeSmall, "irrelevant", "", true, testBuildAgents(nil, nil), 4, 2)
+	if apr.UseGrouped {
+		t.Errorf("expected UseGrouped=false for small")
+	}
+	if apr.PhaseStr != "diff" {
+		t.Errorf("expected PhaseStr 'diff', got %q", apr.PhaseStr)
+	}
+	if apr.MediumDiffCount != 0 {
+		t.Errorf("expected MediumDiffCount=0 on small, got %d", apr.MediumDiffCount)
 	}
 }
 
 // TestBuildGroupedDiffSpecs_EmptyGroupsSkipped_IDsContiguous verifies that when
 // buildGroupedDiffSpecs skips empty groups, the surviving specs have contiguous
-// ReviewerIDs (1,2,3,...) and each spec's agent matches AgentForReviewer(id).
+// ReviewerIDs (1,2,3,...). Round-9 contract: specs[0] is the arch spec
+// (always archAgent); specs[1..] round-robin through diffAgents starting from
+// diffAgents[0] for the 1st surviving diff group.
 func TestBuildGroupedDiffSpecs_EmptyGroupsSkipped_IDsContiguous(t *testing.T) {
 	sections := makeSectionsForReview(6, 10)
 	fullDiff := git.JoinDiffSections(sections)
-	agents := []agent.Agent{agent.NewCodexAgent(""), agent.NewCodexAgent("")}
+	diffAgents := []agent.Agent{agent.NewCodexAgent(""), agent.NewCodexAgent("")}
+	archAgent := agent.NewCodexAgent("")
 
-	specs, err := buildGroupedDiffSpecs(fullDiff, "", true, agents, 4)
+	specs, err := buildGroupedDiffSpecs(fullDiff, "", true, archAgent, diffAgents, 4)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1064,9 +1125,16 @@ func TestBuildGroupedDiffSpecs_EmptyGroupsSkipped_IDsContiguous(t *testing.T) {
 		if s.ReviewerID != wantID {
 			t.Errorf("specs[%d].ReviewerID = %d, want %d", i, s.ReviewerID, wantID)
 		}
-		wantAgent := agent.AgentForReviewer(agents, wantID)
-		if s.Agent != wantAgent {
-			t.Errorf("specs[%d].Agent mismatch: ReviewerID=%d should map to AgentForReviewer(%d)", i, s.ReviewerID, wantID)
+	}
+	// Arch spec uses archAgent.
+	if specs[0].Agent != archAgent {
+		t.Errorf("specs[0].Agent mismatch: expected archAgent")
+	}
+	// Diff specs round-robin diffAgents starting at index 0.
+	for i := 1; i < len(specs); i++ {
+		want := agent.AgentForReviewer(diffAgents, i)
+		if specs[i].Agent != want {
+			t.Errorf("specs[%d].Agent mismatch: expected diffAgents[%d]", i, (i-1)%len(diffAgents))
 		}
 	}
 }
@@ -1164,4 +1232,255 @@ func TestComputeVerdict_CrossCheckBlockingBeatsDegraded(t *testing.T) {
 	if g.Verdict != "blocking" {
 		t.Errorf("blocking finding must take precedence over degraded, got %q", g.Verdict)
 	}
+}
+
+// --- Round-9: per-phase reviewer agent override tests ---
+
+// TestBuildGroupedDiffSpecs_UsesArchAndDiffAgents verifies that when a
+// distinct archAgent and diffAgents slice are supplied, the arch spec uses
+// archAgent and the diff specs round-robin through diffAgents independently
+// of archAgent.
+func TestBuildGroupedDiffSpecs_UsesArchAndDiffAgents(t *testing.T) {
+	sections := makeSectionsForReview(8, 10)
+	fullDiff := git.JoinDiffSections(sections)
+
+	archAgent := agent.NewClaudeAgent("")
+	diffAgent1 := agent.NewCodexAgent("")
+	diffAgent2 := agent.NewGeminiAgent("")
+	diffAgents := []agent.Agent{diffAgent1, diffAgent2}
+
+	specs, err := buildGroupedDiffSpecs(fullDiff, "", true, archAgent, diffAgents, 4)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(specs) < 3 {
+		t.Fatalf("expected >=1 arch + 2 diff specs, got %d", len(specs))
+	}
+	if specs[0].Agent != archAgent {
+		t.Errorf("specs[0].Agent should be archAgent (claude), got %T name=%q", specs[0].Agent, specs[0].Agent.Name())
+	}
+	// Diff specs round-robin over diffAgents starting at index 0 (1-based reviewerIdx).
+	for i := 1; i < len(specs); i++ {
+		want := diffAgents[(i-1)%len(diffAgents)]
+		if specs[i].Agent != want {
+			t.Errorf("specs[%d].Agent = %s, want %s", i, specs[i].Agent.Name(), want.Name())
+		}
+	}
+}
+
+// TestBuildGroupedDiffSpecs_DiffAgentRoundRobinIndependent verifies that
+// the diff-phase round-robin starts from diffAgents[0] regardless of
+// archAgent identity (i.e. arch occupying ReviewerID=1 must not consume a
+// diff-agent slot).
+func TestBuildGroupedDiffSpecs_DiffAgentRoundRobinIndependent(t *testing.T) {
+	sections := makeSectionsForReview(6, 10)
+	fullDiff := git.JoinDiffSections(sections)
+
+	archAgent := agent.NewClaudeAgent("")
+	diffAgent1 := agent.NewCodexAgent("")
+	diffAgent2 := agent.NewGeminiAgent("")
+	diffAgents := []agent.Agent{diffAgent1, diffAgent2}
+
+	specs, err := buildGroupedDiffSpecs(fullDiff, "", true, archAgent, diffAgents, 4)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(specs) < 3 {
+		t.Fatalf("expected >=3 specs, got %d", len(specs))
+	}
+	// First diff spec (index 1) MUST be diffAgents[0] = codex,
+	// not gemini (which would happen if reviewerID=2 was used directly with
+	// the round-robin).
+	if specs[1].Agent != diffAgent1 {
+		t.Errorf("first diff spec should use diffAgents[0]=codex, got %s", specs[1].Agent.Name())
+	}
+	if specs[2].Agent != diffAgent2 {
+		t.Errorf("second diff spec should use diffAgents[1]=gemini, got %s", specs[2].Agent.Name())
+	}
+}
+
+func TestMaxPotentialReviewers(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  config.ResolvedConfig
+		want int
+	}{
+		{
+			name: "flat dominates",
+			cfg:  config.ResolvedConfig{Reviewers: 5, DiffGroups: 3, MediumDiffReviewers: 2},
+			want: 5, // max(5, 1+3, 1+2) = 5
+		},
+		{
+			name: "grouped dominates",
+			cfg:  config.ResolvedConfig{Reviewers: 3, DiffGroups: 8, MediumDiffReviewers: 2},
+			want: 9, // max(3, 1+8, 1+2) = 9
+		},
+		{
+			name: "medium dominates",
+			cfg:  config.ResolvedConfig{Reviewers: 2, DiffGroups: 1, MediumDiffReviewers: 5},
+			want: 6, // max(2, 1+1, 1+5) = 6
+		},
+		{
+			name: "all equal",
+			cfg:  config.ResolvedConfig{Reviewers: 3, DiffGroups: 2, MediumDiffReviewers: 2},
+			want: 3, // max(3, 1+2, 1+2) = 3
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := maxPotentialReviewers(tt.cfg)
+			if got != tt.want {
+				t.Errorf("maxPotentialReviewers() = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}
+
+// --- logPerPhaseModelMatrix tests ---
+//
+// Round-13 F#4: logPerPhaseModelMatrix evaluated opts.ReviewerAgents[0] BEFORE
+// consulting ArchReviewerAgent, so a config with reviewer_agents=[] and
+// arch_reviewer_agent="codex" caused a panic in verbose grouped-path logging.
+// The fix re-orders the evaluation to mirror buildPhaseAgents (explicit arch
+// override first, reviewer fallback second) and adds a guard for the fully-empty
+// case so logging degrades gracefully rather than panicking.
+
+func TestLogPerPhaseModelMatrix_EmptyReviewerAgentsWithArchOverride(t *testing.T) {
+	// Empty ReviewerAgents + explicit ArchReviewerAgent must NOT panic.
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("logPerPhaseModelMatrix panicked: %v", r)
+		}
+	}()
+	opts := ReviewOpts{
+		ResolvedConfig: config.ResolvedConfig{
+			ReviewerAgents:     nil,
+			ArchReviewerAgent:  "codex",
+			DiffReviewerAgents: []string{"claude"},
+		},
+	}
+	logPerPhaseModelMatrix(terminal.NewLogger(), opts, "large")
+}
+
+func TestLogPerPhaseModelMatrix_ArchOverrideTakesPrecedence(t *testing.T) {
+	// When both are set, arch override wins — matches buildPhaseAgents.
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("logPerPhaseModelMatrix panicked: %v", r)
+		}
+	}()
+	opts := ReviewOpts{
+		ResolvedConfig: config.ResolvedConfig{
+			ReviewerAgents:    []string{"gemini", "codex"},
+			ArchReviewerAgent: "claude",
+		},
+	}
+	logPerPhaseModelMatrix(terminal.NewLogger(), opts, "large")
+}
+
+func TestLogPerPhaseModelMatrix_ReviewerAgentsFallback(t *testing.T) {
+	// Without an explicit arch override, the first reviewer agent drives arch.
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("logPerPhaseModelMatrix panicked: %v", r)
+		}
+	}()
+	opts := ReviewOpts{
+		ResolvedConfig: config.ResolvedConfig{
+			ReviewerAgents: []string{"codex", "claude"},
+		},
+	}
+	logPerPhaseModelMatrix(terminal.NewLogger(), opts, "large")
+}
+
+func TestLogPerPhaseModelMatrix_BothEmpty_GracefulDegrade(t *testing.T) {
+	// Pathological empty config: must not panic. A real run would already have
+	// aborted in buildPhaseAgents, but logging runs defensively.
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("logPerPhaseModelMatrix panicked: %v", r)
+		}
+	}()
+	opts := ReviewOpts{
+		ResolvedConfig: config.ResolvedConfig{
+			ReviewerAgents:     nil,
+			ArchReviewerAgent:  "",
+			DiffReviewerAgents: nil,
+		},
+	}
+	logPerPhaseModelMatrix(terminal.NewLogger(), opts, "large")
+}
+
+// --- logCrossCheckModelMatrix tests ---
+//
+// Round-14 F#1 (案 A): logCrossCheckModelMatrix mirrors logPerPhaseModelMatrix
+// for the cross_check verbose row. Like its sibling, it runs only after the
+// grouped path is confirmed (sizeStr="large"), but defensive coding still
+// requires panic-safety on every reachable input path so a logging failure
+// never crashes a review. These tests pin the same invariants the Round-13
+// F#4 tests pinned for logPerPhaseModelMatrix.
+
+func TestLogCrossCheckModelMatrix_ResolveErrorEmitsWarningNoPanic(t *testing.T) {
+	// Empty top-level CrossCheckModel + empty models tree → resolve fails for
+	// every selected agent. Helper must emit a warning row and return cleanly.
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("logCrossCheckModelMatrix panicked: %v", r)
+		}
+	}()
+	opts := ReviewOpts{
+		ResolvedConfig: config.ResolvedConfig{
+			CrossCheckEnabled: true,
+			CrossCheckAgent:   "codex",
+			CrossCheckModel:   "", // forces tree cascade
+			SummarizerAgent:   "codex",
+			Models:            config.ModelsConfig{}, // empty: no path resolves
+		},
+	}
+	logCrossCheckModelMatrix(terminal.NewLogger(), opts, "large")
+}
+
+func TestLogCrossCheckModelMatrix_AgentDefaultsToSummarizerWhenCrossCheckAgentEmpty(t *testing.T) {
+	// CrossCheckAgent unset must fall back to SummarizerAgent inside the
+	// resolver call from the log helper, mirroring runtime behavior.
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("logCrossCheckModelMatrix panicked: %v", r)
+		}
+	}()
+	opts := ReviewOpts{
+		ResolvedConfig: config.ResolvedConfig{
+			CrossCheckEnabled: true,
+			CrossCheckAgent:   "", // empty → use summarizer agent
+			SummarizerAgent:   "codex",
+			CrossCheckModel:   "gpt-5.4-mini",
+		},
+	}
+	logCrossCheckModelMatrix(terminal.NewLogger(), opts, "large")
+}
+
+func TestLogCrossCheckModelMatrix_EmitsOneRowPerResolvedAgent(t *testing.T) {
+	// Normal grouped-path scenario: all selected agents resolve from the
+	// agents tree. Helper must complete without panicking and produce one
+	// entry per agent (smoke-tested by simply observing no panic).
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("logCrossCheckModelMatrix panicked: %v", r)
+		}
+	}()
+	opts := ReviewOpts{
+		ResolvedConfig: config.ResolvedConfig{
+			CrossCheckEnabled: true,
+			CrossCheckAgent:   "codex,claude",
+			CrossCheckModel:   "",
+			SummarizerAgent:   "codex",
+			Models: config.ModelsConfig{
+				Agents: map[string]config.RoleModels{
+					"codex":  {CrossCheck: &config.ModelSpec{Model: "gpt-5.4-mini"}},
+					"claude": {CrossCheck: &config.ModelSpec{Model: "claude-opus-4-7"}},
+				},
+			},
+		},
+	}
+	logCrossCheckModelMatrix(terminal.NewLogger(), opts, "large")
 }

@@ -1,8 +1,21 @@
 # acr configuration file
 # See https://github.com/richhaase/agentic-code-reviewer for documentation.
 
-# Number of parallel reviewers to run (default: 5)
-reviewers: 6
+# Number of parallel reviewers (default: 5)
+# This applies ONLY to flat review path (auto-phase OFF / size=small /
+# explicit --phase). Auto-phase grouped/medium use diff_groups /
+# medium_diff_reviewers below.
+reviewers: 5
+
+# Number of diff groups in auto-phase grouped path (large diff). Default: 4.
+# Each group reviews a subset of changed files. arch reviewer is always 1
+# (sees full diff). Total reviewers in grouped path = 1 + diff_groups.
+diff_groups: 4
+
+# Number of diff reviewers in auto-phase medium path. Default: 2.
+# arch reviewer is always 1. Total reviewers in medium path =
+# 1 + medium_diff_reviewers.
+# medium_diff_reviewers: 2
 
 # Maximum concurrent reviewers (default: same as reviewers)
 # concurrency: 0
@@ -25,6 +38,18 @@ reviewer_agents:
   - claude
   - gemini
 
+# NEW (Round-9): per-phase agent override for auto-phase grouped diff path.
+# - arch_reviewer_agent: single agent for the arch phase (sees full diff).
+#   If unset, falls back to the first entry of reviewer_agents.
+# - diff_reviewer_agents: list for the grouped diff phase (round-robin per group).
+#   If unset, falls back to reviewer_agents.
+# Use this to route unreliable backends (e.g., capacity-throttled providers)
+# away from grouped diff while keeping them in flat review.
+arch_reviewer_agent: claude
+diff_reviewer_agents:
+  - codex
+#   - claude
+
 # Agent for summarization: codex, claude, gemini
 summarizer_agent: claude
 # Path to file containing review guidance
@@ -39,6 +64,13 @@ summarizer_agent: claude
 # fp_filter:
 #   enabled: true
 #   threshold: 75
+
+# Cross-check configuration (Round-9 contract: model is REQUIRED when enabled,
+# comma-separated count must match agent list, paired positionally).
+cross_check:
+  enabled: true
+  agent: "codex,claude,gemini"
+  model: "gpt-5.4,claude-opus-4-7,gemini-3.1-pro-preview"
 
 # PR feedback summarization
 # pr_feedback:
@@ -109,7 +141,7 @@ models:
   sizes:
     # 規模別の effort 上書き（model は agents 層に任せる）
     small:
-      reviewer:      { effort: low }
+      reviewer:      { effort: medium }
     large:
       arch_reviewer: { effort: high }
       diff_reviewer: { effort: high }
@@ -120,17 +152,13 @@ models:
       reviewer:      { model: gpt-5.4 }
       arch_reviewer: { model: gpt-5.4 }
       diff_reviewer: { model: gpt-5.4 }
-      summarizer:    { model: gpt-5.4 }
       cross_check:   { model: gpt-5.4 }
     claude:
       reviewer:      { model: claude-sonnet-4-6 }
       arch_reviewer: { model: claude-opus-4-7 }
-      diff_reviewer: { model: claude-sonnet-4-6 }
       summarizer:    { model: claude-opus-4-7 }
       cross_check:   { model: claude-opus-4-7 }
     gemini:
       # gemini は effort 未対応。model のみ指定
       reviewer:      { model: gemini-3.1-pro-preview }
-      arch_reviewer: { model: gemini-3.1-pro-preview }
-      diff_reviewer: { model: gemini-3.1-pro-preview }
       cross_check:   { model: gemini-3.1-pro-preview }

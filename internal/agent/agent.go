@@ -41,4 +41,9 @@ type Agent interface {
 	// The caller MUST call Close() on the result to ensure proper resource cleanup.
 	// After Close(), ExitCode() and Stderr() return valid values.
 	ExecuteSummary(ctx context.Context, prompt string, input []byte) (*ExecutionResult, error)
+
+	// Options returns the AgentOptions the agent was constructed with.
+	// Used by callers (e.g., runner.BuildReviewerSpecs) to merge per-phase
+	// overrides with the agent's existing model/effort configuration.
+	Options() AgentOptions
 }

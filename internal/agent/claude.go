@@ -54,6 +54,11 @@ func (c *ClaudeAgent) Name() string {
 	return "claude"
 }
 
+// Options returns the AgentOptions the agent was constructed with.
+func (c *ClaudeAgent) Options() AgentOptions {
+	return AgentOptions{Model: c.model, Effort: c.effort}
+}
+
 // IsAvailable checks if the claude CLI is installed and accessible.
 func (c *ClaudeAgent) IsAvailable() error {
 	_, err := exec.LookPath("claude")

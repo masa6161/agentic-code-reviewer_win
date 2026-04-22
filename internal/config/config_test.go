@@ -1202,8 +1202,10 @@ func TestResolveGuidance_ConfigFileAbsolutePath(t *testing.T) {
 func clearACREnv(t *testing.T) {
 	t.Helper()
 	for _, key := range []string{
-		"ACR_REVIEWERS", "ACR_CONCURRENCY", "ACR_BASE_REF", "ACR_TIMEOUT",
+		"ACR_REVIEWERS", "ACR_DIFF_GROUPS", "ACR_MEDIUM_DIFF_REVIEWERS",
+		"ACR_CONCURRENCY", "ACR_BASE_REF", "ACR_TIMEOUT",
 		"ACR_RETRIES", "ACR_FETCH", "ACR_REVIEWER_AGENT", "ACR_SUMMARIZER_AGENT",
+		"ACR_ARCH_REVIEWER_AGENT", "ACR_DIFF_REVIEWER_AGENTS",
 		"ACR_SUMMARIZER_TIMEOUT", "ACR_FP_FILTER_TIMEOUT",
 		"ACR_GUIDANCE", "ACR_GUIDANCE_FILE", "ACR_FP_FILTER", "ACR_FP_THRESHOLD",
 		"ACR_PR_FEEDBACK", "ACR_PR_FEEDBACK_AGENT",
@@ -1600,6 +1602,84 @@ func TestResolvedConfig_Validate_EmptyCrossCheckAgent(t *testing.T) {
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("expected empty cross_check.agent to be valid, got: %v", err)
 	}
+}
+
+// TestResolve_RejectsCrossCheckEnabledWithoutModel asserts the round-9 contract:
+// when cross_check.enabled=true (the default) AND cross_check.model is empty,
+// ValidateRuntime returns a fail-fast error directing the user to either supply
+// a model or explicitly disable cross-check. ValidateRuntime (not ValidateAll)
+// is used so YAML-only Config.Validate() does not false-positive on configs
+// that legitimately defer the model to env/CLI.
+func TestResolve_RejectsCrossCheckEnabledWithoutModel(t *testing.T) {
+	wantSubstr := "cross_check.enabled=true requires cross_check.model"
+
+	t.Run("defaults_only", func(t *testing.T) {
+		// Bare defaults: enabled=true, model="" -> must reject at runtime.
+		resolved := Resolve(&Config{}, EnvState{}, FlagState{}, Defaults)
+		errs := resolved.ValidateRuntime()
+		if !containsSubstr(errs, wantSubstr) {
+			t.Fatalf("expected error containing %q, got: %v", wantSubstr, errs)
+		}
+		// And ValidateAll must NOT include it (parse-time tests must stay green
+		// for users who supply the model via env/CLI later).
+		if containsSubstr(resolved.ValidateAll(), wantSubstr) {
+			t.Fatalf("ValidateAll must not enforce runtime cross-check guard")
+		}
+	})
+
+	t.Run("env_disable_only_no_model", func(t *testing.T) {
+		// User disables via env (resolved.CrossCheckEnabled=false) -> ok even
+		// when model is empty.
+		env := EnvState{CrossCheckEnabled: false, CrossCheckEnabledSet: true}
+		resolved := Resolve(&Config{}, env, FlagState{}, Defaults)
+		if errs := resolved.ValidateRuntime(); containsSubstr(errs, wantSubstr) {
+			t.Fatalf("did not expect cross-check error when disabled, got: %v", errs)
+		}
+	})
+
+	t.Run("flag_supplies_model", func(t *testing.T) {
+		flagState := FlagState{CrossCheckModelSet: true}
+		flagValues := Defaults
+		flagValues.CrossCheckModel = "gpt-flag"
+		resolved := Resolve(&Config{}, EnvState{}, flagState, flagValues)
+		if errs := resolved.ValidateRuntime(); containsSubstr(errs, wantSubstr) {
+			t.Fatalf("did not expect cross-check error when --cross-check-model set, got: %v", errs)
+		}
+	})
+
+	t.Run("env_supplies_model", func(t *testing.T) {
+		env := EnvState{CrossCheckModel: "env-model", CrossCheckModelSet: true}
+		resolved := Resolve(&Config{}, env, FlagState{}, Defaults)
+		if errs := resolved.ValidateRuntime(); containsSubstr(errs, wantSubstr) {
+			t.Fatalf("did not expect cross-check error when ACR_CROSS_CHECK_MODEL set, got: %v", errs)
+		}
+	})
+
+	t.Run("yaml_supplies_model", func(t *testing.T) {
+		cfg := &Config{CrossCheck: CrossCheckConfig{Model: strPtr("yaml-model")}}
+		resolved := Resolve(cfg, EnvState{}, FlagState{}, Defaults)
+		if errs := resolved.ValidateRuntime(); containsSubstr(errs, wantSubstr) {
+			t.Fatalf("did not expect cross-check error when yaml model set, got: %v", errs)
+		}
+	})
+
+	t.Run("whitespace_only_model_rejected", func(t *testing.T) {
+		// "   " is not a valid model: contract uses TrimSpace.
+		cfg := &Config{CrossCheck: CrossCheckConfig{Model: strPtr("   ")}}
+		resolved := Resolve(cfg, EnvState{}, FlagState{}, Defaults)
+		if errs := resolved.ValidateRuntime(); !containsSubstr(errs, wantSubstr) {
+			t.Fatalf("expected whitespace-only model to be rejected, got: %v", errs)
+		}
+	})
+}
+
+func containsSubstr(errs []string, want string) bool {
+	for _, e := range errs {
+		if strings.Contains(e, want) {
+			return true
+		}
+	}
+	return false
 }
 
 func TestResolve_CrossCheckPrecedence(t *testing.T) {
@@ -2392,4 +2472,606 @@ func TestConfig_ModelsEffort_CaseInsensitive_StillRejectsInvalid(t *testing.T) {
 	if !strings.Contains(err.Error(), "ULTRA") {
 		t.Errorf("expected error to mention 'ULTRA', got: %v", err)
 	}
+}
+
+// --- Round-9: per-phase reviewer agent override tests ---
+
+func TestResolve_ArchReviewerAgent_FromYAML(t *testing.T) {
+	cfg := &Config{
+		ReviewerAgents:    []string{"codex", "claude", "gemini"},
+		ArchReviewerAgent: strPtr("claude"),
+	}
+	result := Resolve(cfg, EnvState{}, FlagState{}, ResolvedConfig{})
+	if result.ArchReviewerAgent != "claude" {
+		t.Errorf("expected ArchReviewerAgent='claude', got %q", result.ArchReviewerAgent)
+	}
+	if len(result.ReviewerAgents) != 3 {
+		t.Errorf("reviewer_agents should be preserved, got %v", result.ReviewerAgents)
+	}
+}
+
+func TestResolve_DiffReviewerAgents_FromYAML(t *testing.T) {
+	cfg := &Config{
+		ReviewerAgents:     []string{"codex", "claude", "gemini"},
+		DiffReviewerAgents: []string{"codex", "claude"},
+	}
+	result := Resolve(cfg, EnvState{}, FlagState{}, ResolvedConfig{})
+	if len(result.DiffReviewerAgents) != 2 {
+		t.Fatalf("expected 2 diff reviewer agents, got %d", len(result.DiffReviewerAgents))
+	}
+	if result.DiffReviewerAgents[0] != "codex" || result.DiffReviewerAgents[1] != "claude" {
+		t.Errorf("expected [codex claude], got %v", result.DiffReviewerAgents)
+	}
+}
+
+func TestResolve_ArchReviewerAgent_CLIOverridesYAML(t *testing.T) {
+	cfg := &Config{
+		ReviewerAgents:    []string{"codex"},
+		ArchReviewerAgent: strPtr("claude"),
+	}
+	envState := EnvState{ArchReviewerAgent: "gemini", ArchReviewerAgentSet: true}
+	flagState := FlagState{ArchReviewerAgentSet: true}
+	flagValues := ResolvedConfig{ArchReviewerAgent: "codex"}
+
+	result := Resolve(cfg, envState, flagState, flagValues)
+
+	if result.ArchReviewerAgent != "codex" {
+		t.Errorf("expected CLI value 'codex' to win, got %q", result.ArchReviewerAgent)
+	}
+}
+
+func TestResolve_DiffReviewerAgents_EnvOverridesYAML(t *testing.T) {
+	cfg := &Config{
+		ReviewerAgents:     []string{"codex"},
+		DiffReviewerAgents: []string{"claude"},
+	}
+	envState := EnvState{
+		DiffReviewerAgents:    []string{"gemini", "codex"},
+		DiffReviewerAgentsSet: true,
+	}
+	result := Resolve(cfg, envState, FlagState{}, ResolvedConfig{})
+
+	if len(result.DiffReviewerAgents) != 2 {
+		t.Fatalf("expected 2 diff reviewer agents, got %v", result.DiffReviewerAgents)
+	}
+	if result.DiffReviewerAgents[0] != "gemini" {
+		t.Errorf("expected env value 'gemini' first, got %q", result.DiffReviewerAgents[0])
+	}
+}
+
+func TestResolve_DiffReviewerAgents_DefaultsEmpty(t *testing.T) {
+	cfg := &Config{ReviewerAgents: []string{"codex"}}
+	result := Resolve(cfg, EnvState{}, FlagState{}, ResolvedConfig{})
+	if len(result.DiffReviewerAgents) != 0 {
+		t.Errorf("expected empty DiffReviewerAgents when unset, got %v", result.DiffReviewerAgents)
+	}
+	if result.ArchReviewerAgent != "" {
+		t.Errorf("expected empty ArchReviewerAgent when unset, got %q", result.ArchReviewerAgent)
+	}
+}
+
+func TestResolve_ArchReviewerAgent_RejectsUnsupportedAgent(t *testing.T) {
+	cfg := &Config{
+		ReviewerAgents:    []string{"codex"},
+		ArchReviewerAgent: strPtr("notarealagent"),
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected validation error for unsupported arch_reviewer_agent")
+	} else if !strings.Contains(err.Error(), "arch_reviewer_agent") {
+		t.Errorf("expected error mentioning arch_reviewer_agent, got: %v", err)
+	}
+}
+
+func TestResolve_DiffReviewerAgents_RejectsUnsupportedAgent(t *testing.T) {
+	cfg := &Config{
+		ReviewerAgents:     []string{"codex"},
+		DiffReviewerAgents: []string{"codex", "notarealagent"},
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected validation error for unsupported diff_reviewer_agents entry")
+	} else if !strings.Contains(err.Error(), "diff_reviewer_agents") {
+		t.Errorf("expected error mentioning diff_reviewer_agents, got: %v", err)
+	}
+}
+
+func TestLoadEnvState_ArchReviewerAgent(t *testing.T) {
+	original := os.Getenv("ACR_ARCH_REVIEWER_AGENT")
+	defer func() {
+		if original != "" {
+			os.Setenv("ACR_ARCH_REVIEWER_AGENT", original)
+		} else {
+			os.Unsetenv("ACR_ARCH_REVIEWER_AGENT")
+		}
+	}()
+
+	os.Setenv("ACR_ARCH_REVIEWER_AGENT", "claude")
+	state, warnings := LoadEnvState()
+	if len(warnings) != 0 {
+		t.Errorf("expected no warnings, got %v", warnings)
+	}
+	if !state.ArchReviewerAgentSet {
+		t.Error("expected ArchReviewerAgentSet=true")
+	}
+	if state.ArchReviewerAgent != "claude" {
+		t.Errorf("expected ArchReviewerAgent='claude', got %q", state.ArchReviewerAgent)
+	}
+}
+
+func TestLoadEnvState_DiffReviewerAgents(t *testing.T) {
+	original := os.Getenv("ACR_DIFF_REVIEWER_AGENTS")
+	defer func() {
+		if original != "" {
+			os.Setenv("ACR_DIFF_REVIEWER_AGENTS", original)
+		} else {
+			os.Unsetenv("ACR_DIFF_REVIEWER_AGENTS")
+		}
+	}()
+
+	os.Setenv("ACR_DIFF_REVIEWER_AGENTS", "codex, claude")
+	state, warnings := LoadEnvState()
+	if len(warnings) != 0 {
+		t.Errorf("expected no warnings, got %v", warnings)
+	}
+	if !state.DiffReviewerAgentsSet {
+		t.Error("expected DiffReviewerAgentsSet=true")
+	}
+	if len(state.DiffReviewerAgents) != 2 || state.DiffReviewerAgents[0] != "codex" || state.DiffReviewerAgents[1] != "claude" {
+		t.Errorf("expected [codex claude], got %v", state.DiffReviewerAgents)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Tests for diff_groups and medium_diff_reviewers (auto-phase reviewer knobs)
+// ---------------------------------------------------------------------------
+
+func TestResolve_DiffGroups_FromYAML(t *testing.T) {
+	cfg := &Config{DiffGroups: ptr(7)}
+	result := Resolve(cfg, EnvState{}, FlagState{}, ResolvedConfig{})
+	if result.DiffGroups != 7 {
+		t.Errorf("expected diff_groups=7 from yaml, got %d", result.DiffGroups)
+	}
+}
+
+func TestResolve_DiffGroups_EnvOverridesYAML(t *testing.T) {
+	cfg := &Config{DiffGroups: ptr(7)}
+	envState := EnvState{DiffGroups: 9, DiffGroupsSet: true}
+	result := Resolve(cfg, envState, FlagState{}, ResolvedConfig{})
+	if result.DiffGroups != 9 {
+		t.Errorf("expected env diff_groups=9 to override yaml, got %d", result.DiffGroups)
+	}
+}
+
+func TestResolve_DiffGroups_CLIOverridesEnv(t *testing.T) {
+	cfg := &Config{DiffGroups: ptr(7)}
+	envState := EnvState{DiffGroups: 9, DiffGroupsSet: true}
+	flagState := FlagState{DiffGroupsSet: true}
+	flagValues := ResolvedConfig{DiffGroups: 12}
+	result := Resolve(cfg, envState, flagState, flagValues)
+	if result.DiffGroups != 12 {
+		t.Errorf("expected CLI diff_groups=12 to override env, got %d", result.DiffGroups)
+	}
+}
+
+func TestResolve_DiffGroups_DefaultsTo4(t *testing.T) {
+	result := Resolve(&Config{}, EnvState{}, FlagState{}, ResolvedConfig{})
+	if result.DiffGroups != 4 {
+		t.Errorf("expected default diff_groups=4, got %d", result.DiffGroups)
+	}
+	if Defaults.DiffGroups != 4 {
+		t.Errorf("expected Defaults.DiffGroups=4, got %d", Defaults.DiffGroups)
+	}
+}
+
+func TestResolve_MediumDiffReviewers_FromYAML(t *testing.T) {
+	cfg := &Config{MediumDiffReviewers: ptr(5)}
+	result := Resolve(cfg, EnvState{}, FlagState{}, ResolvedConfig{})
+	if result.MediumDiffReviewers != 5 {
+		t.Errorf("expected medium_diff_reviewers=5 from yaml, got %d", result.MediumDiffReviewers)
+	}
+}
+
+func TestResolve_MediumDiffReviewers_EnvOverridesYAML(t *testing.T) {
+	cfg := &Config{MediumDiffReviewers: ptr(5)}
+	envState := EnvState{MediumDiffReviewers: 8, MediumDiffReviewersSet: true}
+	result := Resolve(cfg, envState, FlagState{}, ResolvedConfig{})
+	if result.MediumDiffReviewers != 8 {
+		t.Errorf("expected env medium_diff_reviewers=8 to override yaml, got %d", result.MediumDiffReviewers)
+	}
+}
+
+func TestResolve_MediumDiffReviewers_CLIOverridesEnv(t *testing.T) {
+	cfg := &Config{MediumDiffReviewers: ptr(5)}
+	envState := EnvState{MediumDiffReviewers: 8, MediumDiffReviewersSet: true}
+	flagState := FlagState{MediumDiffReviewersSet: true}
+	flagValues := ResolvedConfig{MediumDiffReviewers: 11}
+	result := Resolve(cfg, envState, flagState, flagValues)
+	if result.MediumDiffReviewers != 11 {
+		t.Errorf("expected CLI medium_diff_reviewers=11 to override env, got %d", result.MediumDiffReviewers)
+	}
+}
+
+func TestResolve_MediumDiffReviewers_DefaultsTo2(t *testing.T) {
+	result := Resolve(&Config{}, EnvState{}, FlagState{}, ResolvedConfig{})
+	if result.MediumDiffReviewers != 2 {
+		t.Errorf("expected default medium_diff_reviewers=2, got %d", result.MediumDiffReviewers)
+	}
+	if Defaults.MediumDiffReviewers != 2 {
+		t.Errorf("expected Defaults.MediumDiffReviewers=2, got %d", Defaults.MediumDiffReviewers)
+	}
+}
+
+func TestValidate_RejectsZeroDiffGroups(t *testing.T) {
+	cfg := Defaults
+	cfg.DiffGroups = 0
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected error for diff_groups=0, got nil")
+	}
+	if !strings.Contains(err.Error(), "diff_groups must be >= 1") {
+		t.Errorf("expected 'diff_groups must be >= 1' in error, got: %v", err)
+	}
+}
+
+func TestValidate_RejectsZeroMediumDiffReviewers(t *testing.T) {
+	cfg := Defaults
+	cfg.MediumDiffReviewers = 0
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected error for medium_diff_reviewers=0, got nil")
+	}
+	if !strings.Contains(err.Error(), "medium_diff_reviewers must be >= 1") {
+		t.Errorf("expected 'medium_diff_reviewers must be >= 1' in error, got: %v", err)
+	}
+}
+
+func TestLoadEnvState_DiffGroups(t *testing.T) {
+	clearACREnv(t)
+	t.Setenv("ACR_DIFF_GROUPS", "6")
+	state, warnings := LoadEnvState()
+	if len(warnings) != 0 {
+		t.Errorf("expected no warnings, got %v", warnings)
+	}
+	if !state.DiffGroupsSet {
+		t.Error("expected DiffGroupsSet=true")
+	}
+	if state.DiffGroups != 6 {
+		t.Errorf("expected DiffGroups=6, got %d", state.DiffGroups)
+	}
+}
+
+func TestLoadEnvState_DiffGroups_Malformed(t *testing.T) {
+	clearACREnv(t)
+	t.Setenv("ACR_DIFF_GROUPS", "abc")
+	state, warnings := LoadEnvState()
+	if state.DiffGroupsSet {
+		t.Error("expected DiffGroupsSet=false for invalid value")
+	}
+	if !hasWarningContaining(warnings, "ACR_DIFF_GROUPS") {
+		t.Errorf("expected warning about ACR_DIFF_GROUPS, got %v", warnings)
+	}
+}
+
+func TestLoadEnvState_MediumDiffReviewers(t *testing.T) {
+	clearACREnv(t)
+	t.Setenv("ACR_MEDIUM_DIFF_REVIEWERS", "3")
+	state, warnings := LoadEnvState()
+	if len(warnings) != 0 {
+		t.Errorf("expected no warnings, got %v", warnings)
+	}
+	if !state.MediumDiffReviewersSet {
+		t.Error("expected MediumDiffReviewersSet=true")
+	}
+	if state.MediumDiffReviewers != 3 {
+		t.Errorf("expected MediumDiffReviewers=3, got %d", state.MediumDiffReviewers)
+	}
+}
+
+func TestLoadEnvState_MediumDiffReviewers_Malformed(t *testing.T) {
+	clearACREnv(t)
+	t.Setenv("ACR_MEDIUM_DIFF_REVIEWERS", "xyz")
+	state, warnings := LoadEnvState()
+	if state.MediumDiffReviewersSet {
+		t.Error("expected MediumDiffReviewersSet=false for invalid value")
+	}
+	if !hasWarningContaining(warnings, "ACR_MEDIUM_DIFF_REVIEWERS") {
+		t.Errorf("expected warning about ACR_MEDIUM_DIFF_REVIEWERS, got %v", warnings)
+	}
+}
+
+func TestValidateRuntime_CrossCheckPairing(t *testing.T) {
+	tests := []struct {
+		name             string
+		crossCheckEnable bool
+		crossCheckAgent  string
+		crossCheckModel  string
+		summarizerAgent  string
+		wantMinErrs      int
+		wantErrSubstring string
+	}{
+		{
+			name:             "valid 1:1 pairing",
+			crossCheckEnable: true,
+			crossCheckAgent:  "codex",
+			crossCheckModel:  "gpt-5",
+			summarizerAgent:  "codex",
+			wantMinErrs:      0,
+		},
+		{
+			name:             "valid multi pairing",
+			crossCheckEnable: true,
+			crossCheckAgent:  "codex,claude",
+			crossCheckModel:  "gpt-5,claude-opus-4-6",
+			summarizerAgent:  "codex",
+			wantMinErrs:      0,
+		},
+		{
+			name:             "count mismatch",
+			crossCheckEnable: true,
+			crossCheckAgent:  "codex,claude",
+			crossCheckModel:  "gpt-5",
+			summarizerAgent:  "codex",
+			wantMinErrs:      1,
+			wantErrSubstring: "same count",
+		},
+		{
+			name:             "empty model token",
+			crossCheckEnable: true,
+			crossCheckAgent:  "codex",
+			crossCheckModel:  "gpt-5,,claude-opus",
+			summarizerAgent:  "codex",
+			wantMinErrs:      1,
+			wantErrSubstring: "empty entry",
+		},
+		{
+			name:             "trailing comma",
+			crossCheckEnable: true,
+			crossCheckAgent:  "codex",
+			crossCheckModel:  "gpt-5,",
+			summarizerAgent:  "codex",
+			wantMinErrs:      1,
+			wantErrSubstring: "empty entry",
+		},
+		{
+			name:             "agent fallback to summarizer",
+			crossCheckEnable: true,
+			crossCheckAgent:  "",
+			crossCheckModel:  "gpt-5",
+			summarizerAgent:  "codex",
+			wantMinErrs:      0,
+		},
+		{
+			name:             "agent fallback count mismatch",
+			crossCheckEnable: true,
+			crossCheckAgent:  "",
+			crossCheckModel:  "gpt-5,claude-opus",
+			summarizerAgent:  "codex",
+			wantMinErrs:      1,
+			wantErrSubstring: "same count",
+		},
+		{
+			name:             "disabled skips all",
+			crossCheckEnable: false,
+			crossCheckAgent:  "codex,claude",
+			crossCheckModel:  "",
+			summarizerAgent:  "codex",
+			wantMinErrs:      0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rc := &ResolvedConfig{
+				CrossCheckEnabled: tt.crossCheckEnable,
+				CrossCheckAgent:   tt.crossCheckAgent,
+				CrossCheckModel:   tt.crossCheckModel,
+				SummarizerAgent:   tt.summarizerAgent,
+				CrossCheckTimeout: 5 * time.Minute,
+			}
+			errs := rc.ValidateRuntime()
+			if len(errs) < tt.wantMinErrs {
+				t.Errorf("expected at least %d error(s), got %d: %v", tt.wantMinErrs, len(errs), errs)
+			}
+			if tt.wantErrSubstring != "" {
+				found := false
+				for _, e := range errs {
+					if strings.Contains(e, tt.wantErrSubstring) {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("expected error containing %q, got %v", tt.wantErrSubstring, errs)
+				}
+			}
+			if tt.wantMinErrs == 0 && len(errs) != 0 {
+				t.Errorf("expected no errors, got %v", errs)
+			}
+		})
+	}
+}
+
+// TestValidateRuntime_CrossCheckModelsTreeFallback exercises the Round-13 F#3
+// tightening: ValidateRuntime used to accept ANY cross_check entry in the
+// models tree as sufficient coverage, which let partial configs slip through
+// validation only to blow up at runtime with "cross-check-model is required".
+// The fix is per-agent: every selected cross_check agent must have a
+// resolvable path in the tree (agents / sizes / defaults), else validation
+// reports which agent is uncovered.
+func TestValidateRuntime_CrossCheckModelsTreeFallback(t *testing.T) {
+	wantSubstr := "cross_check.enabled=true requires cross_check.model"
+
+	t.Run("agents_tree_covers_all_selected_agents", func(t *testing.T) {
+		r := &ResolvedConfig{
+			CrossCheckEnabled: true,
+			CrossCheckAgent:   "codex,claude",
+			CrossCheckModel:   "",
+			SummarizerAgent:   "codex",
+			CrossCheckTimeout: 5 * time.Minute,
+			Models: ModelsConfig{
+				Agents: map[string]RoleModels{
+					"codex":  {CrossCheck: &ModelSpec{Model: "gpt-5.4-mini"}},
+					"claude": {CrossCheck: &ModelSpec{Model: "claude-opus-4-7"}},
+				},
+			},
+		}
+		errs := r.ValidateRuntime()
+		if containsSubstr(errs, wantSubstr) {
+			t.Fatalf("expected no cross_check runtime error when every selected agent is covered, got: %v", errs)
+		}
+	})
+
+	t.Run("defaults_tree_covers_all_selected_agents", func(t *testing.T) {
+		r := &ResolvedConfig{
+			CrossCheckEnabled: true,
+			CrossCheckAgent:   "codex,claude",
+			CrossCheckModel:   "",
+			SummarizerAgent:   "codex",
+			CrossCheckTimeout: 5 * time.Minute,
+			Models: ModelsConfig{
+				Defaults: RoleModels{CrossCheck: &ModelSpec{Model: "shared-cc-model"}},
+			},
+		}
+		errs := r.ValidateRuntime()
+		if containsSubstr(errs, wantSubstr) {
+			t.Fatalf("expected no cross_check runtime error when defaults tree covers all, got: %v", errs)
+		}
+	})
+
+	t.Run("sizes_tree_covers_all_selected_agents", func(t *testing.T) {
+		// sizes-only config legitimately expects the size layer to activate
+		// at runtime. Validate tolerates ANY size having a model because the
+		// size is unknown at validate time.
+		r := &ResolvedConfig{
+			CrossCheckEnabled: true,
+			CrossCheckAgent:   "codex,claude",
+			CrossCheckModel:   "",
+			SummarizerAgent:   "codex",
+			CrossCheckTimeout: 5 * time.Minute,
+			Models: ModelsConfig{
+				Sizes: map[string]RoleModels{
+					"large": {CrossCheck: &ModelSpec{Model: "gpt-5.4-large"}},
+				},
+			},
+		}
+		errs := r.ValidateRuntime()
+		if containsSubstr(errs, wantSubstr) {
+			t.Fatalf("expected no cross_check runtime error when sizes tree covers all, got: %v", errs)
+		}
+	})
+
+	t.Run("partial_agents_tree_fails_with_agent_name", func(t *testing.T) {
+		// Round-13 F#3 regression guard: one agent covered, the other not.
+		// Before fix: hasCrossCheckModelInModelsTree returned true because
+		// codex entry existed → validation passed → runtime blew up on claude.
+		// After fix: validation names "claude" explicitly.
+		r := &ResolvedConfig{
+			CrossCheckEnabled: true,
+			CrossCheckAgent:   "codex,claude",
+			CrossCheckModel:   "",
+			SummarizerAgent:   "codex",
+			CrossCheckTimeout: 5 * time.Minute,
+			Models: ModelsConfig{
+				Agents: map[string]RoleModels{
+					"codex": {CrossCheck: &ModelSpec{Model: "gpt-5.4-mini"}},
+				},
+			},
+		}
+		errs := r.ValidateRuntime()
+		if !containsSubstr(errs, wantSubstr) {
+			t.Fatalf("expected cross_check runtime error when claude is uncovered, got: %v", errs)
+		}
+		if !containsSubstr(errs, "claude") {
+			t.Errorf("error must name the uncovered agent 'claude', got: %v", errs)
+		}
+	})
+
+	t.Run("effort_only_entries_do_not_satisfy_model_requirement", func(t *testing.T) {
+		// Effort alone never satisfies the runtime Model requirement.
+		r := &ResolvedConfig{
+			CrossCheckEnabled: true,
+			CrossCheckAgent:   "codex",
+			CrossCheckModel:   "",
+			SummarizerAgent:   "codex",
+			CrossCheckTimeout: 5 * time.Minute,
+			Models: ModelsConfig{
+				Agents: map[string]RoleModels{
+					"codex": {CrossCheck: &ModelSpec{Effort: "high"}}, // no Model
+				},
+			},
+		}
+		errs := r.ValidateRuntime()
+		if !containsSubstr(errs, wantSubstr) {
+			t.Fatalf("expected cross_check runtime error when only Effort is set, got: %v", errs)
+		}
+	})
+
+	// Round-14 F#1 (案 V): cross-check runs exclusively at size=large, so the
+	// validate-time tolerance for "ANY size" is tightened to "sizes.large only".
+	// sizes.small / sizes.medium entries are dead config for the cross_check
+	// role (runtime modelconfig.Resolve receives sizeStr="large" at the gate),
+	// and the validate layer now rejects them with an actionable error.
+	t.Run("sizes_tree_only_covers_small_now_rejected", func(t *testing.T) {
+		r := &ResolvedConfig{
+			CrossCheckEnabled: true,
+			CrossCheckAgent:   "codex",
+			CrossCheckModel:   "",
+			SummarizerAgent:   "codex",
+			CrossCheckTimeout: 5 * time.Minute,
+			Models: ModelsConfig{
+				Sizes: map[string]RoleModels{
+					"small": {CrossCheck: &ModelSpec{Model: "gpt-5.4-small"}},
+				},
+			},
+		}
+		errs := r.ValidateRuntime()
+		if !containsSubstr(errs, wantSubstr) {
+			t.Fatalf("expected cross_check runtime error when only sizes.small is set, got: %v", errs)
+		}
+		if !containsSubstr(errs, "sizes.large") {
+			t.Errorf("error must guide users to sizes.large, got: %v", errs)
+		}
+	})
+
+	t.Run("sizes_tree_only_covers_medium_now_rejected", func(t *testing.T) {
+		r := &ResolvedConfig{
+			CrossCheckEnabled: true,
+			CrossCheckAgent:   "codex",
+			CrossCheckModel:   "",
+			SummarizerAgent:   "codex",
+			CrossCheckTimeout: 5 * time.Minute,
+			Models: ModelsConfig{
+				Sizes: map[string]RoleModels{
+					"medium": {CrossCheck: &ModelSpec{Model: "gpt-5.4-medium"}},
+				},
+			},
+		}
+		errs := r.ValidateRuntime()
+		if !containsSubstr(errs, wantSubstr) {
+			t.Fatalf("expected cross_check runtime error when only sizes.medium is set, got: %v", errs)
+		}
+		if !containsSubstr(errs, "sizes.large") {
+			t.Errorf("error must guide users to sizes.large, got: %v", errs)
+		}
+	})
+
+	t.Run("sizes_large_alone_still_accepted", func(t *testing.T) {
+		// Round-14 F#1 regression guard: tightening sizes layer to "large only"
+		// must not break users who configure cross_check under sizes.large.
+		r := &ResolvedConfig{
+			CrossCheckEnabled: true,
+			CrossCheckAgent:   "codex",
+			CrossCheckModel:   "",
+			SummarizerAgent:   "codex",
+			CrossCheckTimeout: 5 * time.Minute,
+			Models: ModelsConfig{
+				Sizes: map[string]RoleModels{
+					"large": {CrossCheck: &ModelSpec{Model: "gpt-5.4-large"}},
+				},
+			},
+		}
+		errs := r.ValidateRuntime()
+		if containsSubstr(errs, wantSubstr) {
+			t.Fatalf("expected sizes.large alone to still satisfy validate, got: %v", errs)
+		}
+	})
 }

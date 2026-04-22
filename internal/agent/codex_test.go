@@ -360,12 +360,22 @@ func TestCodexAgent_ExecuteReview_WithEffort(t *testing.T) {
 		t.Fatalf("failed to read output: %v", err)
 	}
 
-	outputStr := string(output)
-	if !strings.Contains(outputStr, "-c") {
-		t.Errorf("expected -c in args, got:\n%s", outputStr)
+	// Regression guard for F#2 (Round-7): -c flag must precede the 'exec'
+	// subcommand for codex CLI to recognize the model_reasoning_effort
+	// override. Without ordering verification, an append-style bug like the
+	// claude.go --effort one (Round-8 #4) could silently regress.
+	args := parseHelperArgs(string(output))
+	iC := argIndex(args, "-c")
+	iValue := argIndex(args, "model_reasoning_effort=high")
+	iExec := argIndex(args, "exec")
+	if iC < 0 || iValue < 0 {
+		t.Fatalf("expected -c and model_reasoning_effort=high in args, got: %v", args)
 	}
-	if !strings.Contains(outputStr, "model_reasoning_effort=high") {
-		t.Errorf("expected model_reasoning_effort=high in args, got:\n%s", outputStr)
+	if iValue != iC+1 {
+		t.Errorf("expected 'model_reasoning_effort=high' immediately after -c, got args=%v", args)
+	}
+	if iExec < 0 || iC > iExec {
+		t.Errorf("-c (idx=%d) must precede 'exec' subcommand (idx=%d), got args=%v", iC, iExec, args)
 	}
 }
 
@@ -386,11 +396,23 @@ func TestCodexAgent_ExecuteSummary_WithEffort(t *testing.T) {
 		t.Fatalf("failed to read output: %v", err)
 	}
 
-	outputStr := string(output)
-	if !strings.Contains(outputStr, "-c") {
-		t.Errorf("expected -c in args, got:\n%s", outputStr)
+	// Regression guard (see TestCodexAgent_ExecuteReview_WithEffort):
+	// -c must precede 'exec' AND the positional '-' stdin marker.
+	args := parseHelperArgs(string(output))
+	iC := argIndex(args, "-c")
+	iValue := argIndex(args, "model_reasoning_effort=medium")
+	iExec := argIndex(args, "exec")
+	iDash := argIndex(args, "-")
+	if iC < 0 || iValue < 0 {
+		t.Fatalf("expected -c and model_reasoning_effort=medium in args, got: %v", args)
 	}
-	if !strings.Contains(outputStr, "model_reasoning_effort=medium") {
-		t.Errorf("expected model_reasoning_effort=medium in args, got:\n%s", outputStr)
+	if iValue != iC+1 {
+		t.Errorf("expected 'model_reasoning_effort=medium' immediately after -c, got args=%v", args)
+	}
+	if iExec < 0 || iC > iExec {
+		t.Errorf("-c (idx=%d) must precede 'exec' subcommand (idx=%d), got args=%v", iC, iExec, args)
+	}
+	if iDash < 0 || iC > iDash {
+		t.Errorf("-c (idx=%d) must precede positional '-' stdin marker (idx=%d), got args=%v", iC, iDash, args)
 	}
 }

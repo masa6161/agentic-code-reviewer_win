@@ -144,49 +144,18 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 		return domain.ExitError
 	}
 
-	// Resolve and validate cross-check agents (fail-fast).
-	ccAgentNames, ccModel := resolveCrossCheckAgents(opts)
-	// ccModel came from opts.CrossCheckModel (or SummarizerModel fallback inside
-	// resolveCrossCheckAgents). CrossCheckModelFromCLI reflects whether the raw
-	// opts.CrossCheckModel was a CLI/env override; when it's empty and we fell
-	// back to SummarizerModel, SummarizerModelFromCLI governs precedence instead.
-	ccFromCLI := opts.CrossCheckModelFromCLI
-	if opts.CrossCheckModel == "" {
-		ccFromCLI = opts.SummarizerModelFromCLI
-	}
-	// Resolve cross-check options per agent so that agents.<name>.cross_check
-	// overrides are honored when multiple agents are configured. The specs
-	// slice preserves caller order and is passed directly to CrossCheck.
-	ccSpecs := make([]summarizer.CrossCheckAgentSpec, 0, len(ccAgentNames))
-	for _, name := range ccAgentNames {
-		cliCCModel, legacyCCModel := cliOrLegacy(ccModel, ccFromCLI)
-		perSpec := modelconfig.Resolve(
-			opts.Models, sizeStr, modelconfig.RoleCrossCheck, name,
-			cliCCModel, "",
-			legacyCCModel, "",
-		)
-		ccSpecs = append(ccSpecs, summarizer.CrossCheckAgentSpec{
-			Name:    name,
-			Options: summarizer.CrossCheckOptions{Model: perSpec.Model, Effort: perSpec.Effort},
-		})
-	}
-	if opts.CrossCheckEnabled {
-		if err := agent.ValidateAgentNames(ccAgentNames); err != nil {
-			logger.Logf(terminal.StyleError, "Invalid cross-check agent: %v", err)
-			return domain.ExitError
-		}
-		for _, spec := range ccSpecs {
-			ccAg, err := agent.NewAgentWithOptions(spec.Name, agent.AgentOptions{Model: spec.Options.Model, Effort: spec.Options.Effort})
-			if err != nil {
-				logger.Logf(terminal.StyleError, "Invalid cross-check agent %q: %v", spec.Name, err)
-				return domain.ExitError
-			}
-			if err := ccAg.IsAvailable(); err != nil {
-				logger.Logf(terminal.StyleError, "%s CLI not found (cross-check): %v", spec.Name, err)
-				return domain.ExitError
-			}
-		}
-	}
+	// Cross-check agent resolution and CLI availability checks are BOTH deferred
+	// to the grouped path below (see `if useGroupedSpecs && opts.CrossCheckEnabled`).
+	// Round-14 F#1: cross-check is invoked only when useGroupedSpecs=true, which
+	// resolveAutoPhase only returns under DiffSizeLarge. Eager resolution here
+	// would force users on small/medium diffs (or `--phase`/`--no-auto-phase`/
+	// arch,diff fallback paths) to satisfy cross_check.model purely to start the
+	// run — even though cross-check would never execute. Deferring resolve until
+	// the gate also implicitly tightens validate↔runtime symmetry: at the gate,
+	// sizeStr is guaranteed to be "large", matching `canResolveCrossCheckModelForAgent`'s
+	// sizes["large"] cascade in internal/config. Contract integrity (agent name
+	// validity, model 1:1 pairing) is still enforced at validate time by
+	// ResolvedConfig.ValidateRuntime.
 
 	// Verbose: log the effective model/effort matrix for all roles once, up-front.
 	// fp_filter and pr_feedback specs are resolved later in the flow, so we
@@ -211,41 +180,16 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 		for _, s := range reviewerSpecs {
 			logger.Logf(terminal.StyleDim, "  reviewer[%s]       : %s", s.Name, formatSpec(agent.AgentOptions{Model: s.Options.Model, Effort: s.Options.Effort}))
 		}
-		// arch_reviewer / diff_reviewer rows are meaningful only when
-		// auto-phase is enabled AND diff-size classification succeeded: they
-		// show how the multi-phase run will resolve per-phase model/effort
-		// (phase-specific roles fall back to the generic reviewer at the SAME
-		// cascade layer via ResolveReviewer). Without a classified size, these
-		// rows would be misleading since auto-phase will skip per-phase routing.
-		if opts.AutoPhase && opts.Phase == "" && diffSizeClassified && diffSize != git.DiffSizeSmall {
-			for _, name := range opts.ReviewerAgents {
-				cliRevModelLog, legacyRevModelLog := cliOrLegacy(opts.ReviewerModel, opts.ReviewerModelFromCLI)
-				archSpec := modelconfig.ResolveReviewer(
-					opts.Models, sizeStr, "arch", name,
-					cliRevModelLog, "",
-					legacyRevModelLog, "",
-				)
-				diffSpec := modelconfig.ResolveReviewer(
-					opts.Models, sizeStr, "diff", name,
-					cliRevModelLog, "",
-					legacyRevModelLog, "",
-				)
-				logger.Logf(terminal.StyleDim, "  arch_reviewer[%s]  : %s", name, formatSpec(agent.AgentOptions{Model: archSpec.Model, Effort: archSpec.Effort}))
-				logger.Logf(terminal.StyleDim, "  diff_reviewer[%s]  : %s", name, formatSpec(agent.AgentOptions{Model: diffSpec.Model, Effort: diffSpec.Effort}))
-			}
-		}
+		// arch_reviewer / diff_reviewer rows intentionally omitted here: they
+		// depend on whether the grouped path will actually execute, which is
+		// decided later by resolveAutoPhase (needs the full diff to know
+		// effectiveGroups). When grouped path is selected, the per-phase
+		// rows are emitted alongside the "Auto-phase: grouped" line below.
 		logger.Logf(terminal.StyleDim, "  summarizer        : %s", formatSpec(agent.AgentOptions{Model: summSpec.Model, Effort: summSpec.Effort}))
-		if opts.CrossCheckEnabled {
-			for _, name := range ccAgentNames {
-				cliCCModelLog, legacyCCModelLog := cliOrLegacy(ccModel, ccFromCLI)
-				perSpec := modelconfig.Resolve(
-					opts.Models, sizeStr, modelconfig.RoleCrossCheck, name,
-					cliCCModelLog, "",
-					legacyCCModelLog, "",
-				)
-				logger.Logf(terminal.StyleDim, "  cross_check[%s]    : %s", name, formatSpec(agent.AgentOptions{Model: perSpec.Model, Effort: perSpec.Effort}))
-			}
-		}
+		// cross_check row intentionally omitted here: cross-check only runs when
+		// useGroupedSpecs=true (resolveAutoPhase, large diff). Like
+		// arch_reviewer / diff_reviewer rows, it is emitted alongside the
+		// "Auto-phase: grouped" line below when grouped path is confirmed.
 		logger.Logf(terminal.StyleDim, "  fp_filter         : %s", formatSpec(agent.AgentOptions{Model: fpSpecLog.Model, Effort: fpSpecLog.Effort}))
 		logger.Logf(terminal.StyleDim, "  pr_feedback       : %s", formatSpec(agent.AgentOptions{Model: prFeedbackSpecLog.Model, Effort: prFeedbackSpecLog.Effort}))
 	}
@@ -294,6 +238,9 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 	phaseFromAuto := false
 	var useGroupedSpecs bool
 	var groupedSpecs []runner.ReviewerSpec
+	// mediumDiffCount > 0 → auto-phase chose arch,diff and the diff phase
+	// reviewer count must come from medium_diff_reviewers (not opts.Reviewers).
+	mediumDiffCount := 0
 	if shouldUseAutoPhase(opts) {
 		if !diffSizeClassified {
 			if opts.Verbose {
@@ -306,17 +253,24 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 			if opts.Verbose {
 				logger.Logf(terminal.StyleDim, "Auto-phase: diff is %s (%d files, %d lines)", size, fileCount, lineCount)
 			}
-			apr := resolveAutoPhase(size, opts.Reviewers, diff, opts.Guidance, diffPrecomputed, reviewAgents)
-			// Apply reviewer-count override BEFORE any downstream consumer of
-			// opts.Reviewers (concurrency resolution, runner config, etc.).
-			if apr.ReviewerOverride > 0 && apr.ReviewerOverride != opts.Reviewers {
-				logger.Logf(terminal.StyleInfo, "[auto-phase] reviewers bumped %d -> %d (%s)",
-					opts.Reviewers, apr.ReviewerOverride, apr.FallbackReason)
-				opts.Reviewers = apr.ReviewerOverride
+			// Defer per-phase agent construction to resolveAutoPhase so that
+			// IsAvailable() only runs once grouped path is actually viable.
+			// Small/medium/large→fallback paths never call the closure, so
+			// arch_reviewer_agent / diff_reviewer_agents CLI presence is not
+			// required unless the grouped path will actually execute.
+			apr, agentsErr := resolveAutoPhase(size, diff, opts.Guidance, diffPrecomputed,
+				func() (agent.Agent, []agent.Agent, error) {
+					return buildPhaseAgents(opts, sizeStr)
+				},
+				opts.DiffGroups, opts.MediumDiffReviewers)
+			if agentsErr != nil {
+				logger.Logf(terminal.StyleError, "Failed to build per-phase reviewer agents: %v", agentsErr)
+				return domain.ExitError
 			}
 			phaseStr = apr.PhaseStr
 			groupedSpecs = apr.GroupedSpecs
 			useGroupedSpecs = apr.UseGrouped
+			mediumDiffCount = apr.MediumDiffCount
 			// Enable per-phase role rebinding (arch_reviewer/diff_reviewer) only
 			// for medium/large diffs. Small diffs use flat diff review with the
 			// generic reviewer role.
@@ -324,13 +278,28 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 			if opts.Verbose {
 				switch {
 				case apr.UseGrouped:
-					logger.Logf(terminal.StyleDim, "Auto-phase: grouped (%d diff groups + arch)", len(groupedSpecs)-1)
-				case size == git.DiffSizeLarge && opts.Reviewers < 2:
-					logger.Logf(terminal.StyleWarning, "Auto-phase: --reviewers=%d too low for grouped diff, falling back to arch,diff", opts.Reviewers)
+					logger.Logf(terminal.StyleInfo, "Auto-phase: grouped (diff_groups=%d, arch+%d diff groups)",
+						opts.DiffGroups, len(groupedSpecs)-1)
+					// Per-phase model matrix rows — only meaningful once we
+					// know the grouped path will actually run. Before this
+					// point, a large→flat fallback would have made these rows
+					// misleading, so emission is deferred until here.
+					logPerPhaseModelMatrix(logger, opts, sizeStr)
+					// cross_check rows — same rationale: cross-check fires only
+					// when useGroupedSpecs=true. Emitted here so the verbose
+					// log groups all grouped-path-specific rows together.
+					if opts.CrossCheckEnabled {
+						logCrossCheckModelMatrix(logger, opts, sizeStr)
+					}
+				case apr.MediumDiffCount > 0 && apr.FallbackReason != "":
+					logger.Logf(terminal.StyleWarning,
+						"Auto-phase: arch,diff (medium_diff_reviewers=%d) — fallback: %s",
+						apr.MediumDiffCount, apr.FallbackReason)
+				case apr.MediumDiffCount > 0:
+					logger.Logf(terminal.StyleInfo,
+						"Auto-phase: arch,diff (medium_diff_reviewers=%d)", apr.MediumDiffCount)
 				case apr.FallbackReason != "":
 					logger.Logf(terminal.StyleWarning, "Auto-phase: falling back to arch,diff (%s)", apr.FallbackReason)
-				case size == git.DiffSizeLarge && !apr.UseGrouped:
-					logger.Logf(terminal.StyleWarning, "Auto-phase: grouped diff setup failed, falling back to arch,diff")
 				}
 			}
 		}
@@ -363,7 +332,14 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 		actualReviewers = len(groupedSpecs)
 		r, err = runner.NewWithSpecs(runnerConfig, groupedSpecs, logger)
 	} else if phaseStr != "" {
-		phases, phaseErr := parsePhases(phaseStr, opts.Reviewers)
+		// Auto-phase medium/large fallback paths supply MediumDiffCount so the
+		// diff phase reviewer count comes from medium_diff_reviewers (NOT
+		// --reviewers, which is reserved for flat / explicit --phase paths).
+		totalForParse := opts.Reviewers
+		if mediumDiffCount > 0 {
+			totalForParse = mediumDiffCount + 1 // +1 for arch
+		}
+		phases, phaseErr := parsePhases(phaseStr, totalForParse)
 		if phaseErr != nil {
 			logger.Logf(terminal.StyleError, "Invalid --phase: %v", phaseErr)
 			return domain.ExitError
@@ -479,6 +455,52 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 	// Cross-check: run only for grouped diff reviews with >=2 groups.
 	var ccResult *summarizer.CrossCheckResult
 	if useGroupedSpecs && opts.CrossCheckEnabled && ctx.Err() == nil {
+		// Lazy resolve: top-level cross_check.model parsing and per-agent
+		// modelconfig.Resolve happen here, NOT at startup. Round-14 F#1
+		// guarantees this gate is reached only when sizeStr=="large" (since
+		// useGroupedSpecs=true is exclusive to DiffSizeLarge in
+		// resolveAutoPhase), so the size layer cascade lines up with
+		// canResolveCrossCheckModelForAgent's sizes["large"] view.
+		ccAgentNames, ccModels, ccErr := resolveCrossCheckAgents(opts, sizeStr)
+		if ccErr != nil {
+			logger.Logf(terminal.StyleError, "%v", ccErr)
+			return domain.ExitError
+		}
+		// Per-agent model is positionally paired with the agent name.
+		ccSpecs := make([]summarizer.CrossCheckAgentSpec, 0, len(ccAgentNames))
+		for i, name := range ccAgentNames {
+			cliCCModel, legacyCCModel := cliOrLegacy(ccModels[i], opts.CrossCheckModelFromCLI)
+			perSpec := modelconfig.Resolve(
+				opts.Models, sizeStr, modelconfig.RoleCrossCheck, name,
+				cliCCModel, "",
+				legacyCCModel, "",
+			)
+			ccSpecs = append(ccSpecs, summarizer.CrossCheckAgentSpec{
+				Name:    name,
+				Options: summarizer.CrossCheckOptions{Model: perSpec.Model, Effort: perSpec.Effort},
+			})
+		}
+		// Lazy CLI availability check: only verify cross-check agent CLIs are
+		// installed when we are about to actually run cross-check. Non-grouped
+		// paths (small diff / explicit --phase / --no-auto-phase / arch,diff)
+		// skip this entirely so users without the cross-check CLI can still
+		// run those review modes.
+		if err := agent.ValidateAgentNames(ccAgentNames); err != nil {
+			logger.Logf(terminal.StyleError, "Invalid cross-check agent: %v", err)
+			return domain.ExitError
+		}
+		for _, spec := range ccSpecs {
+			ccAg, err := agent.NewAgentWithOptions(spec.Name, agent.AgentOptions{Model: spec.Options.Model, Effort: spec.Options.Effort})
+			if err != nil {
+				logger.Logf(terminal.StyleError, "Invalid cross-check agent %q: %v", spec.Name, err)
+				return domain.ExitError
+			}
+			if err := ccAg.IsAvailable(); err != nil {
+				logger.Logf(terminal.StyleError, "%s CLI not found (cross-check): %v", spec.Name, err)
+				return domain.ExitError
+			}
+		}
+
 		ccCtx := buildCrossCheckContext(aggregated, groupedSpecs, results)
 		if len(ccCtx.Groups) >= 2 {
 			ccSpinner := terminal.NewPhaseSpinner("Cross-checking groups")
@@ -729,25 +751,93 @@ func parsePhases(phaseStr string, totalReviewers int) ([]runner.PhaseConfig, err
 }
 
 // resolveCrossCheckAgents returns the resolved cross-check agent names and
-// model. Empty agent falls back to the summarizer agent; empty model falls
-// back to the summarizer model.
+// per-agent models. When opts.CrossCheckModel is non-empty it MUST be a
+// comma-separated list whose count matches CrossCheckAgent (after fallback
+// to SummarizerAgent when CrossCheckAgent is unset). Agents and models are
+// paired positionally: agents[i] uses models[i].
+//
+// When opts.CrossCheckModel is empty, per-agent resolution falls back to the
+// models cascade via modelconfig.Resolve(..., RoleCrossCheck, name, ...).
+// This mirrors the validation in config.ValidateRuntime so "validates OK"
+// implies "runs OK" whenever a user configures cross-check through the
+// structured `models` tree (models.agents.<name>.cross_check / models.sizes.
+// large.cross_check / models.defaults.cross_check) instead of the legacy
+// top-level cross_check.model field. Before Round-13 the runtime required
+// opts.CrossCheckModel unconditionally, producing a "validates OK but never
+// runs" contract asymmetry (Round-13 F#1).
+//
+// Round-14 F#1 contract: this function is invoked exclusively from the
+// grouped-path gate in executeReview, where sizeStr is guaranteed to be
+// "large" (useGroupedSpecs=true is exclusive to DiffSizeLarge in
+// resolveAutoPhase). The defense-in-depth log helper logCrossCheckModelMatrix
+// also calls this with the same sizeStr just before the gate, so the size
+// argument is consistent across both call sites. Non-grouped review paths
+// (small / medium / `--phase` / `--no-auto-phase` / arch,diff fallback) skip
+// cross-check entirely and never invoke this function — that is the entire
+// point of Round-14 F#1's resolve deferral.
+//
+// Returns (nil, nil, nil) when cross-check is disabled.
 //
 // NOTE: agent.ParseAgentNames("") returns []string{DefaultAgent} ("codex"),
 // so we must check the raw string BEFORE calling ParseAgentNames to detect
 // a truly-unset CrossCheckAgent and fall back to SummarizerAgent. This is
 // belt-and-suspenders even if config.Resolve already copies the value,
 // because the fallback here is the canonical resolution point.
-func resolveCrossCheckAgents(opts ReviewOpts) ([]string, string) {
+func resolveCrossCheckAgents(opts ReviewOpts, sizeStr string) ([]string, []string, error) {
+	if !opts.CrossCheckEnabled {
+		return nil, nil, nil
+	}
 	agentSpec := opts.CrossCheckAgent
 	if strings.TrimSpace(agentSpec) == "" {
 		agentSpec = opts.SummarizerAgent
 	}
 	names := agent.ParseAgentNames(agentSpec)
-	model := opts.CrossCheckModel
-	if model == "" {
-		model = opts.SummarizerModel
+
+	if strings.TrimSpace(opts.CrossCheckModel) != "" {
+		// Explicit top-level model list: split, validate, pair positionally.
+		rawModels := strings.Split(opts.CrossCheckModel, ",")
+		models := make([]string, 0, len(rawModels))
+		for _, m := range rawModels {
+			m = strings.TrimSpace(m)
+			if m == "" {
+				return nil, nil, fmt.Errorf("--cross-check-model contains an empty entry; check for leading/trailing/duplicate commas")
+			}
+			models = append(models, m)
+		}
+		if len(names) != len(models) {
+			return nil, nil, fmt.Errorf("--cross-check-agent (%d agents) and --cross-check-model (%d models) must have same count; agents and models are paired by position", len(names), len(models))
+		}
+		return names, models, nil
 	}
-	return names, model
+
+	// Top-level unset: per-agent resolution via the models cascade. Each
+	// selected agent must produce a non-empty Model at the runtime size.
+	models := make([]string, len(names))
+	var missing []string
+	for i, name := range names {
+		spec := modelconfig.Resolve(
+			opts.Models, sizeStr, modelconfig.RoleCrossCheck, name,
+			"", "", // no CLI override (top-level was empty)
+			"", "", // no legacy fallback — the cross_check legacy path IS the top-level field we already checked
+		)
+		if strings.TrimSpace(spec.Model) == "" {
+			missing = append(missing, name)
+			continue
+		}
+		models[i] = spec.Model
+	}
+	if len(missing) > 0 {
+		return nil, nil, fmt.Errorf(
+			"cross_check.enabled=true requires cross_check.model for agent(s) %v "+
+				"(supply via --cross-check-model / ACR_CROSS_CHECK_MODEL as a "+
+				"comma-separated list paired 1:1 with --cross-check-agent, or via "+
+				"models.{agents.<name>,sizes.large,defaults}.cross_check.model "+
+				"— note: cross-check runs only at size=large, so sizes.small/medium "+
+				"entries are dead config); "+
+				"or disable cross-check with --no-cross-check",
+			missing)
+	}
+	return names, models, nil
 }
 
 // buildCrossCheckContext assembles the cross-check input context from review
@@ -812,121 +902,253 @@ func buildCrossCheckContext(findings []domain.AggregatedFinding, specs []runner.
 
 // autoPhaseResult holds the outcome of resolveAutoPhase.
 type autoPhaseResult struct {
-	PhaseStr         string                // non-empty → use legacy phase path
-	GroupedSpecs     []runner.ReviewerSpec // non-nil → use grouped diff path
-	UseGrouped       bool
-	FallbackReason   string // non-empty when UseGrouped was downgraded to false
-	ReviewerOverride int    // 0 = no override; otherwise the enforced reviewer count
+	PhaseStr        string                // non-empty → use legacy phase path
+	GroupedSpecs    []runner.ReviewerSpec // non-nil → use grouped diff path
+	UseGrouped      bool
+	FallbackReason  string // non-empty when UseGrouped was downgraded to false
+	MediumDiffCount int    // 0 = not an arch,diff fallback; otherwise the diff-phase reviewer count to use with parsePhases (arch=1 + this)
 }
 
-// enforceReviewerBoundsForSize enforces per-size reviewer count bounds.
-//   - small: no change
-//   - medium: floor 2
-//   - large: floor 3, upper = fileCount + 1 (floored at 3)
+// resolveAutoPhase determines phase configuration based on diff size and the
+// new auto-phase knobs.
 //
-// Returns the final reviewer count and a short reason string when an override
-// applies. An empty reason means reviewers was already within bounds.
-func enforceReviewerBoundsForSize(size git.DiffSize, reviewers, fileCount int) (int, string) {
+//   - diffGroups: target group count for the grouped (large) path; capped by
+//     the actual file count to keep at least 1 file per group.
+//   - mediumDiffReviewers: diff-phase reviewer count for the medium path
+//     (arch,diff) and for any large fallback to arch,diff.
+//
+// archAgent and diffAgents are passed through to buildGroupedDiffSpecs so the
+// arch and diff phases can use distinct agent backends per
+// arch_reviewer_agent / diff_reviewer_agents config.
+//
+// `reviewers` is intentionally NOT a parameter: --reviewers is now reserved
+// for the flat path (auto-phase OFF / small / explicit --phase). Auto-phase
+// medium/large paths derive their concurrency from these dedicated knobs.
+func resolveAutoPhase(
+	size git.DiffSize,
+	diff, guidance string,
+	diffPrecomputed bool,
+	buildAgents func() (agent.Agent, []agent.Agent, error),
+	diffGroups int,
+	mediumDiffReviewers int,
+) (autoPhaseResult, error) {
 	switch size {
 	case git.DiffSizeSmall:
-		return reviewers, ""
-	case git.DiffSizeMedium:
-		if reviewers < 2 {
-			return 2, fmt.Sprintf("medium diff requires >=2 reviewers; bumped from %d to 2", reviewers)
-		}
-		return reviewers, ""
+		// Small: flat diff path; reviewer count is taken from --reviewers by caller.
+		return autoPhaseResult{PhaseStr: "diff"}, nil
 	case git.DiffSizeLarge:
-		const floor = 3
-		upper := fileCount + 1
-		if upper < floor {
-			upper = floor
-		}
-		if reviewers < floor {
-			return floor, fmt.Sprintf("large diff requires >=%d reviewers; bumped from %d to %d", floor, reviewers, floor)
-		}
-		if reviewers > upper {
-			return upper, fmt.Sprintf("large diff clamped to file_count+1 = %d; was %d", upper, reviewers)
-		}
-		return reviewers, ""
-	}
-	return reviewers, ""
-}
-
-// resolveAutoPhase determines phase configuration based on diff size and reviewer budget.
-func resolveAutoPhase(size git.DiffSize, reviewers int, diff, guidance string, diffPrecomputed bool, agents []agent.Agent) autoPhaseResult {
-	switch size {
-	case git.DiffSizeSmall:
-		// Small: no reviewer-count override; flat diff path.
-		return autoPhaseResult{PhaseStr: "diff"}
-	case git.DiffSizeLarge:
-		// Count files for bounds enforcement (file_count+1 upper bound on large).
 		fileCount := len(git.ParseDiffSections(diff))
-		effectiveReviewers, boundsReason := enforceReviewerBoundsForSize(size, reviewers, fileCount)
-
-		apr := autoPhaseResult{}
-		if effectiveReviewers != reviewers {
-			apr.ReviewerOverride = effectiveReviewers
+		// Sanity cap: 1 group must contain at least 1 file.
+		effectiveGroups := diffGroups
+		if effectiveGroups > fileCount {
+			effectiveGroups = fileCount
 		}
-		appendReason := func(extra string) {
-			if extra == "" {
-				return
-			}
-			if apr.FallbackReason == "" {
-				apr.FallbackReason = extra
-				return
-			}
-			apr.FallbackReason = apr.FallbackReason + "; " + extra
+		if effectiveGroups < 2 {
+			// Grouped path needs >=2 diff groups to be meaningful. Fall back to
+			// flat arch,diff (parsePhases + reviewAgents) without ever touching
+			// buildAgents, so per-phase override CLI availability does not gate
+			// the fallback.
+			return autoPhaseResult{
+				PhaseStr:        "arch,diff",
+				MediumDiffCount: mediumDiffReviewers,
+				FallbackReason: fmt.Sprintf(
+					"only %d non-empty diff group(s) possible (file_count=%d, diff_groups=%d)",
+					effectiveGroups, fileCount, diffGroups),
+			}, nil
 		}
-		appendReason(boundsReason)
-
-		if effectiveReviewers < 2 {
-			apr.PhaseStr = "arch,diff"
-			return apr
+		// Grouped path confirmed viable; now build the per-phase agents. An
+		// error here means the user configured arch_reviewer_agent /
+		// diff_reviewer_agents but the CLI is not available — surface it to
+		// the caller so the run aborts with a clear message (we intentionally
+		// do NOT silently fall back, because the override was explicit).
+		archAgent, diffAgents, agentsErr := buildAgents()
+		if agentsErr != nil {
+			return autoPhaseResult{}, agentsErr
 		}
-		maxDiffGroups := effectiveReviewers - 1
-		if maxDiffGroups > 4 {
-			maxDiffGroups = 4
-		}
-		specs, err := buildGroupedDiffSpecs(diff, guidance, diffPrecomputed, agents, maxDiffGroups)
+		specs, err := buildGroupedDiffSpecs(diff, guidance, diffPrecomputed, archAgent, diffAgents, effectiveGroups)
 		if err != nil {
-			apr.PhaseStr = "arch,diff"
-			return apr
+			return autoPhaseResult{
+				PhaseStr:        "arch,diff",
+				MediumDiffCount: mediumDiffReviewers,
+				FallbackReason:  fmt.Sprintf("buildGroupedDiffSpecs failed: %v", err),
+			}, nil
 		}
 		// specs[0] is always the arch spec; remaining entries are diff groups.
-		// Grouped path requires at least 2 diff groups for a meaningful cross-check.
 		diffGroupCount := len(specs) - 1
 		if diffGroupCount < 2 {
-			apr.PhaseStr = "arch,diff"
-			appendReason(fmt.Sprintf("only %d non-empty diff group(s)", diffGroupCount))
-			return apr
+			return autoPhaseResult{
+				PhaseStr:        "arch,diff",
+				MediumDiffCount: mediumDiffReviewers,
+				FallbackReason:  fmt.Sprintf("only %d non-empty diff group(s) after building", diffGroupCount),
+			}, nil
 		}
-		apr.GroupedSpecs = specs
-		apr.UseGrouped = true
-		return apr
+		return autoPhaseResult{
+			GroupedSpecs: specs,
+			UseGrouped:   true,
+		}, nil
 	default: // medium
-		// Medium requires >=2 reviewers for meaningful arch+diff coverage.
-		effectiveReviewers, boundsReason := enforceReviewerBoundsForSize(size, reviewers, 0)
-		apr := autoPhaseResult{PhaseStr: "arch,diff"}
-		if effectiveReviewers != reviewers {
-			apr.ReviewerOverride = effectiveReviewers
+		// Medium: arch (1) + diff (mediumDiffReviewers). Never calls buildAgents.
+		return autoPhaseResult{
+			PhaseStr:        "arch,diff",
+			MediumDiffCount: mediumDiffReviewers,
+		}, nil
+	}
+}
+
+// buildPhaseAgents constructs the arch-phase agent and diff-phase agent slice
+// used by the auto-phase grouped diff path. It honors per-phase overrides
+// (opts.ArchReviewerAgent, opts.DiffReviewerAgents) and falls back to
+// opts.ReviewerAgents when an override is unset, preserving pre-Round-9
+// behavior. Each constructed agent picks its model/effort via
+// modelconfig.ResolveReviewer with the matching phase ("arch" or "diff") so
+// arch_reviewer / diff_reviewer model layers continue to apply.
+func buildPhaseAgents(opts ReviewOpts, sizeStr string) (agent.Agent, []agent.Agent, error) {
+	// Arch agent name: explicit override > first reviewer agent.
+	archAgentName := opts.ArchReviewerAgent
+	if archAgentName == "" {
+		if len(opts.ReviewerAgents) == 0 {
+			return nil, nil, fmt.Errorf("reviewer_agents is empty; cannot derive arch reviewer")
 		}
-		if boundsReason != "" {
-			apr.FallbackReason = boundsReason
+		archAgentName = opts.ReviewerAgents[0]
+	}
+	cliRevModel, legacyRevModel := cliOrLegacy(opts.ReviewerModel, opts.ReviewerModelFromCLI)
+	archSpec := modelconfig.ResolveReviewer(
+		opts.Models, sizeStr, "arch", archAgentName,
+		cliRevModel, "",
+		legacyRevModel, "",
+	)
+	archAgent, err := agent.NewAgentWithOptions(archAgentName, agent.AgentOptions{Model: archSpec.Model, Effort: archSpec.Effort})
+	if err != nil {
+		return nil, nil, fmt.Errorf("arch reviewer %q: %w", archAgentName, err)
+	}
+	if err := archAgent.IsAvailable(); err != nil {
+		return nil, nil, fmt.Errorf("arch reviewer %q unavailable: %w", archAgentName, err)
+	}
+
+	// Diff agent names: explicit override > all reviewer agents.
+	diffAgentNames := opts.DiffReviewerAgents
+	if len(diffAgentNames) == 0 {
+		diffAgentNames = opts.ReviewerAgents
+	}
+	if len(diffAgentNames) == 0 {
+		return nil, nil, fmt.Errorf("no diff-phase agents available (reviewer_agents and diff_reviewer_agents both empty)")
+	}
+	diffAgents := make([]agent.Agent, 0, len(diffAgentNames))
+	for _, name := range diffAgentNames {
+		spec := modelconfig.ResolveReviewer(
+			opts.Models, sizeStr, "diff", name,
+			cliRevModel, "",
+			legacyRevModel, "",
+		)
+		a, err := agent.NewAgentWithOptions(name, agent.AgentOptions{Model: spec.Model, Effort: spec.Effort})
+		if err != nil {
+			return nil, nil, fmt.Errorf("diff reviewer %q: %w", name, err)
 		}
-		return apr
+		if err := a.IsAvailable(); err != nil {
+			return nil, nil, fmt.Errorf("diff reviewer %q unavailable: %w", name, err)
+		}
+		diffAgents = append(diffAgents, a)
+	}
+	return archAgent, diffAgents, nil
+}
+
+// logPerPhaseModelMatrix emits the arch_reviewer[...] and diff_reviewer[...]
+// verbose rows that continue the "Effective model matrix" block printed
+// earlier. It is only meaningful once resolveAutoPhase has committed to the
+// grouped path: a large→flat fallback makes these rows misleading because
+// the per-phase override agents are never invoked in that case. Callers must
+// gate this on apr.UseGrouped.
+func logPerPhaseModelMatrix(logger *terminal.Logger, opts ReviewOpts, sizeStr string) {
+	cliRevModelLog, legacyRevModelLog := cliOrLegacy(opts.ReviewerModel, opts.ReviewerModelFromCLI)
+	// Arch: explicit override takes precedence; otherwise fall back to the first
+	// reviewer agent. Evaluation order mirrors buildPhaseAgents so that verbose
+	// logging never panics when ReviewerAgents is empty but ArchReviewerAgent is
+	// set explicitly.
+	archName := opts.ArchReviewerAgent
+	if archName == "" {
+		if len(opts.ReviewerAgents) == 0 {
+			// No arch name resolvable. buildPhaseAgents would have already aborted
+			// the run with a clear error; logging is defense-in-depth only, so
+			// emit a diagnostic line and skip the per-phase rows rather than panic.
+			logger.Logf(terminal.StyleWarning, "  arch_reviewer[?]    : (unresolvable: reviewer_agents is empty and arch_reviewer_agent is unset)")
+			return
+		}
+		archName = opts.ReviewerAgents[0]
+	}
+	archSpec := modelconfig.ResolveReviewer(
+		opts.Models, sizeStr, "arch", archName,
+		cliRevModelLog, "",
+		legacyRevModelLog, "",
+	)
+	logger.Logf(terminal.StyleDim, "  arch_reviewer[%s]  : %s", archName, formatSpec(agent.AgentOptions{Model: archSpec.Model, Effort: archSpec.Effort}))
+	// Diff: explicit override takes precedence; otherwise fall back to all
+	// reviewer agents. Empty result is tolerated (for consistency with arch
+	// guard above) and emits nothing.
+	diffNames := opts.DiffReviewerAgents
+	if len(diffNames) == 0 {
+		diffNames = opts.ReviewerAgents
+	}
+	for _, name := range diffNames {
+		diffSpec := modelconfig.ResolveReviewer(
+			opts.Models, sizeStr, "diff", name,
+			cliRevModelLog, "",
+			legacyRevModelLog, "",
+		)
+		logger.Logf(terminal.StyleDim, "  diff_reviewer[%s]  : %s", name, formatSpec(agent.AgentOptions{Model: diffSpec.Model, Effort: diffSpec.Effort}))
+	}
+}
+
+// logCrossCheckModelMatrix emits the cross_check[...] verbose row(s) that
+// continue the "Effective model matrix" block printed earlier. Like the
+// arch_reviewer / diff_reviewer rows, emission is deferred until
+// resolveAutoPhase has committed to the grouped path: cross-check fires only
+// when useGroupedSpecs=true (Round-14 F#1), so emitting these rows earlier
+// would be misleading on small/medium/fallback paths.
+//
+// Defense-in-depth against panic: if cross-check resolution would fail (every
+// selected agent uncovered by the models tree AND no top-level model), this
+// function emits a diagnostic line and returns rather than panicking. The
+// authoritative resolve happens in the same gate where this is called from
+// (cmd/acr/review.go grouped path), so a real failure surfaces there with a
+// clear, actionable error.
+func logCrossCheckModelMatrix(logger *terminal.Logger, opts ReviewOpts, sizeStr string) {
+	ccAgentNames, ccModels, err := resolveCrossCheckAgents(opts, sizeStr)
+	if err != nil {
+		// Mirror logPerPhaseModelMatrix's posture: skip rows with a hint, do
+		// not panic. The same resolve runs in the grouped path gate moments
+		// later and will abort the run with the real error.
+		logger.Logf(terminal.StyleWarning, "  cross_check[?]    : (unresolvable: %v)", err)
+		return
+	}
+	for i, name := range ccAgentNames {
+		cliCCModelLog, legacyCCModelLog := cliOrLegacy(ccModels[i], opts.CrossCheckModelFromCLI)
+		perSpec := modelconfig.Resolve(
+			opts.Models, sizeStr, modelconfig.RoleCrossCheck, name,
+			cliCCModelLog, "",
+			legacyCCModelLog, "",
+		)
+		logger.Logf(terminal.StyleDim, "  cross_check[%s]    : %s", name, formatSpec(agent.AgentOptions{Model: perSpec.Model, Effort: perSpec.Effort}))
 	}
 }
 
 // buildGroupedDiffSpecs creates ReviewerSpecs for grouped diff review.
 // It parses the precomputed diff into sections, groups them, and generates:
-//   - 1 arch spec (full diff, GroupKey="arch")
-//   - N diff specs (per-group filtered diff, GroupKey="g01"..."gNN")
+//   - 1 arch spec (full diff, GroupKey="arch") using archAgent
+//   - N diff specs (per-group filtered diff, GroupKey="g01"..."gNN") with
+//     diffAgents assigned round-robin per non-empty diff group
 //
-// maxDiffGroups is clamped to min(--reviewers - 1, 4) by the caller.
+// maxDiffGroups is supplied by the caller (resolveAutoPhase) from the
+// dedicated `diff_groups` knob, capped at the actual file count so that
+// every group has at least 1 file.
+//
+// archAgent and diffAgents are independent so per-phase reviewer overrides
+// (arch_reviewer_agent / diff_reviewer_agents) can route phases to different
+// agent backends.
 func buildGroupedDiffSpecs(
 	fullDiff, guidance string,
 	diffPrecomputed bool,
-	agents []agent.Agent,
+	archAgent agent.Agent,
+	diffAgents []agent.Agent,
 	maxDiffGroups int,
 ) ([]runner.ReviewerSpec, error) {
 	sections := git.ParseDiffSections(fullDiff)
@@ -942,7 +1164,6 @@ func buildGroupedDiffSpecs(
 	specs := make([]runner.ReviewerSpec, 0, 1+len(groups))
 
 	// 1. Arch reviewer: full diff (ReviewerID=1)
-	archAgent := agent.AgentForReviewer(agents, 1)
 	specs = append(specs, runner.ReviewerSpec{
 		ReviewerID:      1,
 		Agent:           archAgent,
@@ -954,8 +1175,11 @@ func buildGroupedDiffSpecs(
 	})
 
 	// 2. Per-group diff reviewers (ReviewerID=2, 3, ...)
-	// Compute ReviewerID once per non-skipped group so agent lookup and ReviewerID
-	// stay in lockstep (empty groups skip both counters together).
+	// Compute ReviewerID once per non-skipped group so spec ordering and the
+	// diff-phase agent round-robin stay in lockstep (empty groups skip both
+	// counters together). diffReviewerIdx is 1-based per AgentForReviewer's
+	// contract; the 1st surviving diff group always uses diffAgents[0].
+	diffReviewerIdx := 0
 	for _, group := range groups {
 		groupDiff := git.JoinDiffSections(group.Sections)
 		if groupDiff == "" {
@@ -968,7 +1192,8 @@ func buildGroupedDiffSpecs(
 			targetFiles = append(targetFiles, s.FilePath)
 		}
 		reviewerID := len(specs) + 1
-		diffAgent := agent.AgentForReviewer(agents, reviewerID)
+		diffReviewerIdx++
+		diffAgent := agent.AgentForReviewer(diffAgents, diffReviewerIdx)
 		specs = append(specs, runner.ReviewerSpec{
 			ReviewerID:      reviewerID,
 			Agent:           diffAgent,
