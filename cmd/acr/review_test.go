@@ -433,10 +433,10 @@ func TestReviewPipeline_CrossCheckUsesAggregatedIDs(t *testing.T) {
 func TestResolveCrossCheckAgents_EmptyFallsBackToSummarizer(t *testing.T) {
 	opts := ReviewOpts{
 		ResolvedConfig: config.ResolvedConfig{
-			SummarizerAgent:  "codex",
-			SummarizerModel:  "gpt-5",
-			CrossCheckAgent:  "",
-			CrossCheckModel:  "",
+			SummarizerAgent: "codex",
+			SummarizerModel: "gpt-5",
+			CrossCheckAgent: "",
+			CrossCheckModel: "",
 		},
 	}
 	names, model := resolveCrossCheckAgents(opts)
@@ -664,9 +664,9 @@ func TestBuildCrossCheckContext_UsesSpecReviewerID(t *testing.T) {
 	}
 	aggregated := domain.AggregateFindings(rawFindings)
 	results := []domain.ReviewerResult{
-		{ReviewerID: 3, ExitCode: 0, Findings: []domain.Finding{rawFindings[0]}},  // arch succeeded
-		{ReviewerID: 5, ExitCode: 0, Findings: []domain.Finding{rawFindings[1]}},  // g01 succeeded
-		{ReviewerID: 7, ExitCode: -1, TimedOut: true},                              // g02 timed out
+		{ReviewerID: 3, ExitCode: 0, Findings: []domain.Finding{rawFindings[0]}}, // arch succeeded
+		{ReviewerID: 5, ExitCode: 0, Findings: []domain.Finding{rawFindings[1]}}, // g01 succeeded
+		{ReviewerID: 7, ExitCode: -1, TimedOut: true},                            // g02 timed out
 	}
 
 	ccCtx := buildCrossCheckContext(aggregated, specs, results)
@@ -741,7 +741,7 @@ func TestReviewGate_NoFindings_AllAdvisory_StillLGTM(t *testing.T) {
 }
 
 // TestReviewGate_GroupedFindingsOnly_NotLGTM: grouped has findings (no cc) →
-// gate must return false (existing behaviour preserved).
+// gate must return false (existing behavior preserved).
 func TestReviewGate_GroupedFindingsOnly_NotLGTM(t *testing.T) {
 	grouped := domain.GroupedFindings{
 		Findings: []domain.FindingGroup{
@@ -1107,10 +1107,7 @@ func TestNoAutoPhase_ProducesFlatPath_WithVerdict(t *testing.T) {
 // only for testing; the production path lives at cmd/acr/review.go:~420.
 func computeVerdictWithCCSignals(g *domain.GroupedFindings, cc *summarizer.CrossCheckResult) {
 	ccBlocking := cc.HasBlockingFindings()
-	ccAdvisory := false
-	if cc != nil && !ccBlocking && (cc.HasAdvisoryFindings() || cc.IsDegraded()) {
-		ccAdvisory = true
-	}
+	ccAdvisory := cc != nil && !ccBlocking && (cc.HasAdvisoryFindings() || cc.IsDegraded())
 	g.ComputeVerdict(ccBlocking, ccAdvisory)
 }
 

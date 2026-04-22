@@ -421,10 +421,7 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 	// layer silently lost coverage (split-brain prevention). Keeping domain
 	// ComputeVerdict pure, degradation interpretation lives at this boundary.
 	ccBlocking := ccResult.HasBlockingFindings()
-	ccAdvisory := false
-	if ccResult != nil && !ccBlocking && (ccResult.HasAdvisoryFindings() || ccResult.IsDegraded()) {
-		ccAdvisory = true
-	}
+	ccAdvisory := ccResult != nil && !ccBlocking && (ccResult.HasAdvisoryFindings() || ccResult.IsDegraded())
 	summaryResult.Grouped.ComputeVerdict(ccBlocking, ccAdvisory)
 
 	// Render and print report

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -397,7 +398,7 @@ func TestHandleFindings_Local_ReturnsVerdictUnchanged(t *testing.T) {
 	stats := domain.ReviewStats{TotalReviewers: 1}
 	logger := terminal.NewLogger()
 	code, finalVerdict := handleFindings(
-		nil, opts, grouped, nil, nil,
+		context.TODO(), opts, grouped, nil, nil,
 		false, true, // ccBlocking, ccAdvisory
 		"advisory", false, stats, logger,
 	)

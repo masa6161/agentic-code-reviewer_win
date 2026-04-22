@@ -334,7 +334,7 @@ func TestBackfillSeverity_SomeSourceBlocking_UpgradesToBlocking(t *testing.T) {
 }
 
 // TestBackfillSeverity_InvalidSeverityNormalized verifies Rule C:
-// an unrecognised LLM severity value (e.g. "critical") must be normalised to
+// an unrecognized LLM severity value (e.g. "critical") must be normalised to
 // "advisory".
 func TestBackfillSeverity_InvalidSeverityNormalized(t *testing.T) {
 	aggregated := []domain.AggregatedFinding{

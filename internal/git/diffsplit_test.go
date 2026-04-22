@@ -8,36 +8,6 @@ import (
 
 // --- Test helpers / fixtures ---
 
-// makeFileDiff builds a minimal but realistic unified diff block for one file.
-// addedCount controls how many "+ added line" lines are included.
-func makeFileDiff(oldPath, newPath string, addedCount int) string {
-	var sb strings.Builder
-	fmt.Fprintf(&sb, "diff --git a/%s b/%s\n", oldPath, newPath)
-	sb.WriteString("index abc1234..def5678 100644\n")
-	fmt.Fprintf(&sb, "--- a/%s\n", oldPath)
-	fmt.Fprintf(&sb, "+++ b/%s\n", newPath)
-	sb.WriteString("@@ -1,3 +1,5 @@\n")
-	sb.WriteString(" package main\n")
-	for i := 0; i < addedCount; i++ {
-		fmt.Fprintf(&sb, "+added line %d\n", i+1)
-	}
-	return sb.String()
-}
-
-// makeFileDiffSimple builds a diff with a fixed small addition for basic tests.
-func makeFileDiffSimple(name string) string {
-	return `diff --git a/` + name + ` b/` + name + `
-index abc1234..def5678 100644
---- a/` + name + `
-+++ b/` + name + `
-@@ -1,3 +1,5 @@
- package main
-
-+import "fmt"
-+
- func main() {`
-}
-
 // reusable diff samples
 const basicDiff3Files = `diff --git a/file1.go b/file1.go
 index abc1234..def5678 100644
@@ -442,4 +412,3 @@ func TestGroupDiffSections_GroupKeys(t *testing.T) {
 		}
 	}
 }
-

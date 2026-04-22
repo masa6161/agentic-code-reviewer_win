@@ -21,7 +21,7 @@ type ReviewOpts struct {
 	UseRefFile      bool
 	ExcludePatterns []string
 	WorkDir         string // Worktree path (empty = current directory)
-	Phase  string // Comma-separated phases: "arch", "diff", "arch,diff" (empty = legacy)
-	Format string // Output format: "text" (default) or "json"
+	Phase           string // Comma-separated phases: "arch", "diff", "arch,diff" (empty = legacy)
+	Format          string // Output format: "text" (default) or "json"
 	// AutoPhase is inherited from the embedded ResolvedConfig field.
 }

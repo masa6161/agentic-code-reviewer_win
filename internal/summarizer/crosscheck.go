@@ -497,9 +497,9 @@ func dedupCrossCheckFindings(findings []CrossCheckFinding) []CrossCheckFinding {
 	}
 
 	type key struct {
-		typeName    string
-		idsKey      string
-		titleNorm   string
+		typeName  string
+		idsKey    string
+		titleNorm string
 	}
 
 	keyFor := func(f CrossCheckFinding) key {
