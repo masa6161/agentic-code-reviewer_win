@@ -196,13 +196,21 @@ func buildReviewPromptLabel(defaultAction string) string {
 	return "[R]equest changes (default) / [C]omment / [S]kip:"
 }
 
-// formatCrossCheckForPR renders cross-check findings as a Markdown section for inclusion
-// in a PR review body. Returns "" when cc is nil, has no findings, and is not partial.
+// formatCrossCheckForPR renders cross-check findings as a Markdown section for
+// inclusion in a PR review body. Returns "" when cc is nil, or when cc has no
+// findings and is neither Partial nor in a non-structural Skipped state —
+// structural skips (single group, no agents configured) stay silent because
+// they do not represent lost coverage.
 func formatCrossCheckForPR(cc *summarizer.CrossCheckResult) string {
 	if cc == nil {
 		return ""
 	}
-	if len(cc.Findings) == 0 && !cc.Partial {
+	noFindings := len(cc.Findings) == 0
+	if noFindings && !cc.Partial && !cc.Skipped {
+		return ""
+	}
+	// Structural skips stay silent — cross-check was intentionally not run.
+	if noFindings && cc.Skipped && summarizer.IsStructuralSkipReason(cc.SkipReason) {
 		return ""
 	}
 
@@ -214,6 +222,16 @@ func formatCrossCheckForPR(cc *summarizer.CrossCheckResult) string {
 			agents = "unknown"
 		}
 		sb.WriteString(fmt.Sprintf("⚠ Cross-check ran partially (failed agents: %s) — coverage reduced\n\n", agents))
+	}
+
+	// Non-structural skip with no findings: emit a minimal section so reviewers
+	// can see that cross-group coverage was lost (vs. silently dropping it).
+	if noFindings && cc.Skipped {
+		reason := cc.SkipReason
+		if reason == "" {
+			reason = "unknown reason"
+		}
+		sb.WriteString(fmt.Sprintf("⚠ Cross-check skipped: %s — cross-group coverage unavailable\n\n", reason))
 	}
 
 	if len(cc.Findings) > 0 {

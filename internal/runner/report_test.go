@@ -856,6 +856,100 @@ func TestRenderJSON_PartialCrossCheckFields(t *testing.T) {
 	}
 }
 
+// TestRenderJSON_PreservesDegradedCrossCheckFields verifies that a degraded
+// cross-check run (Partial or non-structural Skipped) still surfaces a
+// cross_check section in the JSON output even when Findings is empty. Machine
+// consumers must be able to distinguish "no cross-check" (ccResult == nil)
+// from "cross-check lost coverage" (Partial/Skipped with no findings).
+func TestRenderJSON_PreservesDegradedCrossCheckFields(t *testing.T) {
+	t.Run("Partial with empty Findings is preserved", func(t *testing.T) {
+		grouped := &domain.GroupedFindings{}
+		ccResult := &summarizer.CrossCheckResult{
+			Partial:      true,
+			FailedAgents: []string{"codex"},
+			SkipReason:   "1 of 3 agents failed: codex: timeout",
+		}
+
+		out, err := RenderJSON(grouped, ccResult)
+		if err != nil {
+			t.Fatalf("RenderJSON failed: %v", err)
+		}
+		var parsed map[string]interface{}
+		if err := json.Unmarshal(out, &parsed); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		cc, ok := parsed["cross_check"].(map[string]interface{})
+		if !ok {
+			t.Fatal("expected cross_check section for partial degraded result, got none")
+		}
+		if partial, _ := cc["partial"].(bool); !partial {
+			t.Error("expected partial=true preserved")
+		}
+		if _, ok := cc["failed_agents"].([]interface{}); !ok {
+			t.Error("expected failed_agents preserved")
+		}
+	})
+
+	t.Run("Skipped with empty Findings is preserved", func(t *testing.T) {
+		grouped := &domain.GroupedFindings{}
+		ccResult := &summarizer.CrossCheckResult{
+			Skipped:      true,
+			SkipReason:   "all 3 agents failed: codex: timeout; claude: auth; gemini: parse",
+			FailedAgents: []string{"codex", "claude", "gemini"},
+		}
+
+		out, err := RenderJSON(grouped, ccResult)
+		if err != nil {
+			t.Fatalf("RenderJSON failed: %v", err)
+		}
+		var parsed map[string]interface{}
+		if err := json.Unmarshal(out, &parsed); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		cc, ok := parsed["cross_check"].(map[string]interface{})
+		if !ok {
+			t.Fatal("expected cross_check section for skipped degraded result, got none")
+		}
+		if skipped, _ := cc["skipped"].(bool); !skipped {
+			t.Error("expected skipped=true preserved")
+		}
+		if reason, _ := cc["skip_reason"].(string); reason == "" {
+			t.Error("expected skip_reason preserved")
+		}
+	})
+
+	t.Run("nil ccResult produces no cross_check key (regression guard)", func(t *testing.T) {
+		grouped := &domain.GroupedFindings{}
+		out, err := RenderJSON(grouped, nil)
+		if err != nil {
+			t.Fatalf("RenderJSON failed: %v", err)
+		}
+		var parsed map[string]interface{}
+		if err := json.Unmarshal(out, &parsed); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		if _, ok := parsed["cross_check"]; ok {
+			t.Error("did not expect cross_check key when ccResult is nil")
+		}
+	})
+
+	t.Run("clean empty ccResult produces no cross_check key", func(t *testing.T) {
+		grouped := &domain.GroupedFindings{}
+		ccResult := &summarizer.CrossCheckResult{}
+		out, err := RenderJSON(grouped, ccResult)
+		if err != nil {
+			t.Fatalf("RenderJSON failed: %v", err)
+		}
+		var parsed map[string]interface{}
+		if err := json.Unmarshal(out, &parsed); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		if _, ok := parsed["cross_check"]; ok {
+			t.Error("did not expect cross_check key for clean empty ccResult")
+		}
+	})
+}
+
 func TestRenderReport_GroupedEmpty_CrossCheckBlocking_ShowsCrossCheckAndVerdict(t *testing.T) {
 	terminal.WithColorsDisabled(func() {
 		grouped := domain.GroupedFindings{

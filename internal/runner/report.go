@@ -452,10 +452,15 @@ func RenderDismissedLGTMMarkdown(findings []domain.FindingGroup, stats domain.Re
 
 // RenderJSON marshals the grouped findings as JSON with indentation.
 // Ok is expected to be already computed before calling this function.
-// If ccResult is non-nil and contains findings, a "cross_check" section is
-// embedded alongside the grouped findings.
+// If ccResult is non-nil and carries any signal — findings, Partial, or
+// Skipped — a "cross_check" section is embedded alongside the grouped
+// findings so that machine consumers can distinguish a clean cross-check
+// run from a degraded one (partial agent failure or non-structural skip).
 func RenderJSON(grouped *domain.GroupedFindings, ccResult *summarizer.CrossCheckResult) ([]byte, error) {
-	if ccResult == nil || len(ccResult.Findings) == 0 {
+	if ccResult == nil {
+		return json.MarshalIndent(grouped, "", "  ")
+	}
+	if len(ccResult.Findings) == 0 && !ccResult.Partial && !ccResult.Skipped {
 		return json.MarshalIndent(grouped, "", "  ")
 	}
 	type crossCheckOut struct {
