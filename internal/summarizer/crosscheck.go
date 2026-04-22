@@ -240,7 +240,7 @@ type crossCheckResponse struct {
 
 // buildCrossCheckPayload converts a CrossCheckContext to the JSON payload
 // shipped to each cross-check agent. Finding text is truncated to
-// maxFindingTextLen characters.
+// maxFindingTextLen runes (Unicode code points).
 func buildCrossCheckPayload(ccCtx CrossCheckContext) crossCheckPayload {
 	outcomeByKey := make(map[string]GroupOutcome, len(ccCtx.Outcomes))
 	for _, o := range ccCtx.Outcomes {

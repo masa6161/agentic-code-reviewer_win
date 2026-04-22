@@ -205,10 +205,12 @@ func GroupDiffSections(sections []DiffSection, maxFilesPerGroup, maxLinesPerGrou
 			}
 		}
 
-		// Merge groups[bestIdx] and groups[bestIdx+1]
-		merged := DiffGroup{
-			Sections: append(groups[bestIdx].Sections, groups[bestIdx+1].Sections...),
-		}
+		// Merge groups[bestIdx] and groups[bestIdx+1] into a fresh slice so the
+		// merged group does not alias the underlying array of either source group.
+		mergedSections := make([]DiffSection, 0, len(groups[bestIdx].Sections)+len(groups[bestIdx+1].Sections))
+		mergedSections = append(mergedSections, groups[bestIdx].Sections...)
+		mergedSections = append(mergedSections, groups[bestIdx+1].Sections...)
+		merged := DiffGroup{Sections: mergedSections}
 		// Replace bestIdx and bestIdx+1 with the merged group
 		newGroups := make([]DiffGroup, 0, len(groups)-1)
 		newGroups = append(newGroups, groups[:bestIdx]...)
