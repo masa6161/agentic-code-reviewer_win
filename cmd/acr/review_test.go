@@ -1165,30 +1165,3 @@ func TestComputeVerdict_CrossCheckBlockingBeatsDegraded(t *testing.T) {
 		t.Errorf("blocking finding must take precedence over degraded, got %q", g.Verdict)
 	}
 }
-
-// TestCrossCheckEnabledEmptyAgents_IsError documents the design decision that
-// cross-check enabled with zero resolved agents must return ExitError in
-// executeReview. resolveCrossCheckAgents is tested separately; a full
-// integration test would require a real git tree and agent CLIs.
-func TestCrossCheckEnabledEmptyAgents_IsError(t *testing.T) {
-	// Constructing a ReviewOpts where the resolved cross-check agent list is
-	// empty requires SummarizerAgent="" (so the fallback path produces no
-	// agents). That state is normally rejected by earlier validation but the
-	// executeReview guard is the last line of defense.
-	opts := ReviewOpts{
-		ResolvedConfig: config.ResolvedConfig{
-			SummarizerAgent:   "",
-			CrossCheckAgent:   "",
-			CrossCheckEnabled: true,
-		},
-	}
-	names, _ := resolveCrossCheckAgents(opts)
-	// Empty summarizer agent + empty cross-check agent → names comes from
-	// ParseAgentNames(""). Document the boundary: the guard in executeReview
-	// kicks in only when names is empty. ParseAgentNames("") returning []
-	// is what makes this guard reachable; if that behavior changes, the
-	// guard needs revisiting.
-	if opts.CrossCheckEnabled && len(names) == 0 {
-		t.Log("design: executeReview returns ExitError when CrossCheckEnabled=true and resolved agent list is empty")
-	}
-}

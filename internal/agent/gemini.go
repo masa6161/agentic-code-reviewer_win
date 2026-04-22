@@ -9,9 +9,9 @@ import (
 	"strings"
 )
 
-// geminiEffortArgs returns an empty args slice; gemini does not support
-// thinking effort control. Callers that want a visible notice should log
-// at the call site when verbose is on.
+// geminiEffortArgs returns nil because gemini does not support thinking
+// effort control. This is a no-op; callers that want a visible notice
+// should log at the call site when verbose is on.
 func geminiEffortArgs(_ string) []string {
 	return nil
 }
