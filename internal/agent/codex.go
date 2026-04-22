@@ -9,18 +9,41 @@ import (
 	"strings"
 )
 
+// codexReasoningEffortArgs maps Spec.Effort to codex CLI's -c config override.
+// codex does not have a --reasoning-effort flag; the equivalent is
+//
+//	-c model_reasoning_effort=<value>
+//
+// which sets the value in ~/.codex/config.toml at runtime. See `codex exec --help`
+// for the -c syntax. Unknown values are silently ignored — validation lives in
+// the config layer.
+func codexReasoningEffortArgs(effort string) []string {
+	switch strings.ToLower(effort) {
+	case "low", "medium", "high":
+		return []string{"-c", "model_reasoning_effort=" + strings.ToLower(effort)}
+	default:
+		return nil
+	}
+}
+
 // Compile-time interface check
 var _ Agent = (*CodexAgent)(nil)
 
 // CodexAgent implements the Agent interface for the Codex CLI backend.
 type CodexAgent struct {
-	model string
+	model  string
+	effort string
 }
 
 // NewCodexAgent creates a new CodexAgent instance.
 // If model is non-empty, it overrides the default model via --model.
 func NewCodexAgent(model string) *CodexAgent {
 	return &CodexAgent{model: model}
+}
+
+// NewCodexAgentWithOptions creates a new CodexAgent instance with the given options.
+func NewCodexAgentWithOptions(opts AgentOptions) *CodexAgent {
+	return &CodexAgent{model: opts.Model, effort: opts.Effort}
 }
 
 // Name returns the agent's identifier.
@@ -61,7 +84,8 @@ func (c *CodexAgent) ExecuteReview(ctx context.Context, config *ReviewConfig) (*
 	// (codex+claude), DiffPrecomputed is globally true for Claude's benefit,
 	// but Codex should still use its built-in review when no guidance/phase is set.
 	if config.Guidance != "" || config.Phase != "" || len(config.TargetFiles) > 0 {
-		args := []string{"exec", "--json", "--color", "never", "-"}
+		effortArgs := codexReasoningEffortArgs(c.effort)
+		args := append(effortArgs, []string{"exec", "--json", "--color", "never", "-"}...)
 		if model != "" {
 			args = append([]string{"--model", model}, args...)
 		}
@@ -73,7 +97,8 @@ func (c *CodexAgent) ExecuteReview(ctx context.Context, config *ReviewConfig) (*
 		})
 	}
 
-	args := []string{"exec", "--json", "--color", "never", "review", "--base", config.BaseRef}
+	effortArgs := codexReasoningEffortArgs(c.effort)
+	args := append(effortArgs, []string{"exec", "--json", "--color", "never", "review", "--base", config.BaseRef}...)
 	if model != "" {
 		args = append([]string{"--model", model}, args...)
 	}
@@ -97,7 +122,8 @@ func (c *CodexAgent) ExecuteSummary(ctx context.Context, prompt string, input []
 		return nil, err
 	}
 
-	args := []string{"exec", "--json", "--color", "never", "-"}
+	effortArgs := codexReasoningEffortArgs(c.effort)
+	args := append(effortArgs, []string{"exec", "--json", "--color", "never", "-"}...)
 	if c.model != "" {
 		args = append([]string{"--model", c.model}, args...)
 	}

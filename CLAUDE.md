@@ -6,6 +6,9 @@ This file provides guidance for AI assistants working on the ACR codebase.
 
 ACR (Agentic Code Reviewer) is a Go CLI that runs parallel code reviews using LLM agents (Codex, Claude, or Gemini). It spawns N reviewers, collects their findings, deduplicates/clusters them via an LLM summarizer, and optionally posts results to GitHub PRs.
 
+**Status note**: PR posting is beta on the Windows port. `--local` is the
+supported path while the end-to-end submission flow is stabilized.
+
 ## Build & Test Commands
 
 Use `make` for all build/test/lint operations. Run `make help` to see available targets.

@@ -286,7 +286,7 @@ func TestFormatCrossCheckForPR_Partial(t *testing.T) {
 // etc.) with no findings still produces a Markdown section so reviewers see
 // the lost coverage. Structural skips (single group, no agents) stay silent.
 func TestFormatCrossCheckForPR_EmitsSectionOnNonStructuralSkip(t *testing.T) {
-	t.Run("all agents failed emits section", func(t *testing.T) {
+	t.Run("all agents failed emits degraded advisory notice", func(t *testing.T) {
 		cc := &summarizer.CrossCheckResult{
 			Skipped:      true,
 			SkipReason:   "all 3 agents failed: codex: timeout; claude: auth; gemini: parse",
@@ -296,11 +296,18 @@ func TestFormatCrossCheckForPR_EmitsSectionOnNonStructuralSkip(t *testing.T) {
 		if got == "" {
 			t.Fatal("expected non-empty Markdown for non-structural skip, got empty")
 		}
-		if !strings.Contains(got, "Cross-check skipped") {
-			t.Errorf("missing skip notice; got:\n%s", got)
+		if !strings.Contains(got, "Cross-check degraded") {
+			t.Errorf("missing degraded notice; got:\n%s", got)
 		}
-		if !strings.Contains(got, "cross-group coverage unavailable") {
-			t.Errorf("missing coverage-unavailable wording; got:\n%s", got)
+		if !strings.Contains(got, "treat as advisory") {
+			t.Errorf("missing advisory wording; got:\n%s", got)
+		}
+		// Reason sanitizer must strip per-agent detail after the first colon.
+		if !strings.Contains(got, "all 3 agents failed") {
+			t.Errorf("missing sanitized agent-failure summary; got:\n%s", got)
+		}
+		if strings.Contains(got, "codex: timeout") || strings.Contains(got, "claude: auth") {
+			t.Errorf("raw per-agent error detail must be sanitized out of PR body; got:\n%s", got)
 		}
 	})
 
@@ -319,23 +326,15 @@ func TestFormatCrossCheckForPR_EmitsSectionOnNonStructuralSkip(t *testing.T) {
 			Skipped:    true,
 			SkipReason: summarizer.SkipReasonNoAgents,
 		}
-		// Note: IsStructuralSkipReason currently treats empty + SingleGroup as
-		// structural. NoAgents is a structural skip too but is reported with a
-		// non-empty SkipReason that is not SingleGroup, so this case ends up
-		// emitting a section. That's acceptable — operators explicitly
-		// misconfiguring cross-check should see the degraded state. This test
-		// documents that behavior.
-		if got := formatCrossCheckForPR(cc); got == "" {
-			t.Skip("no-agents treated as structural by IsStructuralSkipReason; expected section not required")
+		if got := formatCrossCheckForPR(cc); got != "" {
+			t.Errorf("no-agents is structural; expected silent, got:\n%s", got)
 		}
 	})
 
-	t.Run("empty SkipReason falls back to unknown reason", func(t *testing.T) {
+	t.Run("empty SkipReason stays silent (structural)", func(t *testing.T) {
 		cc := &summarizer.CrossCheckResult{
 			Skipped: true,
-			// SkipReason left empty — guard path
 		}
-		// IsStructuralSkipReason("") is true, so this should stay silent.
 		if got := formatCrossCheckForPR(cc); got != "" {
 			t.Errorf("empty SkipReason is structural; expected silent, got:\n%s", got)
 		}
@@ -468,5 +467,142 @@ func TestHandleFindings_Local_ReturnsVerdictUnchanged(t *testing.T) {
 	}
 	if finalVerdict != "advisory" {
 		t.Errorf("local handleFindings must preserve input verdict, got %q", finalVerdict)
+	}
+}
+
+// --- §2: formatCrossCheckForPR degraded skip tests ---
+
+func TestFormatCrossCheckForPR_DegradedSkip(t *testing.T) {
+	cases := []struct {
+		name       string
+		cc         *summarizer.CrossCheckResult
+		wantEmpty  bool
+		wantSubstr []string // must all appear when !wantEmpty
+		wantAbsent []string // must not appear when !wantEmpty
+	}{
+		{
+			name: "structural skip single group -> empty",
+			cc: &summarizer.CrossCheckResult{
+				Skipped:    true,
+				SkipReason: summarizer.SkipReasonSingleGroup,
+			},
+			wantEmpty: true,
+		},
+		{
+			name: "structural skip no agents -> empty",
+			cc: &summarizer.CrossCheckResult{
+				Skipped:    true,
+				SkipReason: summarizer.SkipReasonNoAgents,
+			},
+			wantEmpty: true,
+		},
+		{
+			name: "all agents failed -> degraded notice",
+			cc: &summarizer.CrossCheckResult{
+				Skipped:      true,
+				SkipReason:   "all 3 agents failed: codex: exec error; claude: timeout; gemini: auth failed",
+				FailedAgents: []string{"codex", "claude", "gemini"},
+			},
+			wantEmpty:  false,
+			wantSubstr: []string{"degraded", "coverage reduced", "all 3 agents failed"},
+		},
+		{
+			name: "payload marshal failed -> degraded notice with generic message",
+			cc: &summarizer.CrossCheckResult{
+				Skipped:    true,
+				SkipReason: "payload marshal failed: invalid type",
+			},
+			wantEmpty:  false,
+			wantSubstr: []string{"degraded", "coverage reduced", "cross-check degraded (see local log for details)"},
+		},
+		{
+			name: "all agents failed with details -> only summary line exposed",
+			cc: &summarizer.CrossCheckResult{
+				Skipped:      true,
+				SkipReason:   "all 3 agents failed: codex: exec error; claude: timeout; gemini: auth failed",
+				FailedAgents: []string{"codex", "claude", "gemini"},
+			},
+			wantEmpty:  false,
+			wantSubstr: []string{"degraded", "coverage reduced", "all 3 agents failed"},
+			wantAbsent: []string{"exec error", "timeout", "auth failed"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := formatCrossCheckForPR(tc.cc)
+			if tc.wantEmpty && got != "" {
+				t.Errorf("expected empty, got %q", got)
+			}
+			if !tc.wantEmpty {
+				if got == "" {
+					t.Fatal("expected non-empty body")
+				}
+				for _, s := range tc.wantSubstr {
+					if !strings.Contains(got, s) {
+						t.Errorf("missing substring %q in:\n%s", s, got)
+					}
+				}
+				for _, s := range tc.wantAbsent {
+					if strings.Contains(got, s) {
+						t.Errorf("unexpected substring %q in:\n%s", s, got)
+					}
+				}
+			}
+		})
+	}
+}
+
+// --- §3: handleFindings partial dismiss verdict recompute tests ---
+//
+// These tests mirror the in-place recompute inside handleFindings when the
+// interactive selector removes some (but not all) findings. We simulate the
+// filtered slice that handleFindings builds and assert the verdict is correctly
+// recomputed so applyVerdictExitPolicy receives the right signal.
+
+// TestHandleFindings_PartialDismiss_BlockingRemoved_VerdictDowngrade verifies
+// that removing the blocking finding while keeping an advisory one downgrades
+// the verdict to "advisory". Without the §3 fix the input "blocking" verdict
+// would persist, causing applyVerdictExitPolicy to request_changes / exit 1
+// for what is effectively an advisory review.
+func TestHandleFindings_PartialDismiss_BlockingRemoved_VerdictDowngrade(t *testing.T) {
+	// Original grouped set: [blocking, advisory]
+	grouped := domain.GroupedFindings{
+		Findings: []domain.FindingGroup{
+			{Title: "blocker", Severity: "blocking"},
+			{Title: "nit", Severity: "advisory"},
+		},
+		Verdict: "blocking",
+	}
+	// Selector keeps only the advisory one (index 1).
+	selected := []domain.FindingGroup{grouped.Findings[1]}
+	// No cross-check signals.
+	var ccBlocking, ccAdvisory bool
+
+	filtered := domain.GroupedFindings{Findings: selected, Info: grouped.Info}
+	filtered.ComputeVerdict(ccBlocking, ccAdvisory)
+
+	if filtered.Verdict != "advisory" {
+		t.Errorf("partial dismiss keeping advisory must yield advisory verdict, got %q", filtered.Verdict)
+	}
+}
+
+// TestHandleFindings_PartialDismiss_AdvisoryRemoved_VerdictBlocking verifies
+// the reverse: keeping only the blocking finding must keep the verdict blocking.
+func TestHandleFindings_PartialDismiss_AdvisoryRemoved_VerdictBlocking(t *testing.T) {
+	grouped := domain.GroupedFindings{
+		Findings: []domain.FindingGroup{
+			{Title: "blocker", Severity: "blocking"},
+			{Title: "nit", Severity: "advisory"},
+		},
+		Verdict: "blocking",
+	}
+	selected := []domain.FindingGroup{grouped.Findings[0]}
+	var ccBlocking, ccAdvisory bool
+
+	filtered := domain.GroupedFindings{Findings: selected, Info: grouped.Info}
+	filtered.ComputeVerdict(ccBlocking, ccAdvisory)
+
+	if filtered.Verdict != "blocking" {
+		t.Errorf("partial dismiss keeping blocking must yield blocking verdict, got %q", filtered.Verdict)
 	}
 }

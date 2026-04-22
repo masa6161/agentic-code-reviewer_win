@@ -44,3 +44,93 @@ summarizer_agent: claude
 # pr_feedback:
 #   enabled: true
 #   agent: ""
+
+# ------------------------------------------------------------------------
+# models: per-size / per-role / per-agent model and thinking-effort matrix
+# ------------------------------------------------------------------------
+# Resolution precedence (highest → lowest; Model and Effort resolve
+# independently, so partial overrides cascade):
+#   CLI flag (--reviewer-model etc.)
+#     > models.agents.<agent>.<role>
+#     > models.sizes.<size>.<role>
+#     > models.defaults.<role>
+#     > legacy fields (reviewer_model, summarizer_model, cross_check.model)
+#     > agent built-in default
+#
+# Roles:
+#   reviewer       — flat review (auto-phase OFF / size=small / --phase diff)
+#                    and fallback for arch_reviewer / diff_reviewer when those
+#                    are unset at the same cascade layer.
+#   arch_reviewer  — auto-phase medium/large の arch フェーズのみ
+#   diff_reviewer  — auto-phase medium/large の diff フェーズのみ
+#   summarizer     — finding clustering
+#   fp_filter      — false-positive detection
+#   cross_check    — grouped-phase 間の整合検査
+#   pr_feedback    — 既存 PR コメント要約
+#
+# Sizes (auto-phase 判定): small / medium / large
+#
+# Per-backend model catalog (representative; 実際の catalog は各 CLI の
+# --help / upstream release notes を参照):
+#
+#   codex (OpenAI Codex CLI):
+#     model:  gpt-5.4, gpt-5.4-mini  (legacy: o3, o3-mini 等)
+#     effort: low | medium | high    → `-c model_reasoning_effort=<value>` にマッピング
+#
+#   claude (Claude Code CLI):
+#     model:  claude-opus-4-7, claude-sonnet-4-6, claude-haiku-4-5
+#             (短縮形 sonnet-4-6 / sonnet / opus 等も CLI が解釈)
+#     effort: low | medium | high | xhigh | max → --effort にマッピング
+#             (session-scoped; 利用可能レベルはモデルに依存)
+#             数値や未知値は silently drop される。
+#
+#   gemini (Gemini CLI):
+#     model:  gemini-3.1-pro, gemini-2.5-pro, gemini-2.5-flash
+#     effort: 未対応（設定しても silently ignored）
+#
+# Footguns:
+# - defaults.<role>.model は全 agent 横断に適用されるため、`gpt-5.4` を
+#   defaults に書くと claude/gemini reviewer も gpt-5.4 を試みて失敗する。
+#   **model は agents.<name>.<role> で agent 別に明示する**のが安全。
+#   defaults には effort（agent 側で解釈される）のみ書くパターン推奨。
+# - reviewer_agents に同じバックエンドを複数並べた場合（例:
+#   [codex, codex, codex]）、それらは全インスタンス agents.codex.reviewer
+#   を共有する。per-instance の差分は現状サポートしない。
+# ------------------------------------------------------------------------
+models:
+  defaults:
+    # effort のみ共通定義。model は agent 側で解釈が異なるため
+    # defaults.<role>.model は書かない（footgun 参照）。
+    reviewer:      { effort: medium }
+    arch_reviewer: { effort: high }
+    diff_reviewer: { effort: medium }
+    summarizer:    { effort: high }
+    cross_check:   { effort: high }
+  sizes:
+    # 規模別の effort 上書き（model は agents 層に任せる）
+    small:
+      reviewer:      { effort: low }
+    large:
+      arch_reviewer: { effort: high }
+      diff_reviewer: { effort: high }
+      summarizer:    { effort: high }
+      cross_check:   { effort: high }
+  agents:
+    codex:
+      reviewer:      { model: gpt-5.4 }
+      arch_reviewer: { model: gpt-5.4 }
+      diff_reviewer: { model: gpt-5.4 }
+      summarizer:    { model: gpt-5.4 }
+      cross_check:   { model: gpt-5.4 }
+    claude:
+      reviewer:      { model: claude-sonnet-4-6 }
+      arch_reviewer: { model: claude-opus-4-7 }
+      diff_reviewer: { model: claude-sonnet-4-6 }
+      summarizer:    { model: claude-opus-4-7 }
+      cross_check:   { model: claude-opus-4-7 }
+    gemini:
+      # gemini は effort 未対応。model のみ指定
+      reviewer:      { model: gemini-3.1-pro-preview }
+      arch_reviewer: { model: gemini-3.1-pro-preview }
+      diff_reviewer: { model: gemini-3.1-pro-preview }
+      cross_check:   { model: gemini-3.1-pro-preview }

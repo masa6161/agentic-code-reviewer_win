@@ -4,6 +4,20 @@ import (
 	"context"
 )
 
+// AgentOptions configures an Agent instance at construction time.
+// Model overrides the agent's default model (empty = agent default).
+// Effort is agent-specific thinking/reasoning configuration:
+//   - codex: low|medium|high maps to `-c model_reasoning_effort=<value>`
+//   - claude: low|medium|high|xhigh|max maps to --effort; other values are
+//     silently dropped (session-scoped; available levels depend on the model)
+//   - gemini: unsupported, ignored
+//
+// Empty Effort means "use agent default" (no flag passed).
+type AgentOptions struct {
+	Model  string
+	Effort string
+}
+
 // Agent represents a backend that can execute code reviews and summarizations.
 // Implementations include CodexAgent, ClaudeAgent, GeminiAgent.
 type Agent interface {

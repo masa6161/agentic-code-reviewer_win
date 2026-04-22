@@ -262,3 +262,12 @@ func TestGeminiAgent_ExecuteSummary_Args(t *testing.T) {
 		t.Errorf("expected - (stdin) in args, got:\n%s", outputStr)
 	}
 }
+
+func TestGeminiEffortArgs_Noop(t *testing.T) {
+	cases := []string{"", "low", "medium", "high", "8000", "unknown"}
+	for _, effort := range cases {
+		if got := geminiEffortArgs(effort); got != nil {
+			t.Errorf("geminiEffortArgs(%q) should return nil (no-op), got %v", effort, got)
+		}
+	}
+}

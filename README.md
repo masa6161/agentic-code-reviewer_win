@@ -94,6 +94,12 @@ Download the Windows release ZIP from GitHub Releases and extract `acr.exe`.
 go install github.com/richhaase/agentic-code-reviewer/cmd/acr@latest
 ```
 
+## Current status (Windows port)
+
+- PR posting (auto-request-changes / auto-approve) is **beta** on the Windows port.
+  Behavior may change between releases while the end-to-end flow is validated.
+  Consider `--local` for purely local review workflows.
+
 ## Usage
 
 ```bash
@@ -335,13 +341,55 @@ pr_feedback:
   # agent: claude         # Agent for summarization (defaults to summarizer_agent)
 ```
 
+### Model matrix (optional)
+
+Per-role, per-size, and per-agent model/effort overrides can be set under a `models:` key. All three layers are optional and cascade: `agents` > `sizes` > `defaults` > legacy flat fields (`reviewer_model`, `summarizer_model`, etc.) > agent built-in default.
+
+```yaml
+# Optional: per-size / per-role / per-agent model and thinking-effort matrix.
+# All three layers are optional and cascade: agents > sizes > defaults > legacy.
+# Unset fields fall back to lower layers, then to the agent's built-in default.
+models:
+  defaults:
+    reviewer:       { model: gpt-5.4-mini, effort: medium }
+    arch_reviewer:  { model: gpt-5.4,      effort: high }   # auto-phase arch only
+    diff_reviewer:  { model: gpt-5.4-mini, effort: medium } # auto-phase diff only
+    summarizer:     { model: gpt-5.4,      effort: high }
+    fp_filter:      { model: gpt-5.4-mini, effort: low }
+    cross_check:    { model: gpt-5.4,      effort: medium }
+    pr_feedback:    { model: gpt-5.4-mini }
+  sizes:
+    large:
+      arch_reviewer: { model: gpt-5.4,     effort: high }
+      diff_reviewer: { model: gpt-5.4,     effort: medium }
+      summarizer:    { model: gpt-5.4,     effort: high }
+  agents:
+    codex:
+      arch_reviewer: { effort: high }
+      diff_reviewer: { effort: medium }
+    claude:
+      reviewer:   { model: sonnet-4-6,   effort: high }
+```
+
+**`arch_reviewer` / `diff_reviewer` phase-specific roles**: when auto-phase enters a multi-phase run (`medium`/`large` diffs → `arch` + `diff` phases), the phase-specific reviewer role is consulted first at each cascade layer, falling back to the generic `reviewer` role at the *same* layer before descending. Flat review paths (auto-phase OFF, `size=small`, or explicit `--phase diff`) ignore these keys and use `reviewer` only. Legacy flat fields (`reviewer_model`, etc.) apply as the generic reviewer fallback only — there is no `arch_reviewer_model` legacy field.
+
+**`effort` field behavior by agent:**
+- **codex**: `low`, `medium`, or `high` map to `-c model_reasoning_effort=<value>` (codex CLI's config override; there is no `--reasoning-effort` flag). Unknown values are ignored.
+- **claude**: `low`, `medium`, `high`, `xhigh`, or `max` map to `--effort <value>` (session-scoped; available levels depend on the model). Other values (including numeric strings) are silently dropped.
+- **gemini**: effort is not supported and is silently ignored.
+
+When `models:` is absent, the legacy flat fields (`reviewer_model`, `summarizer_model`, etc.) remain fully functional as before. Use `--verbose` to see the resolved effective matrix at runtime.
+
 ### Precedence
 
 Configuration is resolved with the following precedence (highest to lowest):
 1. CLI flags (e.g., `--reviewers 10`)
 2. Environment variables (e.g., `ACR_REVIEWERS=10`)
-3. Config file (`.acr.yaml`)
-4. Built-in defaults
+3. `models.agents.<agent>.<role>` in `.acr.yaml`
+4. `models.sizes.<size>.<role>` in `.acr.yaml`
+5. `models.defaults.<role>` in `.acr.yaml`
+6. Legacy flat fields (`reviewer_model`, `summarizer_model`, etc.) in `.acr.yaml`
+7. Built-in defaults
 
 ### Behavior
 

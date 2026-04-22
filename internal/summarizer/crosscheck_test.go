@@ -12,6 +12,29 @@ import (
 	"github.com/richhaase/agentic-code-reviewer/internal/terminal"
 )
 
+// TestCrossCheckResult_NilSafety locks the contract that all signal predicates
+// on *CrossCheckResult accept a nil receiver. Round-4 review flagged that only
+// IsDegraded had a visible nil guard; this table-driven test makes the contract
+// explicit across HasBlockingFindings / HasAdvisoryFindings / IsDegraded so
+// regressions are caught at unit-test time rather than production panic.
+func TestCrossCheckResult_NilSafety(t *testing.T) {
+	var r *CrossCheckResult
+
+	cases := []struct {
+		name string
+		got  bool
+	}{
+		{"HasBlockingFindings", r.HasBlockingFindings()},
+		{"HasAdvisoryFindings", r.HasAdvisoryFindings()},
+		{"IsDegraded", r.IsDegraded()},
+	}
+	for _, tc := range cases {
+		if tc.got {
+			t.Errorf("%s on nil receiver = true, want false", tc.name)
+		}
+	}
+}
+
 // TestCrossCheckPayload_UsesAggregatedIDs verifies that when two raw findings
 // with the same text are aggregated into one entry before building the payload,
 // the payload contains exactly one finding with ID 0 — not two entries with IDs
@@ -109,7 +132,7 @@ func TestCrossCheck_SkippedForSingleGroup(t *testing.T) {
 	ccCtx := CrossCheckContext{
 		Groups: []GroupInfo{{GroupKey: "arch"}},
 	}
-	result := CrossCheck(context.Background(), []string{"codex"}, "", ccCtx, false, terminal.NewLogger())
+	result := CrossCheck(context.Background(), []CrossCheckAgentSpec{{Name: "codex"}}, ccCtx, false, terminal.NewLogger())
 	if !result.Skipped {
 		t.Error("expected Skipped=true for single group")
 	}
@@ -122,7 +145,7 @@ func TestCrossCheck_SkippedForNoAgents(t *testing.T) {
 	ccCtx := CrossCheckContext{
 		Groups: []GroupInfo{{GroupKey: "arch"}, {GroupKey: "g01"}},
 	}
-	result := CrossCheck(context.Background(), nil, "", ccCtx, false, terminal.NewLogger())
+	result := CrossCheck(context.Background(), nil, ccCtx, false, terminal.NewLogger())
 	if !result.Skipped {
 		t.Error("expected Skipped=true for no agents")
 	}
@@ -137,7 +160,7 @@ func TestIsStructuralSkipReason(t *testing.T) {
 		{"empty is structural", "", true},
 		{"single group constant is structural", SkipReasonSingleGroup, true},
 		{"single group literal is structural", "single group, cross-check unnecessary", true},
-		{"no agents is NOT structural (error condition)", SkipReasonNoAgents, false},
+		{"no agents is structural (config choice, not runtime failure)", SkipReasonNoAgents, true},
 		{"all agents failed is not structural", "all 3 agents failed: codex: timeout", false},
 		{"payload marshal failed is not structural", "payload marshal failed: x", false},
 	}

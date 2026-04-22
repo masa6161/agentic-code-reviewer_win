@@ -310,3 +310,87 @@ func TestCodexAgent_ExecuteSummary_Args(t *testing.T) {
 		}
 	}
 }
+
+func TestCodexReasoningEffortArgs(t *testing.T) {
+	cases := []struct {
+		in   string
+		want []string
+	}{
+		{"", nil},
+		{"low", []string{"-c", "model_reasoning_effort=low"}},
+		{"LOW", []string{"-c", "model_reasoning_effort=low"}},
+		{"Medium", []string{"-c", "model_reasoning_effort=medium"}},
+		{"high", []string{"-c", "model_reasoning_effort=high"}},
+		{"unknown", nil},
+		{"8000", nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.in, func(t *testing.T) {
+			got := codexReasoningEffortArgs(tc.in)
+			if len(got) != len(tc.want) {
+				t.Fatalf("len mismatch: got %v, want %v", got, tc.want)
+			}
+			for i := range got {
+				if got[i] != tc.want[i] {
+					t.Errorf("[%d]: got %q, want %q", i, got[i], tc.want[i])
+				}
+			}
+		})
+	}
+}
+
+func TestCodexAgent_ExecuteReview_WithEffort(t *testing.T) {
+	prepareMockCLI(t, "codex", "args")
+
+	agent := NewCodexAgentWithOptions(AgentOptions{Effort: "high"})
+	ctx := context.Background()
+	config := &ReviewConfig{
+		BaseRef: "main",
+		WorkDir: t.TempDir(),
+	}
+
+	result, err := agent.ExecuteReview(ctx, config)
+	if err != nil {
+		t.Fatalf("ExecuteReview() error: %v", err)
+	}
+	defer result.Close()
+
+	output, err := io.ReadAll(result)
+	if err != nil {
+		t.Fatalf("failed to read output: %v", err)
+	}
+
+	outputStr := string(output)
+	if !strings.Contains(outputStr, "-c") {
+		t.Errorf("expected -c in args, got:\n%s", outputStr)
+	}
+	if !strings.Contains(outputStr, "model_reasoning_effort=high") {
+		t.Errorf("expected model_reasoning_effort=high in args, got:\n%s", outputStr)
+	}
+}
+
+func TestCodexAgent_ExecuteSummary_WithEffort(t *testing.T) {
+	prepareMockCLI(t, "codex", "args")
+
+	agent := NewCodexAgentWithOptions(AgentOptions{Effort: "medium"})
+	ctx := context.Background()
+
+	result, err := agent.ExecuteSummary(ctx, "summarize this", []byte(`{"findings":[]}`))
+	if err != nil {
+		t.Fatalf("ExecuteSummary() error: %v", err)
+	}
+	defer result.Close()
+
+	output, err := io.ReadAll(result)
+	if err != nil {
+		t.Fatalf("failed to read output: %v", err)
+	}
+
+	outputStr := string(output)
+	if !strings.Contains(outputStr, "-c") {
+		t.Errorf("expected -c in args, got:\n%s", outputStr)
+	}
+	if !strings.Contains(outputStr, "model_reasoning_effort=medium") {
+		t.Errorf("expected model_reasoning_effort=medium in args, got:\n%s", outputStr)
+	}
+}

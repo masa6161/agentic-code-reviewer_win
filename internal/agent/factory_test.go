@@ -134,3 +134,34 @@ func TestDefaultAgent(t *testing.T) {
 		t.Errorf("DefaultAgent = %q, want %q", DefaultAgent, "codex")
 	}
 }
+
+func TestNewAgentWithOptions_PassesModelAndEffort(t *testing.T) {
+	opts := AgentOptions{Model: "test-model", Effort: "high"}
+	for _, name := range SupportedAgents {
+		a, err := NewAgentWithOptions(name, opts)
+		if err != nil {
+			t.Errorf("%s: unexpected error: %v", name, err)
+			continue
+		}
+		if a == nil {
+			t.Errorf("%s: got nil agent", name)
+		}
+	}
+}
+
+func TestNewAgentWithModel_DelegatesToOptions(t *testing.T) {
+	a, err := NewAgentWithModel("codex", "gpt-5.4-mini")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if a == nil {
+		t.Fatal("expected non-nil agent")
+	}
+}
+
+func TestNewAgentWithOptions_UnknownAgent(t *testing.T) {
+	_, err := NewAgentWithOptions("unknown", AgentOptions{})
+	if err == nil {
+		t.Fatal("expected error for unknown agent")
+	}
+}

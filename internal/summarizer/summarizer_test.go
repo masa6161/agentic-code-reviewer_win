@@ -11,7 +11,7 @@ import (
 )
 
 func TestSummarize_EmptyInput(t *testing.T) {
-	result, err := Summarize(context.Background(), "codex", "", nil, nil, false, terminal.NewLogger())
+	result, err := Summarize(context.Background(), "codex", SummarizeOptions{}, nil, nil, false, terminal.NewLogger())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -27,7 +27,7 @@ func TestSummarize_EmptyInput(t *testing.T) {
 }
 
 func TestSummarize_EmptySlice(t *testing.T) {
-	result, err := Summarize(context.Background(), "codex", "", []domain.AggregatedFinding{}, nil, false, terminal.NewLogger())
+	result, err := Summarize(context.Background(), "codex", SummarizeOptions{}, []domain.AggregatedFinding{}, nil, false, terminal.NewLogger())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -47,7 +47,7 @@ func TestSummarize_ContextCanceled(t *testing.T) {
 		{Text: "Test finding", Reviewers: []int{1}},
 	}
 
-	result, err := Summarize(ctx, "codex", "", findings, nil, false, terminal.NewLogger())
+	result, err := Summarize(ctx, "codex", SummarizeOptions{}, findings, nil, false, terminal.NewLogger())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -91,7 +91,7 @@ func TestSummarize_WithMockCodex(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	result, err := Summarize(ctx, "codex", "", findings, nil, false, terminal.NewLogger())
+	result, err := Summarize(ctx, "codex", SummarizeOptions{}, findings, nil, false, terminal.NewLogger())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -119,7 +119,7 @@ func TestSummarize_InvalidJSONOutput(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	result, err := Summarize(ctx, "codex", "", findings, nil, false, terminal.NewLogger())
+	result, err := Summarize(ctx, "codex", SummarizeOptions{}, findings, nil, false, terminal.NewLogger())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -148,7 +148,7 @@ func TestSummarize_EmptyOutput(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	result, err := Summarize(ctx, "codex", "", findings, nil, false, terminal.NewLogger())
+	result, err := Summarize(ctx, "codex", SummarizeOptions{}, findings, nil, false, terminal.NewLogger())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -171,7 +171,7 @@ func TestSummarize_CodexFailure(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	result, err := Summarize(ctx, "codex", "", findings, nil, false, terminal.NewLogger())
+	result, err := Summarize(ctx, "codex", SummarizeOptions{}, findings, nil, false, terminal.NewLogger())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -276,7 +276,7 @@ func TestSummarize_MultipleFindings(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	result, err := Summarize(ctx, "codex", "", findings, nil, false, terminal.NewLogger())
+	result, err := Summarize(ctx, "codex", SummarizeOptions{}, findings, nil, false, terminal.NewLogger())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

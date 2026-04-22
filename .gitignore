@@ -42,3 +42,5 @@ bin/acr-test
 /backlog/
 /back_log/
 /docs/cf_skills
+/.tmp/
+.claude/settings.json
