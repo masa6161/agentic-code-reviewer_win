@@ -1,6 +1,9 @@
 package domain
 
-import "slices"
+import (
+	"slices"
+	"strings"
+)
 
 // Finding represents a single review finding from a reviewer iteration.
 type Finding struct {
@@ -10,6 +13,7 @@ type Finding struct {
 	Prefix     string // "[must]" | "[imo]" | "[nits]" | "[fyi]" | "[ask]" | ""
 	Category   string // "correctness" | "security" | "perf" | "maintainability" | "testing" | "style" | ""
 	Phase      string // "arch" | "diff" | "" (populated from ReviewConfig.Phase)
+	GroupKey   string `json:"group_key,omitempty"` // "arch" | "g01"..."gNN" | "" (populated from ReviewerSpec.GroupKey)
 }
 
 // AggregatedFinding represents a finding with the list of reviewers who found it.
@@ -17,6 +21,7 @@ type AggregatedFinding struct {
 	Text      string
 	Reviewers []int
 	Severity  string // first-seen severity from grouped findings
+	GroupKey  string // group key(s), comma-separated if from multiple groups
 }
 
 // FindingGroup represents a grouped/clustered finding from the summarizer.
@@ -26,6 +31,8 @@ type FindingGroup struct {
 	Messages      []string `json:"messages"`
 	ReviewerCount int      `json:"reviewer_count"`
 	Sources       []int    `json:"sources"`
+	GroupKey      string   `json:"group_key,omitempty"` // propagated from source findings
+	Severity      string   `json:"severity,omitempty"`  // "blocking" | "advisory" | "" (empty = advisory)
 }
 
 // GroupedFindings represents the output from the summarizer.
@@ -33,8 +40,37 @@ type GroupedFindings struct {
 	Findings           []FindingGroup `json:"findings"`
 	Info               []FindingGroup `json:"info"`
 	Ok                 bool           `json:"ok"`
-	NotesForNextReview string         `json:"notes_for_next_review,omitempty"`
-	SkippedFiles       []string       `json:"skipped_files,omitempty"`
+	Verdict            string         `json:"verdict"` // "blocking" | "advisory" | "ok"
+	NotesForNextReview string         `json:"notes_for_next_review"`
+	SkippedFiles       []string       `json:"skipped_files"`
+}
+
+// ComputeVerdict derives Verdict from Findings + an optional cross-check signal.
+// - blocking if any Finding.Severity=="blocking" OR ccBlocking=true
+// - advisory if any finding exists (all advisory) OR ccAdvisory=true (but not blocking)
+// - ok otherwise
+// Also sets Ok = (Verdict != "blocking") for backward compatibility.
+func (g *GroupedFindings) ComputeVerdict(ccBlocking, ccAdvisory bool) {
+	hasBlocking := ccBlocking
+	hasAny := ccAdvisory || ccBlocking
+	for _, f := range g.Findings {
+		hasAny = true
+		if f.Severity == "blocking" {
+			hasBlocking = true
+		}
+	}
+	switch {
+	case hasBlocking:
+		g.Verdict = "blocking"
+	case hasAny:
+		g.Verdict = "advisory"
+	default:
+		g.Verdict = "ok"
+	}
+	g.Ok = g.Verdict != "blocking"
+	if g.SkippedFiles == nil {
+		g.SkippedFiles = []string{}
+	}
 }
 
 // HasFindings returns true if there are any findings.
@@ -141,10 +177,21 @@ func BuildDispositions(
 	return dispositions
 }
 
+// addGroupKeyTokens splits raw by "," and inserts each non-empty trimmed token into tokens.
+func addGroupKeyTokens(tokens map[string]struct{}, raw string) {
+	for _, t := range strings.Split(raw, ",") {
+		t = strings.TrimSpace(t)
+		if t != "" {
+			tokens[t] = struct{}{}
+		}
+	}
+}
+
 // AggregateFindings aggregates findings by text, tracking which reviewers found each.
 func AggregateFindings(findings []Finding) []AggregatedFinding {
 	seen := make(map[string][]int)
 	severities := make(map[string]string)
+	groupKeyTokens := make(map[string]map[string]struct{})
 	order := make([]string, 0)
 
 	for _, f := range findings {
@@ -158,8 +205,13 @@ func AggregateFindings(findings []Finding) []AggregatedFinding {
 			order = append(order, normalized)
 			reviewers = nil
 			severities[normalized] = f.Severity
-		} else if f.Severity == "blocking" {
-			severities[normalized] = "blocking"
+			groupKeyTokens[normalized] = map[string]struct{}{}
+			addGroupKeyTokens(groupKeyTokens[normalized], f.GroupKey)
+		} else {
+			if f.Severity == "blocking" {
+				severities[normalized] = "blocking"
+			}
+			addGroupKeyTokens(groupKeyTokens[normalized], f.GroupKey)
 		}
 
 		found := false
@@ -179,10 +231,16 @@ func AggregateFindings(findings []Finding) []AggregatedFinding {
 		reviewers := seen[text]
 		sortedReviewers := slices.Clone(reviewers)
 		slices.Sort(sortedReviewers)
+		tokens := make([]string, 0, len(groupKeyTokens[text]))
+		for tok := range groupKeyTokens[text] {
+			tokens = append(tokens, tok)
+		}
+		slices.Sort(tokens)
 		result = append(result, AggregatedFinding{
 			Text:      text,
 			Reviewers: sortedReviewers,
 			Severity:  severities[text],
+			GroupKey:  strings.Join(tokens, ","),
 		})
 	}
 

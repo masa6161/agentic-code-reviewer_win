@@ -400,7 +400,7 @@ func TestCodexReview_WithFindings(t *testing.T) {
 
 	stdout, stderr, exitCode := env.run("--local", "--reviewers", "1",
 		"--reviewer-agent", "codex", "--summarizer-agent", "codex",
-		"--base", "HEAD~1", "--no-fp-filter")
+		"--base", "HEAD~1", "--no-fp-filter", "--strict")
 
 	if exitCode != 1 {
 		t.Errorf("exit code = %d, want 1 (findings present)\nstderr: %s", exitCode, stderr)
@@ -417,7 +417,7 @@ func TestClaudeReview_WithFindings(t *testing.T) {
 
 	stdout, stderr, exitCode := env.run("--local", "--reviewers", "1",
 		"--reviewer-agent", "claude", "--summarizer-agent", "claude",
-		"--base", "HEAD~1", "--no-fp-filter")
+		"--base", "HEAD~1", "--no-fp-filter", "--strict")
 
 	if exitCode != 1 {
 		t.Errorf("exit code = %d, want 1 (findings present)\nstderr: %s", exitCode, stderr)
@@ -434,7 +434,7 @@ func TestGeminiReview_WithFindings(t *testing.T) {
 
 	stdout, stderr, exitCode := env.run("--local", "--reviewers", "1",
 		"--reviewer-agent", "gemini", "--summarizer-agent", "gemini",
-		"--base", "HEAD~1", "--no-fp-filter")
+		"--base", "HEAD~1", "--no-fp-filter", "--strict")
 
 	if exitCode != 1 {
 		t.Errorf("exit code = %d, want 1 (findings present)\nstderr: %s", exitCode, stderr)
@@ -540,7 +540,7 @@ func TestMultipleReviewers(t *testing.T) {
 
 	stdout, stderr, exitCode := env.run("--local", "--reviewers", "3",
 		"--reviewer-agent", "codex", "--summarizer-agent", "codex",
-		"--base", "HEAD~1", "--no-fp-filter")
+		"--base", "HEAD~1", "--no-fp-filter", "--strict")
 
 	if exitCode != 1 {
 		t.Errorf("exit code = %d, want 1\nstderr: %s", exitCode, stderr)
@@ -560,7 +560,7 @@ func TestMixedAgents(t *testing.T) {
 	// Use codex as summarizer since all mock agents are available
 	stdout, stderr, exitCode := env.run("--local", "--reviewers", "3",
 		"--reviewer-agent", "codex,claude,gemini", "--summarizer-agent", "codex",
-		"--base", "HEAD~1", "--no-fp-filter")
+		"--base", "HEAD~1", "--no-fp-filter", "--strict")
 
 	if exitCode != 1 {
 		t.Errorf("exit code = %d, want 1\nstderr: %s", exitCode, stderr)
@@ -602,7 +602,7 @@ func TestOutputFormat_FindingsReport(t *testing.T) {
 
 	stdout, _, exitCode := env.run("--local", "--reviewers", "1",
 		"--reviewer-agent", "codex", "--summarizer-agent", "codex",
-		"--base", "HEAD~1", "--no-fp-filter")
+		"--base", "HEAD~1", "--no-fp-filter", "--strict")
 
 	if exitCode != 1 {
 		t.Fatalf("exit code = %d, want 1", exitCode)
@@ -633,7 +633,7 @@ func TestOutputFormat_TimingSection(t *testing.T) {
 
 	stdout, _, exitCode := env.run("--local", "--reviewers", "2",
 		"--reviewer-agent", "codex", "--summarizer-agent", "codex",
-		"--base", "HEAD~1", "--no-fp-filter")
+		"--base", "HEAD~1", "--no-fp-filter", "--strict")
 
 	if exitCode != 1 {
 		t.Fatalf("exit code = %d, want 1 (findings)", exitCode)

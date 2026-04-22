@@ -209,6 +209,79 @@ func TestCodexAgent_ExecuteReview_ArgsWithGuidance(t *testing.T) {
 	}
 }
 
+func TestCodexAgent_ExecuteReview_TargetFilesRouting(t *testing.T) {
+	// Test that when TargetFiles is set (but no Guidance/Phase),
+	// the diff-based path is used instead of the built-in review path.
+	tmpDir := t.TempDir()
+
+	// Set up a git repo so executeDiffBasedReview can fetch a diff
+	for _, cmd := range [][]string{
+		{"git", "init"},
+		{"git", "config", "user.email", "test@test.com"},
+		{"git", "config", "user.name", "Test"},
+	} {
+		c := exec.CommandContext(context.Background(), cmd[0], cmd[1:]...)
+		c.Dir = tmpDir
+		if out, err := c.CombinedOutput(); err != nil {
+			t.Fatalf("git setup %v failed: %v\n%s", cmd, err, out)
+		}
+	}
+
+	testFile := filepath.Join(tmpDir, "test.go")
+	if err := os.WriteFile(testFile, []byte("package main\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	for _, cmd := range [][]string{
+		{"git", "add", "."},
+		{"git", "commit", "-m", "initial"},
+	} {
+		c := exec.CommandContext(context.Background(), cmd[0], cmd[1:]...)
+		c.Dir = tmpDir
+		if out, err := c.CombinedOutput(); err != nil {
+			t.Fatalf("git commit %v failed: %v\n%s", cmd, err, out)
+		}
+	}
+
+	if err := os.WriteFile(testFile, []byte("package main\n\nfunc main() {}\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	prepareMockCLI(t, "codex", "args-prefix-stdin")
+
+	agent := NewCodexAgent("")
+	ctx := context.Background()
+	config := &ReviewConfig{
+		BaseRef:     "HEAD",
+		WorkDir:     tmpDir,
+		TargetFiles: []string{"test.go"},
+	}
+
+	result, err := agent.ExecuteReview(ctx, config)
+	if err != nil {
+		t.Fatalf("ExecuteReview() error: %v", err)
+	}
+	defer result.Close()
+
+	output, err := io.ReadAll(result)
+	if err != nil {
+		t.Fatalf("failed to read output: %v", err)
+	}
+
+	outputStr := string(output)
+
+	// With TargetFiles set, should use diff-based review (no "review" or "--base" args)
+	if strings.Contains(outputStr, "ARG:review") {
+		t.Errorf("with TargetFiles, should not use built-in 'review' subcommand, got:\n%s", outputStr)
+	}
+	if strings.Contains(outputStr, "ARG:--base") {
+		t.Errorf("with TargetFiles, should not use --base flag, got:\n%s", outputStr)
+	}
+	// Should use stdin mode
+	if !strings.Contains(outputStr, "ARG:-") {
+		t.Errorf("expected - flag (stdin mode) in args, got:\n%s", outputStr)
+	}
+}
+
 func TestCodexAgent_ExecuteSummary_Args(t *testing.T) {
 	prepareMockCLI(t, "codex", "args")
 

@@ -26,6 +26,7 @@ type ReviewStats struct {
 	WallClockDuration   time.Duration
 	SummarizerDuration  time.Duration
 	FPFilterDuration    time.Duration
+	CrossCheckDuration  time.Duration
 	FPFilteredCount     int
 }
 

@@ -151,6 +151,171 @@ func TestGroupedFindings_TotalGroups(t *testing.T) {
 	}
 }
 
+func TestAggregateFindings_PreservesGroupKey(t *testing.T) {
+	findings := []Finding{
+		{Text: "issue A", ReviewerID: 1, GroupKey: "g01"},
+		{Text: "issue B", ReviewerID: 2, GroupKey: "g02"},
+	}
+	agg := AggregateFindings(findings)
+	if len(agg) != 2 {
+		t.Fatalf("expected 2 aggregated findings, got %d", len(agg))
+	}
+	if agg[0].GroupKey != "g01" {
+		t.Errorf("expected GroupKey 'g01', got %q", agg[0].GroupKey)
+	}
+	if agg[1].GroupKey != "g02" {
+		t.Errorf("expected GroupKey 'g02', got %q", agg[1].GroupKey)
+	}
+}
+
+func TestAggregateFindings_MergesGroupKeys(t *testing.T) {
+	findings := []Finding{
+		{Text: "same issue", ReviewerID: 1, GroupKey: "g01"},
+		{Text: "same issue", ReviewerID: 2, GroupKey: "g02"},
+		{Text: "same issue", ReviewerID: 3, GroupKey: "g01"}, // duplicate group key
+	}
+	agg := AggregateFindings(findings)
+	if len(agg) != 1 {
+		t.Fatalf("expected 1 aggregated finding, got %d", len(agg))
+	}
+	if agg[0].GroupKey != "g01,g02" {
+		t.Errorf("expected GroupKey 'g01,g02', got %q", agg[0].GroupKey)
+	}
+}
+
+func TestAggregateFindings_GroupKeySubstring_NotCollapsed(t *testing.T) {
+	findings := []Finding{
+		{Text: "same issue", ReviewerID: 1, GroupKey: "g1"},
+		{Text: "same issue", ReviewerID: 2, GroupKey: "g11"},
+	}
+	agg := AggregateFindings(findings)
+	if len(agg) != 1 {
+		t.Fatalf("expected 1 aggregated finding, got %d", len(agg))
+	}
+	if agg[0].GroupKey != "g1,g11" {
+		t.Errorf("expected GroupKey 'g1,g11', got %q", agg[0].GroupKey)
+	}
+}
+
+func TestAggregateFindings_GroupKey_G01_G010(t *testing.T) {
+	findings := []Finding{
+		{Text: "same issue", ReviewerID: 1, GroupKey: "g01"},
+		{Text: "same issue", ReviewerID: 2, GroupKey: "g010"},
+	}
+	agg := AggregateFindings(findings)
+	if len(agg) != 1 {
+		t.Fatalf("expected 1 aggregated finding, got %d", len(agg))
+	}
+	if agg[0].GroupKey != "g01,g010" {
+		t.Errorf("expected GroupKey 'g01,g010', got %q", agg[0].GroupKey)
+	}
+}
+
+func TestAggregateFindings_CommaSplitGroupKey_NoDuplicates(t *testing.T) {
+	findings := []Finding{
+		{Text: "x", ReviewerID: 1, GroupKey: "g1,g2"},
+		{Text: "x", ReviewerID: 2, GroupKey: "g1"},
+	}
+	agg := AggregateFindings(findings)
+	if len(agg) != 1 {
+		t.Fatalf("expected 1 aggregated finding, got %d", len(agg))
+	}
+	if agg[0].GroupKey != "g1,g2" {
+		t.Errorf("expected GroupKey 'g1,g2', got %q", agg[0].GroupKey)
+	}
+}
+
+func TestAggregateFindings_MultipleCommaSplits(t *testing.T) {
+	findings := []Finding{
+		{Text: "y", ReviewerID: 1, GroupKey: "g1,g3"},
+		{Text: "y", ReviewerID: 2, GroupKey: "g2,g3"},
+	}
+	agg := AggregateFindings(findings)
+	if len(agg) != 1 {
+		t.Fatalf("expected 1 aggregated finding, got %d", len(agg))
+	}
+	if agg[0].GroupKey != "g1,g2,g3" {
+		t.Errorf("expected GroupKey 'g1,g2,g3', got %q", agg[0].GroupKey)
+	}
+}
+
+func TestAggregateFindings_CommaSplitTrimsWhitespace(t *testing.T) {
+	findings := []Finding{
+		{Text: "z", ReviewerID: 1, GroupKey: " g1 , g2 "},
+	}
+	agg := AggregateFindings(findings)
+	if len(agg) != 1 {
+		t.Fatalf("expected 1 aggregated finding, got %d", len(agg))
+	}
+	if agg[0].GroupKey != "g1,g2" {
+		t.Errorf("expected GroupKey 'g1,g2', got %q", agg[0].GroupKey)
+	}
+}
+
+func TestGroupedFindings_ComputeVerdict_Blocking(t *testing.T) {
+	g := GroupedFindings{
+		Findings: []FindingGroup{
+			{Title: "advisory one", Severity: "advisory"},
+			{Title: "blocker", Severity: "blocking"},
+		},
+	}
+	g.ComputeVerdict(false, false)
+	if g.Verdict != "blocking" {
+		t.Errorf("expected Verdict=blocking, got %q", g.Verdict)
+	}
+	if g.Ok {
+		t.Error("expected Ok=false for blocking verdict")
+	}
+}
+
+func TestGroupedFindings_ComputeVerdict_Advisory(t *testing.T) {
+	g := GroupedFindings{
+		Findings: []FindingGroup{
+			{Title: "note", Severity: "advisory"},
+		},
+	}
+	g.ComputeVerdict(false, false)
+	if g.Verdict != "advisory" {
+		t.Errorf("expected Verdict=advisory, got %q", g.Verdict)
+	}
+	if !g.Ok {
+		t.Error("expected Ok=true for advisory verdict")
+	}
+}
+
+func TestGroupedFindings_ComputeVerdict_Ok(t *testing.T) {
+	g := GroupedFindings{}
+	g.ComputeVerdict(false, false)
+	if g.Verdict != "ok" {
+		t.Errorf("expected Verdict=ok, got %q", g.Verdict)
+	}
+	if !g.Ok {
+		t.Error("expected Ok=true for ok verdict")
+	}
+}
+
+func TestGroupedFindings_ComputeVerdict_CrossCheckBlockingOnly(t *testing.T) {
+	g := GroupedFindings{}
+	g.ComputeVerdict(true, false)
+	if g.Verdict != "blocking" {
+		t.Errorf("expected Verdict=blocking from cc, got %q", g.Verdict)
+	}
+	if g.Ok {
+		t.Error("expected Ok=false when cross-check is blocking")
+	}
+}
+
+func TestGroupedFindings_ComputeVerdict_CrossCheckAdvisoryOnly(t *testing.T) {
+	g := GroupedFindings{}
+	g.ComputeVerdict(false, true)
+	if g.Verdict != "advisory" {
+		t.Errorf("expected Verdict=advisory from cc, got %q", g.Verdict)
+	}
+	if !g.Ok {
+		t.Error("expected Ok=true when cross-check is advisory only")
+	}
+}
+
 func TestReviewStats_AllFailed(t *testing.T) {
 	tests := []struct {
 		name     string

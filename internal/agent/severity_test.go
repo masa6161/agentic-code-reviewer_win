@@ -49,6 +49,7 @@ func TestExtractPrefix_MatchesTags(t *testing.T) {
 		want string
 	}{
 		{"[must] fix this", "[must]"},
+		{"[blocking] security issue", "[blocking]"},
 		{"[imo] consider this", "[imo]"},
 		{"[nits] formatting issue", "[nits]"},
 		{"[fyi] for your information", "[fyi]"},

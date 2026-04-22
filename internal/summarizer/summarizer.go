@@ -4,7 +4,10 @@ package summarizer
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/richhaase/agentic-code-reviewer/internal/agent"
@@ -17,7 +20,8 @@ const groupPrompt = `# Code Review Summarizer
 You are grouping results from repeated code review runs.
 
 Input: a JSON array of objects, each with "id" (input identifier), "text" (the finding),
-and "reviewers" (list of reviewer IDs that found it).
+"reviewers" (list of reviewer IDs that found it), and "severity"
+("blocking" | "advisory") indicating the raw reviewer-assigned severity.
 
 Task:
 - Cluster messages that describe the same underlying issue.
@@ -35,7 +39,8 @@ Output format (JSON only, no extra prose):
       "summary": "1-2 sentence summary.",
       "messages": ["short excerpt 1", "short excerpt 2"],
       "reviewer_count": 3,
-      "sources": [0, 2]
+      "sources": [0, 2],
+      "severity": "blocking"
     }
   ],
   "info": [
@@ -56,8 +61,36 @@ Rules:
 - If a message includes a file path with line numbers, keep that exact location text in the excerpt.
 - "sources" must include all input ids represented in each group.
 - reviewer_count = number of unique reviewers that reported any message in this cluster.
+- "severity" must be "blocking" or "advisory". Use "blocking" when any clustered reviewer input is severity=blocking; otherwise "advisory". If unsure, default to "advisory".
 - Put non-actionable outcomes (e.g., "no diffs", "no changes to review") in "info".
 - If the input is empty, return: {"findings": [], "info": []}`
+
+// buildGroupPrompt returns the summarizer prompt, optionally augmented with
+// cross-group context extracted from ccResult. The augmentation is informational
+// only: the summarizer still clusters by shared issue, not by cross-check links.
+func buildGroupPrompt(ccResult *CrossCheckResult) string {
+	if ccResult == nil || len(ccResult.Findings) == 0 {
+		return groupPrompt
+	}
+	var b strings.Builder
+	b.WriteString(groupPrompt)
+	b.WriteString("\n\n## Cross-Group Context\n\n")
+	b.WriteString("An upstream cross-check pass identified the following relationships across review groups.\n")
+	b.WriteString("Use this context to inform clustering and summaries; do NOT copy these items into findings.\n\n")
+	for i, f := range ccResult.Findings {
+		title := strings.TrimSpace(f.Title)
+		if title == "" {
+			title = "(untitled)"
+		}
+		b.WriteString(fmt.Sprintf("- [%s/%s] %s — groups=%v, related_ids=%v\n",
+			strings.ToLower(f.Type), strings.ToLower(f.Severity), title, f.InvolvedGroups, f.RelatedIDs))
+		if i >= 19 {
+			b.WriteString("- ...\n")
+			break
+		}
+	}
+	return b.String()
+}
 
 // Result contains the output from the summarizer.
 type Result struct {
@@ -73,13 +106,16 @@ type inputItem struct {
 	ID        int    `json:"id"`
 	Text      string `json:"text"`
 	Reviewers []int  `json:"reviewers"`
+	Severity  string `json:"severity,omitempty"`
 }
 
 // Summarize summarizes the aggregated findings using an LLM.
 // The agentName parameter specifies which agent to use for summarization.
 // The model parameter overrides the agent's default model (empty = default).
 // If verbose is true, non-fatal errors (like Close failures) are logged.
-func Summarize(ctx context.Context, agentName, model string, aggregated []domain.AggregatedFinding, verbose bool, logger *terminal.Logger) (*Result, error) {
+// If ccResult is non-nil and contains findings, its cross-group context is
+// injected into the prompt so the summarizer can reason about related items.
+func Summarize(ctx context.Context, agentName, model string, aggregated []domain.AggregatedFinding, ccResult *CrossCheckResult, verbose bool, logger *terminal.Logger) (*Result, error) {
 	start := time.Now()
 
 	if len(aggregated) == 0 {
@@ -102,6 +138,7 @@ func Summarize(ctx context.Context, agentName, model string, aggregated []domain
 			ID:        i,
 			Text:      a.Text,
 			Reviewers: a.Reviewers,
+			Severity:  a.Severity,
 		}
 	}
 
@@ -109,6 +146,8 @@ func Summarize(ctx context.Context, agentName, model string, aggregated []domain
 	if err != nil {
 		return nil, err
 	}
+
+	prompt := buildGroupPrompt(ccResult)
 
 	// Check if context is already canceled
 	if ctx.Err() != nil {
@@ -120,7 +159,7 @@ func Summarize(ctx context.Context, agentName, model string, aggregated []domain
 	}
 
 	// Execute summary via agent
-	execResult, err := ag.ExecuteSummary(ctx, groupPrompt, payload)
+	execResult, err := ag.ExecuteSummary(ctx, prompt, payload)
 	if err != nil {
 		// Handle context cancellation
 		if ctx.Err() != nil {
@@ -194,6 +233,14 @@ func Summarize(ctx context.Context, agentName, model string, aggregated []domain
 		}, nil
 	}
 
+	// Backfill GroupKey from source AggregatedFindings into FindingGroups.
+	// The LLM doesn't see GroupKey, so we propagate it via Sources indices.
+	backfillGroupKeys(grouped, aggregated)
+
+	// Reconcile Severity: if the LLM skipped it, derive from aggregated source
+	// severities. Blocking wins on collision.
+	backfillSeverity(grouped, aggregated)
+
 	return &Result{
 		Grouped:  *grouped,
 		ExitCode: exitCode,
@@ -201,4 +248,85 @@ func Summarize(ctx context.Context, agentName, model string, aggregated []domain
 		RawOut:   string(output),
 		Duration: duration,
 	}, nil
+}
+
+// backfillGroupKeys populates GroupKey on each FindingGroup by collecting
+// unique GroupKeys from the source AggregatedFindings referenced by Sources.
+func backfillGroupKeys(grouped *domain.GroupedFindings, aggregated []domain.AggregatedFinding) {
+	fill := func(groups []domain.FindingGroup) {
+		for i := range groups {
+			keys := make(map[string]struct{})
+			for _, srcIdx := range groups[i].Sources {
+				if srcIdx >= 0 && srcIdx < len(aggregated) {
+					if gk := aggregated[srcIdx].GroupKey; gk != "" {
+						for _, k := range strings.Split(gk, ",") {
+							keys[k] = struct{}{}
+						}
+					}
+				}
+			}
+			if len(keys) > 0 {
+				sorted := make([]string, 0, len(keys))
+				for k := range keys {
+					sorted = append(sorted, k)
+				}
+				slices.Sort(sorted)
+				groups[i].GroupKey = strings.Join(sorted, ",")
+			}
+		}
+	}
+	fill(grouped.Findings)
+	fill(grouped.Info)
+}
+
+// backfillSeverity is the sole authoritative severity reconciler.
+// Rules:
+//   - Rule C (allow-list): unknown severity values normalize to "advisory".
+//   - Rule A (upgrade): any valid source with Severity=="blocking" → group Severity="blocking".
+//   - Rule B (downgrade): group Severity=="blocking" with valid sources but no blocking source
+//     → downgrade to "advisory" (LLM-fabricated).
+//   - Rule B preserves Severity when no valid sources exist (empty Sources or all out-of-range):
+//     treated as information loss, not evidence of non-blocking.
+//   - Default: empty Severity → "advisory".
+//
+// Info groups are not mutated (informational by nature).
+func backfillSeverity(grouped *domain.GroupedFindings, aggregated []domain.AggregatedFinding) {
+	for i := range grouped.Findings {
+		fg := &grouped.Findings[i]
+
+		// Rule C: allow-list normalization.
+		if fg.Severity != "blocking" && fg.Severity != "advisory" && fg.Severity != "" {
+			fg.Severity = "advisory"
+		}
+
+		// Inspect sources: count valid index entries and detect any blocking.
+		hasBlocking := false
+		validSources := 0
+		for _, srcIdx := range fg.Sources {
+			if srcIdx < 0 || srcIdx >= len(aggregated) {
+				continue
+			}
+			validSources++
+			if aggregated[srcIdx].Severity == "blocking" {
+				hasBlocking = true
+			}
+		}
+
+		// Rule A: upgrade on any blocking source.
+		if hasBlocking {
+			fg.Severity = "blocking"
+			continue
+		}
+
+		// Rule B: downgrade only when we have valid sources that confirm no blocking.
+		// If Sources is empty or all out-of-range, preserve LLM severity (information loss).
+		if fg.Severity == "blocking" && validSources > 0 {
+			fg.Severity = "advisory"
+		}
+
+		// Default: empty → advisory.
+		if fg.Severity == "" {
+			fg.Severity = "advisory"
+		}
+	}
 }
