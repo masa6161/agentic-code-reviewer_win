@@ -608,13 +608,7 @@ func (r *ResolvedConfig) ValidateRuntime() []string {
 		if strings.TrimSpace(agentSpec) == "" {
 			agentSpec = r.SummarizerAgent
 		}
-		agentTokens := strings.Split(agentSpec, ",")
-		agentCount := 0
-		for _, tok := range agentTokens {
-			if strings.TrimSpace(tok) != "" {
-				agentCount++
-			}
-		}
+		agentCount := len(agent.ParseAgentNames(agentSpec))
 		modelCount := 0
 		for _, m := range models {
 			if strings.TrimSpace(m) != "" {
@@ -676,22 +670,20 @@ func canResolveCrossCheckModelForAgent(m ModelsConfig, agentName string) bool {
 // which case the top-level cross_check.model requirement can be waived.
 //
 // Agent selection mirrors resolveCrossCheckAgents (runtime): CrossCheckAgent
-// takes precedence; empty falls back to SummarizerAgent. Whitespace-only
-// entries are skipped to match the runtime parser behaviour.
+// takes precedence; empty falls back to SummarizerAgent. Agent names are
+// resolved via agent.ParseAgentNames to match runtime behavior.
 //
-// Returns nil (not []) when no agents are selected, so callers can distinguish
-// "no selection yet" from "selection fully covered by tree".
+// When no selected agents are missing from the models tree, this function
+// returns nil. That includes both cases where no agents are selected and where
+// every selected agent is covered by the tree, so callers must not use the
+// nil result to distinguish between those states.
 func missingCrossCheckAgentsInModelsTree(r *ResolvedConfig) []string {
 	agentSpec := r.CrossCheckAgent
 	if strings.TrimSpace(agentSpec) == "" {
 		agentSpec = r.SummarizerAgent
 	}
 	var missing []string
-	for _, raw := range strings.Split(agentSpec, ",") {
-		name := strings.TrimSpace(raw)
-		if name == "" {
-			continue
-		}
+	for _, name := range agent.ParseAgentNames(agentSpec) {
 		if !canResolveCrossCheckModelForAgent(r.Models, name) {
 			missing = append(missing, name)
 		}
@@ -811,7 +803,7 @@ var Defaults = ResolvedConfig{
 	PRFeedbackAgent:     "", // empty means use summarizer agent
 	CrossCheckEnabled:   true,
 	CrossCheckAgent:     "", // empty means use summarizer agent
-	CrossCheckModel:     "", // empty means use summarizer model
+	CrossCheckModel:     "", // empty: must resolve via models config or ValidateRuntime will error
 	AutoPhase:           true,
 	Strict:              false,
 }

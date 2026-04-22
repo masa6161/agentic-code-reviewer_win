@@ -45,4 +45,3 @@ bin/acr-test
 /.tmp/
 .claude/settings.json
 .claude/scheduled_tasks.lock
-/.tmp/
