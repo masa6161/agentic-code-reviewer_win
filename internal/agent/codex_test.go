@@ -361,7 +361,7 @@ func TestCodexAgent_ExecuteReview_WithEffort(t *testing.T) {
 	}
 
 	// Regression guard for F#2 (Round-7): -c flag must precede the 'exec'
-	// subcommand for codex CLI to recognise the model_reasoning_effort
+	// subcommand for codex CLI to recognize the model_reasoning_effort
 	// override. Without ordering verification, an append-style bug like the
 	// claude.go --effort one (Round-8 #4) could silently regress.
 	args := parseHelperArgs(string(output))

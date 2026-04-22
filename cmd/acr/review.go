@@ -769,7 +769,7 @@ func parsePhases(phaseStr string, totalReviewers int) ([]runner.PhaseConfig, err
 // Round-14 F#1 contract: this function is invoked exclusively from the
 // grouped-path gate in executeReview, where sizeStr is guaranteed to be
 // "large" (useGroupedSpecs=true is exclusive to DiffSizeLarge in
-// resolveAutoPhase). The defence-in-depth log helper logCrossCheckModelMatrix
+// resolveAutoPhase). The defense-in-depth log helper logCrossCheckModelMatrix
 // also calls this with the same sizeStr just before the gate, so the size
 // argument is consistent across both call sites. Non-grouped review paths
 // (small / medium / `--phase` / `--no-auto-phase` / arch,diff fallback) skip
@@ -996,10 +996,10 @@ func resolveAutoPhase(
 }
 
 // buildPhaseAgents constructs the arch-phase agent and diff-phase agent slice
-// used by the auto-phase grouped diff path. It honours per-phase overrides
+// used by the auto-phase grouped diff path. It honors per-phase overrides
 // (opts.ArchReviewerAgent, opts.DiffReviewerAgents) and falls back to
 // opts.ReviewerAgents when an override is unset, preserving pre-Round-9
-// behaviour. Each constructed agent picks its model/effort via
+// behavior. Each constructed agent picks its model/effort via
 // modelconfig.ResolveReviewer with the matching phase ("arch" or "diff") so
 // arch_reviewer / diff_reviewer model layers continue to apply.
 func buildPhaseAgents(opts ReviewOpts, sizeStr string) (agent.Agent, []agent.Agent, error) {
@@ -1068,7 +1068,7 @@ func logPerPhaseModelMatrix(logger *terminal.Logger, opts ReviewOpts, sizeStr st
 	if archName == "" {
 		if len(opts.ReviewerAgents) == 0 {
 			// No arch name resolvable. buildPhaseAgents would have already aborted
-			// the run with a clear error; logging is defence-in-depth only, so
+			// the run with a clear error; logging is defense-in-depth only, so
 			// emit a diagnostic line and skip the per-phase rows rather than panic.
 			logger.Logf(terminal.StyleWarning, "  arch_reviewer[?]    : (unresolvable: reviewer_agents is empty and arch_reviewer_agent is unset)")
 			return
@@ -1105,7 +1105,7 @@ func logPerPhaseModelMatrix(logger *terminal.Logger, opts ReviewOpts, sizeStr st
 // when useGroupedSpecs=true (Round-14 F#1), so emitting these rows earlier
 // would be misleading on small/medium/fallback paths.
 //
-// Defence-in-depth against panic: if cross-check resolution would fail (every
+// Defense-in-depth against panic: if cross-check resolution would fail (every
 // selected agent uncovered by the models tree AND no top-level model), this
 // function emits a diagnostic line and returns rather than panicking. The
 // authoritative resolve happens in the same gate where this is called from

@@ -789,7 +789,7 @@ func TestReviewGate_NoFindings_AllAdvisory_StillLGTM(t *testing.T) {
 }
 
 // TestReviewGate_GroupedFindingsOnly_NotLGTM: grouped has findings (no cc) →
-// gate must return false (existing behaviour preserved).
+// gate must return false (existing behavior preserved).
 func TestReviewGate_GroupedFindingsOnly_NotLGTM(t *testing.T) {
 	grouped := domain.GroupedFindings{
 		Findings: []domain.FindingGroup{
@@ -1175,10 +1175,7 @@ func TestNoAutoPhase_ProducesFlatPath_WithVerdict(t *testing.T) {
 // only for testing; the production path lives at cmd/acr/review.go:~420.
 func computeVerdictWithCCSignals(g *domain.GroupedFindings, cc *summarizer.CrossCheckResult) {
 	ccBlocking := cc.HasBlockingFindings()
-	ccAdvisory := false
-	if cc != nil && !ccBlocking && (cc.HasAdvisoryFindings() || cc.IsDegraded()) {
-		ccAdvisory = true
-	}
+	ccAdvisory := cc != nil && !ccBlocking && (cc.HasAdvisoryFindings() || cc.IsDegraded())
 	g.ComputeVerdict(ccBlocking, ccAdvisory)
 }
 
@@ -1445,7 +1442,7 @@ func TestLogCrossCheckModelMatrix_ResolveErrorEmitsWarningNoPanic(t *testing.T) 
 
 func TestLogCrossCheckModelMatrix_AgentDefaultsToSummarizerWhenCrossCheckAgentEmpty(t *testing.T) {
 	// CrossCheckAgent unset must fall back to SummarizerAgent inside the
-	// resolver call from the log helper, mirroring runtime behaviour.
+	// resolver call from the log helper, mirroring runtime behavior.
 	defer func() {
 		if r := recover(); r != nil {
 			t.Fatalf("logCrossCheckModelMatrix panicked: %v", r)

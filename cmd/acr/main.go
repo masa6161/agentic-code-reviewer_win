@@ -525,7 +525,7 @@ func loadAndResolveConfig(cmd *cobra.Command, wt worktreeResult, logger *termina
 
 	// Default concurrency to the maximum number of reviewers that may run
 	// across all auto-phase paths (flat / medium / grouped). When the user
-	// explicitly sets --concurrency, honour it but cap at the same maximum
+	// explicitly sets --concurrency, honor it but cap at the same maximum
 	// to avoid spawning more goroutines than there are reviewers.
 	maxReviewers := maxPotentialReviewers(resolved)
 	if resolved.Concurrency <= 0 {

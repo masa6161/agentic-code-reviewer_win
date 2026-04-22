@@ -230,7 +230,7 @@ func newConfigValidateCmd() *cobra.Command {
 				if err != nil && result != nil {
 					// Semantic-error case: ValidateAll ran against empty cfg to
 					// avoid duplication, but ValidateRuntime needs the real cfg
-					// to honour user intent for cross_check config.
+					// to honor user intent for cross_check config.
 					runtimeResolved = config.Resolve(cfg, envState, config.FlagState{}, config.Defaults)
 				}
 				runtimeErrs := runtimeResolved.ValidateRuntime()
