@@ -1202,7 +1202,7 @@ func TestResolveGuidance_ConfigFileAbsolutePath(t *testing.T) {
 func clearACREnv(t *testing.T) {
 	t.Helper()
 	for _, key := range []string{
-		"ACR_REVIEWERS", "ACR_DIFF_GROUPS", "ACR_MEDIUM_DIFF_REVIEWERS", "ACR_SMALL_DIFF_REVIEWERS",
+		"ACR_REVIEWERS", "ACR_LARGE_DIFF_GROUPS", "ACR_MEDIUM_DIFF_REVIEWERS", "ACR_SMALL_DIFF_REVIEWERS",
 		"ACR_CONCURRENCY", "ACR_BASE_REF", "ACR_TIMEOUT",
 		"ACR_RETRIES", "ACR_FETCH", "ACR_REVIEWER_AGENT", "ACR_SUMMARIZER_AGENT",
 		"ACR_ARCH_REVIEWER_AGENT", "ACR_DIFF_REVIEWER_AGENTS",
@@ -2621,44 +2621,44 @@ func TestLoadEnvState_DiffReviewerAgents(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Tests for diff_groups and medium_diff_reviewers (auto-phase reviewer knobs)
+// Tests for large_diff_groups and medium_diff_reviewers (auto-phase reviewer knobs)
 // ---------------------------------------------------------------------------
 
-func TestResolve_DiffGroups_FromYAML(t *testing.T) {
-	cfg := &Config{DiffGroups: ptr(7)}
+func TestResolve_LargeDiffGroups_FromYAML(t *testing.T) {
+	cfg := &Config{LargeDiffGroups: ptr(7)}
 	result := Resolve(cfg, EnvState{}, FlagState{}, ResolvedConfig{})
-	if result.DiffGroups != 7 {
-		t.Errorf("expected diff_groups=7 from yaml, got %d", result.DiffGroups)
+	if result.LargeDiffGroups != 7 {
+		t.Errorf("expected large_diff_groups=7 from yaml, got %d", result.LargeDiffGroups)
 	}
 }
 
-func TestResolve_DiffGroups_EnvOverridesYAML(t *testing.T) {
-	cfg := &Config{DiffGroups: ptr(7)}
-	envState := EnvState{DiffGroups: 9, DiffGroupsSet: true}
+func TestResolve_LargeDiffGroups_EnvOverridesYAML(t *testing.T) {
+	cfg := &Config{LargeDiffGroups: ptr(7)}
+	envState := EnvState{LargeDiffGroups: 9, LargeDiffGroupsSet: true}
 	result := Resolve(cfg, envState, FlagState{}, ResolvedConfig{})
-	if result.DiffGroups != 9 {
-		t.Errorf("expected env diff_groups=9 to override yaml, got %d", result.DiffGroups)
+	if result.LargeDiffGroups != 9 {
+		t.Errorf("expected env large_diff_groups=9 to override yaml, got %d", result.LargeDiffGroups)
 	}
 }
 
-func TestResolve_DiffGroups_CLIOverridesEnv(t *testing.T) {
-	cfg := &Config{DiffGroups: ptr(7)}
-	envState := EnvState{DiffGroups: 9, DiffGroupsSet: true}
-	flagState := FlagState{DiffGroupsSet: true}
-	flagValues := ResolvedConfig{DiffGroups: 12}
+func TestResolve_LargeDiffGroups_CLIOverridesEnv(t *testing.T) {
+	cfg := &Config{LargeDiffGroups: ptr(7)}
+	envState := EnvState{LargeDiffGroups: 9, LargeDiffGroupsSet: true}
+	flagState := FlagState{LargeDiffGroupsSet: true}
+	flagValues := ResolvedConfig{LargeDiffGroups: 12}
 	result := Resolve(cfg, envState, flagState, flagValues)
-	if result.DiffGroups != 12 {
-		t.Errorf("expected CLI diff_groups=12 to override env, got %d", result.DiffGroups)
+	if result.LargeDiffGroups != 12 {
+		t.Errorf("expected CLI large_diff_groups=12 to override env, got %d", result.LargeDiffGroups)
 	}
 }
 
-func TestResolve_DiffGroups_DefaultsTo4(t *testing.T) {
+func TestResolve_LargeDiffGroups_DefaultsTo4(t *testing.T) {
 	result := Resolve(&Config{}, EnvState{}, FlagState{}, ResolvedConfig{})
-	if result.DiffGroups != 4 {
-		t.Errorf("expected default diff_groups=4, got %d", result.DiffGroups)
+	if result.LargeDiffGroups != 4 {
+		t.Errorf("expected default large_diff_groups=4, got %d", result.LargeDiffGroups)
 	}
-	if Defaults.DiffGroups != 4 {
-		t.Errorf("expected Defaults.DiffGroups=4, got %d", Defaults.DiffGroups)
+	if Defaults.LargeDiffGroups != 4 {
+		t.Errorf("expected Defaults.LargeDiffGroups=4, got %d", Defaults.LargeDiffGroups)
 	}
 }
 
@@ -2700,15 +2700,15 @@ func TestResolve_MediumDiffReviewers_DefaultsTo2(t *testing.T) {
 	}
 }
 
-func TestValidate_RejectsZeroDiffGroups(t *testing.T) {
+func TestValidate_RejectsZeroLargeDiffGroups(t *testing.T) {
 	cfg := Defaults
-	cfg.DiffGroups = 0
+	cfg.LargeDiffGroups = 0
 	err := cfg.Validate()
 	if err == nil {
-		t.Fatal("expected error for diff_groups=0, got nil")
+		t.Fatal("expected error for large_diff_groups=0, got nil")
 	}
-	if !strings.Contains(err.Error(), "diff_groups must be >= 1") {
-		t.Errorf("expected 'diff_groups must be >= 1' in error, got: %v", err)
+	if !strings.Contains(err.Error(), "large_diff_groups must be >= 1") {
+		t.Errorf("expected 'large_diff_groups must be >= 1' in error, got: %v", err)
 	}
 }
 
@@ -2724,30 +2724,30 @@ func TestValidate_RejectsZeroMediumDiffReviewers(t *testing.T) {
 	}
 }
 
-func TestLoadEnvState_DiffGroups(t *testing.T) {
+func TestLoadEnvState_LargeDiffGroups(t *testing.T) {
 	clearACREnv(t)
-	t.Setenv("ACR_DIFF_GROUPS", "6")
+	t.Setenv("ACR_LARGE_DIFF_GROUPS", "6")
 	state, warnings := LoadEnvState()
 	if len(warnings) != 0 {
 		t.Errorf("expected no warnings, got %v", warnings)
 	}
-	if !state.DiffGroupsSet {
-		t.Error("expected DiffGroupsSet=true")
+	if !state.LargeDiffGroupsSet {
+		t.Error("expected LargeDiffGroupsSet=true")
 	}
-	if state.DiffGroups != 6 {
-		t.Errorf("expected DiffGroups=6, got %d", state.DiffGroups)
+	if state.LargeDiffGroups != 6 {
+		t.Errorf("expected LargeDiffGroups=6, got %d", state.LargeDiffGroups)
 	}
 }
 
-func TestLoadEnvState_DiffGroups_Malformed(t *testing.T) {
+func TestLoadEnvState_LargeDiffGroups_Malformed(t *testing.T) {
 	clearACREnv(t)
-	t.Setenv("ACR_DIFF_GROUPS", "abc")
+	t.Setenv("ACR_LARGE_DIFF_GROUPS", "abc")
 	state, warnings := LoadEnvState()
-	if state.DiffGroupsSet {
-		t.Error("expected DiffGroupsSet=false for invalid value")
+	if state.LargeDiffGroupsSet {
+		t.Error("expected LargeDiffGroupsSet=false for invalid value")
 	}
-	if !hasWarningContaining(warnings, "ACR_DIFF_GROUPS") {
-		t.Errorf("expected warning about ACR_DIFF_GROUPS, got %v", warnings)
+	if !hasWarningContaining(warnings, "ACR_LARGE_DIFF_GROUPS") {
+		t.Errorf("expected warning about ACR_LARGE_DIFF_GROUPS, got %v", warnings)
 	}
 }
 

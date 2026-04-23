@@ -3,14 +3,14 @@
 
 # Number of parallel reviewers (default: 5)
 # This applies ONLY to flat review path (auto-phase OFF, no --phase).
-# --phase diff uses small_diff_reviewers; --phase arch,diff uses
+# --phase small uses small_diff_reviewers; --phase medium uses
 # medium_diff_reviewers. Auto-phase selects automatically by diff size.
 reviewers: 5
 
 # Number of diff groups in auto-phase grouped path (large diff). Default: 4.
 # Each group reviews a subset of changed files. arch reviewer is always 1
-# (sees full diff). Total reviewers in grouped path = 1 + diff_groups.
-diff_groups: 4
+# (sees full diff). Total reviewers in grouped path = 1 + large_diff_groups.
+large_diff_groups: 4
 
 # Number of reviewers in auto-phase small path. Default: 1.
 # Small diff = files <= 3 AND lines <= 100. Flat diff-only review (no arch).

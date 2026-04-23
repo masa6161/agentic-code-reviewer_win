@@ -136,12 +136,12 @@ To run a flat (single big diff × N reviewers) review instead:
 
 | Method | How |
 |---|---|
-| Ad-hoc flag | `acr --phase diff` |
+| Ad-hoc flag | `acr --phase small` |
 | Disable auto-phase for one run | `acr --no-auto-phase` |
 | Persistent opt-out in project | `.acr.yaml`: `auto_phase: false` |
 | Persistent opt-out via env | `ACR_AUTO_PHASE=false acr` |
 
-Using `--phase arch,diff` forces both phases explicitly (arch + diff) without grouping, regardless of diff size.
+Using `--phase medium` forces both phases explicitly (arch + diff) without grouping, regardless of diff size.
 
 The verdict field (`ok` / `advisory` / `blocking`) and exit-code policy apply on both paths. Use `--strict` to treat advisory findings as blocking (exit 1).
 
@@ -371,7 +371,7 @@ models:
       reviewer:   { model: sonnet-4-6,   effort: high }
 ```
 
-**`arch_reviewer` / `diff_reviewer` phase-specific roles**: when auto-phase enters a multi-phase run (`medium`/`large` diffs → `arch` + `diff` phases), the phase-specific reviewer role is consulted first at each cascade layer, falling back to the generic `reviewer` role at the *same* layer before descending. Flat review paths (auto-phase OFF, `size=small`, or explicit `--phase diff`) ignore these keys and use `reviewer` only. Legacy flat fields (`reviewer_model`, etc.) apply as the generic reviewer fallback only — there is no `arch_reviewer_model` legacy field.
+**`arch_reviewer` / `diff_reviewer` phase-specific roles**: when auto-phase enters a multi-phase run (`medium`/`large` diffs → `arch` + `diff` phases), the phase-specific reviewer role is consulted first at each cascade layer, falling back to the generic `reviewer` role at the *same* layer before descending. Flat review paths (auto-phase OFF, `size=small`, or explicit `--phase small`) ignore these keys and use `reviewer` only. Legacy flat fields (`reviewer_model`, etc.) apply as the generic reviewer fallback only — there is no `arch_reviewer_model` legacy field.
 
 **`effort` field behavior by agent:**
 - **codex**: `low`, `medium`, or `high` map to `-c model_reasoning_effort=<value>` (codex CLI's config override; there is no `--reasoning-effort` flag). Unknown values are ignored.

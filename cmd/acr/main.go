@@ -43,7 +43,7 @@ func parseDiffReviewerAgentsFlag(input string) []string {
 
 var (
 	reviewers           int
-	diffGroups          int
+	largeDiffGroups     int
 	mediumDiffReviewers int
 	smallDiffReviewers  int
 	concurrency         int
@@ -110,13 +110,13 @@ Exit codes:
 
 	// Configuration flags (defaults are resolved via config.Resolve with precedence: flag > env > config > default)
 	rootCmd.Flags().IntVarP(&reviewers, "reviewers", "r", 0,
-		"Number of parallel reviewers for flat review path (auto-phase OFF, no --phase). --phase diff uses --small-diff-reviewers; --phase arch,diff uses --medium-diff-reviewers. (default: 5, env: ACR_REVIEWERS)")
-	rootCmd.Flags().IntVar(&diffGroups, "diff-groups", 0,
-		"Number of diff groups in auto-phase grouped path (large diff) (default: 4, env: ACR_DIFF_GROUPS)")
+		"Number of parallel reviewers for flat review path (auto-phase OFF, no --phase). --phase small uses --small-diff-reviewers; --phase medium uses --medium-diff-reviewers. (default: 5, env: ACR_REVIEWERS)")
+	rootCmd.Flags().IntVar(&largeDiffGroups, "large-diff-groups", 0,
+		"Number of diff groups in auto-phase grouped path (large diff) (default: 4, env: ACR_LARGE_DIFF_GROUPS)")
 	rootCmd.Flags().IntVar(&mediumDiffReviewers, "medium-diff-reviewers", 0,
-		"Number of diff reviewers for auto-phase medium and --phase arch,diff (default: 2, env: ACR_MEDIUM_DIFF_REVIEWERS)")
+		"Number of diff reviewers for auto-phase medium and --phase medium (default: 2, env: ACR_MEDIUM_DIFF_REVIEWERS)")
 	rootCmd.Flags().IntVar(&smallDiffReviewers, "small-diff-reviewers", 0,
-		"Number of reviewers for auto-phase small and --phase diff (default: 1, env: ACR_SMALL_DIFF_REVIEWERS)")
+		"Number of reviewers for auto-phase small and --phase small (default: 1, env: ACR_SMALL_DIFF_REVIEWERS)")
 	rootCmd.Flags().IntVarP(&concurrency, "concurrency", "c", 0,
 		"Max concurrent reviewers (default: same as --reviewers, env: ACR_CONCURRENCY)")
 	rootCmd.Flags().StringVarP(&baseRef, "base", "b", "",
@@ -185,7 +185,7 @@ Exit codes:
 	rootCmd.Flags().DurationVar(&crossCheckTimeout, "cross-check-timeout", 0,
 		"Timeout for cross-check phase (default: 5m, env: ACR_CROSS_CHECK_TIMEOUT)")
 	rootCmd.Flags().StringVar(&phase, "phase", "",
-		"Review phases (comma-separated): arch, diff, arch,diff")
+		"Override auto-phase: small, medium")
 	rootCmd.Flags().StringVar(&formatOutput, "format", "text",
 		"Output format: text or json")
 	rootCmd.Flags().BoolVar(&autoPhase, "auto-phase", true,
@@ -407,7 +407,7 @@ func loadAndResolveConfig(cmd *cobra.Command, wt worktreeResult, logger *termina
 	autoPhaseAnySet := cmd.Flags().Changed("auto-phase") || cmd.Flags().Changed("no-auto-phase")
 	flagState := config.FlagState{
 		ReviewersSet:           cmd.Flags().Changed("reviewers"),
-		DiffGroupsSet:          cmd.Flags().Changed("diff-groups"),
+		LargeDiffGroupsSet:     cmd.Flags().Changed("large-diff-groups"),
 		MediumDiffReviewersSet: cmd.Flags().Changed("medium-diff-reviewers"),
 		SmallDiffReviewersSet:  cmd.Flags().Changed("small-diff-reviewers"),
 		ConcurrencySet:         cmd.Flags().Changed("concurrency"),
@@ -457,7 +457,7 @@ func loadAndResolveConfig(cmd *cobra.Command, wt worktreeResult, logger *termina
 	autoPhaseValue := autoPhase && !noAutoPhase
 	flagValues := config.ResolvedConfig{
 		Reviewers:           reviewers,
-		DiffGroups:          diffGroups,
+		LargeDiffGroups:     largeDiffGroups,
 		MediumDiffReviewers: mediumDiffReviewers,
 		SmallDiffReviewers:  smallDiffReviewers,
 		Concurrency:         concurrency,
@@ -562,7 +562,7 @@ func loadAndResolveConfig(cmd *cobra.Command, wt worktreeResult, logger *termina
 // Used to default/clamp Concurrency so no phase is bottlenecked.
 func maxPotentialReviewers(r config.ResolvedConfig) int {
 	m := r.Reviewers
-	if v := 1 + r.DiffGroups; v > m {
+	if v := 1 + r.LargeDiffGroups; v > m {
 		m = v
 	}
 	if v := 1 + r.MediumDiffReviewers; v > m {

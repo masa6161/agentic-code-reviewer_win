@@ -149,7 +149,7 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 	// Round-14 F#1: cross-check is invoked only when useGroupedSpecs=true, which
 	// resolveAutoPhase only returns under DiffSizeLarge. Eager resolution here
 	// would force users on small/medium diffs (or `--phase`/`--no-auto-phase`/
-	// arch,diff fallback paths) to satisfy cross_check.model purely to start the
+	// medium fallback paths) to satisfy cross_check.model purely to start the
 	// run — even though cross-check would never execute. Deferring resolve until
 	// the gate also implicitly tightens validate↔runtime symmetry: at the gate,
 	// sizeStr is guaranteed to be "large", matching `canResolveCrossCheckModelForAgent`'s
@@ -259,7 +259,7 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 				func() (agent.Agent, []agent.Agent, error) {
 					return buildPhaseAgents(opts, sizeStr)
 				},
-				opts.DiffGroups, opts.MediumDiffReviewers)
+				opts.LargeDiffGroups, opts.MediumDiffReviewers)
 			if agentsErr != nil {
 				logger.Logf(terminal.StyleError, "Failed to build per-phase reviewer agents: %v", agentsErr)
 				return domain.ExitError
@@ -274,8 +274,8 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 			if opts.Verbose {
 				switch {
 				case apr.UseGrouped:
-					logger.Logf(terminal.StyleInfo, "Auto-phase: grouped (diff_groups=%d, arch+%d diff groups)",
-						opts.DiffGroups, len(groupedSpecs)-1)
+					logger.Logf(terminal.StyleInfo, "Auto-phase: grouped (large_diff_groups=%d, arch+%d diff groups)",
+						opts.LargeDiffGroups, len(groupedSpecs)-1)
 					// Per-phase model matrix rows — only meaningful once we
 					// know the grouped path will actually run. Before this
 					// point, a large→flat fallback would have made these rows
@@ -289,13 +289,13 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 					}
 				case apr.MediumDiffCount > 0 && apr.FallbackReason != "":
 					logger.Logf(terminal.StyleWarning,
-						"Auto-phase: arch,diff (medium_diff_reviewers=%d) — fallback: %s",
+						"Auto-phase: medium (medium_diff_reviewers=%d) — fallback: %s",
 						apr.MediumDiffCount, apr.FallbackReason)
 				case apr.MediumDiffCount > 0:
 					logger.Logf(terminal.StyleInfo,
-						"Auto-phase: arch,diff (medium_diff_reviewers=%d)", apr.MediumDiffCount)
+						"Auto-phase: medium (medium_diff_reviewers=%d)", apr.MediumDiffCount)
 				case apr.FallbackReason != "":
-					logger.Logf(terminal.StyleWarning, "Auto-phase: falling back to arch,diff (%s)", apr.FallbackReason)
+					logger.Logf(terminal.StyleWarning, "Auto-phase: falling back to medium (%s)", apr.FallbackReason)
 				}
 			}
 		}
@@ -331,13 +331,13 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 		// Auto-phase medium/large fallback paths supply MediumDiffCount so the
 		// diff phase reviewer count comes from medium_diff_reviewers (NOT
 		// --reviewers is for --no-auto-phase (flat review). Phase-based
-		// paths use the corresponding knob: small_diff_reviewers for "diff",
-		// medium_diff_reviewers (+1 arch) for "arch,diff".
+		// paths use the corresponding knob: small_diff_reviewers for "small",
+		// medium_diff_reviewers (+1 arch) for "medium".
 		totalForParse := opts.Reviewers
 		switch phaseStr {
-		case "diff":
+		case "small":
 			totalForParse = opts.SmallDiffReviewers
-		case "arch,diff":
+		case "medium":
 			totalForParse = opts.MediumDiffReviewers + 1
 		}
 		phases, phaseErr := parsePhases(phaseStr, totalForParse)
@@ -483,7 +483,7 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 		}
 		// Lazy CLI availability check: only verify cross-check agent CLIs are
 		// installed when we are about to actually run cross-check. Non-grouped
-		// paths (small diff / explicit --phase / --no-auto-phase / arch,diff)
+		// paths (small diff / explicit --phase / --no-auto-phase / medium)
 		// skip this entirely so users without the cross-check CLI can still
 		// run those review modes.
 		if err := agent.ValidateAgentNames(ccAgentNames); err != nil {
@@ -702,53 +702,29 @@ func isLGTM(grouped domain.GroupedFindings, cc *summarizer.CrossCheckResult) boo
 	return !grouped.HasFindings() && !cc.HasBlockingFindings()
 }
 
-// parsePhases converts a comma-separated phase string into PhaseConfigs.
-// "arch" → 1 arch reviewer; "diff" → N diff reviewers; "arch,diff" → 1 arch + remaining diff.
-// Returns an error for unknown phase tokens, duplicates, or insufficient reviewer budget.
+// parsePhases converts a phase string into PhaseConfigs.
+// "small" → N diff reviewers; "medium" → 1 arch + remaining diff.
+// Returns an error for unknown phase values or insufficient reviewer budget.
 func parsePhases(phaseStr string, totalReviewers int) ([]runner.PhaseConfig, error) {
 	if totalReviewers < 1 {
 		return nil, fmt.Errorf("totalReviewers must be >= 1, got %d", totalReviewers)
 	}
-
-	var phases []runner.PhaseConfig
-	remaining := totalReviewers
-	seen := map[string]bool{}
-
-	parts := strings.Split(phaseStr, ",")
-	for _, p := range parts {
-		p = strings.TrimSpace(p)
-		if p == "" {
-			continue
+	switch phaseStr {
+	case "small":
+		return []runner.PhaseConfig{
+			{Phase: "diff", ReviewerCount: totalReviewers},
+		}, nil
+	case "medium":
+		if totalReviewers < 2 {
+			return nil, fmt.Errorf("phase %q requires >= 2 reviewers (1 arch + >= 1 diff), got %d", phaseStr, totalReviewers)
 		}
-		if seen[p] {
-			return nil, fmt.Errorf("duplicate phase %q", p)
-		}
-		switch p {
-		case "arch":
-			if remaining < 1 {
-				return nil, fmt.Errorf("not enough reviewers for phase %q (need 1, have %d)", p, remaining)
-			}
-			phases = append(phases, runner.PhaseConfig{
-				Phase:         "arch",
-				ReviewerCount: 1,
-			})
-			remaining--
-			seen[p] = true
-		case "diff":
-			if remaining < 1 {
-				return nil, fmt.Errorf("not enough reviewers for phase %q (need 1, have %d)", p, remaining)
-			}
-			phases = append(phases, runner.PhaseConfig{
-				Phase:         "diff",
-				ReviewerCount: remaining,
-			})
-			remaining = 0
-			seen[p] = true
-		default:
-			return nil, fmt.Errorf("unknown phase %q (valid: arch, diff)", p)
-		}
+		return []runner.PhaseConfig{
+			{Phase: "arch", ReviewerCount: 1},
+			{Phase: "diff", ReviewerCount: totalReviewers - 1},
+		}, nil
+	default:
+		return nil, fmt.Errorf("unknown phase %q (valid: small, medium)", phaseStr)
 	}
-	return phases, nil
 }
 
 // resolveCrossCheckAgents returns the resolved cross-check agent names and
@@ -773,7 +749,7 @@ func parsePhases(phaseStr string, totalReviewers int) ([]runner.PhaseConfig, err
 // resolveAutoPhase). The defense-in-depth log helper logCrossCheckModelMatrix
 // also calls this with the same sizeStr just before the gate, so the size
 // argument is consistent across both call sites. Non-grouped review paths
-// (small / medium / `--phase` / `--no-auto-phase` / arch,diff fallback) skip
+// (small / medium / `--phase` / `--no-auto-phase` / medium fallback) skip
 // cross-check entirely and never invoke this function — that is the entire
 // point of Round-14 F#1's resolve deferral.
 //
@@ -907,16 +883,16 @@ type autoPhaseResult struct {
 	GroupedSpecs    []runner.ReviewerSpec // non-nil → use grouped diff path
 	UseGrouped      bool
 	FallbackReason  string // non-empty when UseGrouped was downgraded to false
-	MediumDiffCount int    // 0 = not an arch,diff fallback; otherwise the diff-phase reviewer count to use with parsePhases (arch=1 + this)
+	MediumDiffCount int    // 0 = not a medium fallback; otherwise the diff-phase reviewer count to use with parsePhases (arch=1 + this)
 }
 
 // resolveAutoPhase determines phase configuration based on diff size and the
 // new auto-phase knobs.
 //
-//   - diffGroups: target group count for the grouped (large) path; capped by
+//   - largeDiffGroups: target group count for the grouped (large) path; capped by
 //     the actual file count to keep at least 1 file per group.
 //   - mediumDiffReviewers: diff-phase reviewer count for the medium path
-//     (arch,diff) and for any large fallback to arch,diff.
+//     (medium) and for any large fallback to medium.
 //
 // archAgent and diffAgents are passed through to buildGroupedDiffSpecs so the
 // arch and diff phases can use distinct agent backends per
@@ -930,31 +906,31 @@ func resolveAutoPhase(
 	diff, guidance string,
 	diffPrecomputed bool,
 	buildAgents func() (agent.Agent, []agent.Agent, error),
-	diffGroups int,
+	largeDiffGroups int,
 	mediumDiffReviewers int,
 ) (autoPhaseResult, error) {
 	switch size {
 	case git.DiffSizeSmall:
 		// Small: flat diff path; reviewer count comes from small_diff_reviewers.
-		return autoPhaseResult{PhaseStr: "diff"}, nil
+		return autoPhaseResult{PhaseStr: "small"}, nil
 	case git.DiffSizeLarge:
 		fileCount := len(git.ParseDiffSections(diff))
 		// Sanity cap: 1 group must contain at least 1 file.
-		effectiveGroups := diffGroups
+		effectiveGroups := largeDiffGroups
 		if effectiveGroups > fileCount {
 			effectiveGroups = fileCount
 		}
 		if effectiveGroups < 2 {
 			// Grouped path needs >=2 diff groups to be meaningful. Fall back to
-			// flat arch,diff (parsePhases + reviewAgents) without ever touching
+			// flat medium (parsePhases + reviewAgents) without ever touching
 			// buildAgents, so per-phase override CLI availability does not gate
 			// the fallback.
 			return autoPhaseResult{
-				PhaseStr:        "arch,diff",
+				PhaseStr:        "medium",
 				MediumDiffCount: mediumDiffReviewers,
 				FallbackReason: fmt.Sprintf(
-					"only %d non-empty diff group(s) possible (file_count=%d, diff_groups=%d)",
-					effectiveGroups, fileCount, diffGroups),
+					"only %d non-empty diff group(s) possible (file_count=%d, large_diff_groups=%d)",
+					effectiveGroups, fileCount, largeDiffGroups),
 			}, nil
 		}
 		// Grouped path confirmed viable; now build the per-phase agents. An
@@ -969,7 +945,7 @@ func resolveAutoPhase(
 		specs, err := buildGroupedDiffSpecs(diff, guidance, diffPrecomputed, archAgent, diffAgents, effectiveGroups)
 		if err != nil {
 			return autoPhaseResult{
-				PhaseStr:        "arch,diff",
+				PhaseStr:        "medium",
 				MediumDiffCount: mediumDiffReviewers,
 				FallbackReason:  fmt.Sprintf("buildGroupedDiffSpecs failed: %v", err),
 			}, nil
@@ -978,7 +954,7 @@ func resolveAutoPhase(
 		diffGroupCount := len(specs) - 1
 		if diffGroupCount < 2 {
 			return autoPhaseResult{
-				PhaseStr:        "arch,diff",
+				PhaseStr:        "medium",
 				MediumDiffCount: mediumDiffReviewers,
 				FallbackReason:  fmt.Sprintf("only %d non-empty diff group(s) after building", diffGroupCount),
 			}, nil
@@ -990,7 +966,7 @@ func resolveAutoPhase(
 	default: // medium
 		// Medium: arch (1) + diff (mediumDiffReviewers). Never calls buildAgents.
 		return autoPhaseResult{
-			PhaseStr:        "arch,diff",
+			PhaseStr:        "medium",
 			MediumDiffCount: mediumDiffReviewers,
 		}, nil
 	}
@@ -1139,7 +1115,7 @@ func logCrossCheckModelMatrix(logger *terminal.Logger, opts ReviewOpts, sizeStr 
 //     diffAgents assigned round-robin per non-empty diff group
 //
 // maxDiffGroups is supplied by the caller (resolveAutoPhase) from the
-// dedicated `diff_groups` knob, capped at the actual file count so that
+// dedicated `large_diff_groups` knob, capped at the actual file count so that
 // every group has at least 1 file.
 //
 // archAgent and diffAgents are independent so per-phase reviewer overrides
