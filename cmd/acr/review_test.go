@@ -1307,23 +1307,28 @@ func TestMaxPotentialReviewers(t *testing.T) {
 	}{
 		{
 			name: "flat dominates",
-			cfg:  config.ResolvedConfig{Reviewers: 5, DiffGroups: 3, MediumDiffReviewers: 2},
-			want: 5, // max(5, 1+3, 1+2) = 5
+			cfg:  config.ResolvedConfig{Reviewers: 5, DiffGroups: 3, MediumDiffReviewers: 2, SmallDiffReviewers: 1},
+			want: 5, // max(5, 1+3, 1+2, 1) = 5
 		},
 		{
 			name: "grouped dominates",
-			cfg:  config.ResolvedConfig{Reviewers: 3, DiffGroups: 8, MediumDiffReviewers: 2},
-			want: 9, // max(3, 1+8, 1+2) = 9
+			cfg:  config.ResolvedConfig{Reviewers: 3, DiffGroups: 8, MediumDiffReviewers: 2, SmallDiffReviewers: 1},
+			want: 9, // max(3, 1+8, 1+2, 1) = 9
 		},
 		{
 			name: "medium dominates",
-			cfg:  config.ResolvedConfig{Reviewers: 2, DiffGroups: 1, MediumDiffReviewers: 5},
-			want: 6, // max(2, 1+1, 1+5) = 6
+			cfg:  config.ResolvedConfig{Reviewers: 2, DiffGroups: 1, MediumDiffReviewers: 5, SmallDiffReviewers: 1},
+			want: 6, // max(2, 1+1, 1+5, 1) = 6
 		},
 		{
 			name: "all equal",
-			cfg:  config.ResolvedConfig{Reviewers: 3, DiffGroups: 2, MediumDiffReviewers: 2},
-			want: 3, // max(3, 1+2, 1+2) = 3
+			cfg:  config.ResolvedConfig{Reviewers: 3, DiffGroups: 2, MediumDiffReviewers: 2, SmallDiffReviewers: 1},
+			want: 3, // max(3, 1+2, 1+2, 1) = 3
+		},
+		{
+			name: "small dominates",
+			cfg:  config.ResolvedConfig{Reviewers: 2, DiffGroups: 1, MediumDiffReviewers: 1, SmallDiffReviewers: 10},
+			want: 10, // max(2, 1+1, 1+1, 10) = 10
 		},
 	}
 	for _, tt := range tests {

@@ -45,6 +45,7 @@ var (
 	reviewers           int
 	diffGroups          int
 	mediumDiffReviewers int
+	smallDiffReviewers  int
 	concurrency         int
 	baseRef             string
 	timeout             time.Duration
@@ -109,11 +110,13 @@ Exit codes:
 
 	// Configuration flags (defaults are resolved via config.Resolve with precedence: flag > env > config > default)
 	rootCmd.Flags().IntVarP(&reviewers, "reviewers", "r", 0,
-		"Number of parallel reviewers for flat review path (auto-phase OFF / size=small / explicit --phase). Auto-phase grouped/medium use --diff-groups / --medium-diff-reviewers instead. (default: 5, env: ACR_REVIEWERS)")
+		"Number of parallel reviewers for flat review path (auto-phase OFF, no --phase). --phase diff uses --small-diff-reviewers; --phase arch,diff uses --medium-diff-reviewers. (default: 5, env: ACR_REVIEWERS)")
 	rootCmd.Flags().IntVar(&diffGroups, "diff-groups", 0,
 		"Number of diff groups in auto-phase grouped path (large diff) (default: 4, env: ACR_DIFF_GROUPS)")
 	rootCmd.Flags().IntVar(&mediumDiffReviewers, "medium-diff-reviewers", 0,
-		"Number of diff reviewers in auto-phase medium path (default: 2, env: ACR_MEDIUM_DIFF_REVIEWERS)")
+		"Number of diff reviewers for auto-phase medium and --phase arch,diff (default: 2, env: ACR_MEDIUM_DIFF_REVIEWERS)")
+	rootCmd.Flags().IntVar(&smallDiffReviewers, "small-diff-reviewers", 0,
+		"Number of reviewers for auto-phase small and --phase diff (default: 1, env: ACR_SMALL_DIFF_REVIEWERS)")
 	rootCmd.Flags().IntVarP(&concurrency, "concurrency", "c", 0,
 		"Max concurrent reviewers (default: same as --reviewers, env: ACR_CONCURRENCY)")
 	rootCmd.Flags().StringVarP(&baseRef, "base", "b", "",
@@ -406,6 +409,7 @@ func loadAndResolveConfig(cmd *cobra.Command, wt worktreeResult, logger *termina
 		ReviewersSet:           cmd.Flags().Changed("reviewers"),
 		DiffGroupsSet:          cmd.Flags().Changed("diff-groups"),
 		MediumDiffReviewersSet: cmd.Flags().Changed("medium-diff-reviewers"),
+		SmallDiffReviewersSet:  cmd.Flags().Changed("small-diff-reviewers"),
 		ConcurrencySet:         cmd.Flags().Changed("concurrency"),
 		BaseSet:                cmd.Flags().Changed("base") || wt.baseAutoDetected,
 		TimeoutSet:             cmd.Flags().Changed("timeout"),
@@ -455,6 +459,7 @@ func loadAndResolveConfig(cmd *cobra.Command, wt worktreeResult, logger *termina
 		Reviewers:           reviewers,
 		DiffGroups:          diffGroups,
 		MediumDiffReviewers: mediumDiffReviewers,
+		SmallDiffReviewers:  smallDiffReviewers,
 		Concurrency:         concurrency,
 		Base:                resolvedBaseRef,
 		Timeout:             timeout,
@@ -561,6 +566,9 @@ func maxPotentialReviewers(r config.ResolvedConfig) int {
 		m = v
 	}
 	if v := 1 + r.MediumDiffReviewers; v > m {
+		m = v
+	}
+	if v := r.SmallDiffReviewers; v > m {
 		m = v
 	}
 	return m

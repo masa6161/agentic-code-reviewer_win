@@ -1202,7 +1202,7 @@ func TestResolveGuidance_ConfigFileAbsolutePath(t *testing.T) {
 func clearACREnv(t *testing.T) {
 	t.Helper()
 	for _, key := range []string{
-		"ACR_REVIEWERS", "ACR_DIFF_GROUPS", "ACR_MEDIUM_DIFF_REVIEWERS",
+		"ACR_REVIEWERS", "ACR_DIFF_GROUPS", "ACR_MEDIUM_DIFF_REVIEWERS", "ACR_SMALL_DIFF_REVIEWERS",
 		"ACR_CONCURRENCY", "ACR_BASE_REF", "ACR_TIMEOUT",
 		"ACR_RETRIES", "ACR_FETCH", "ACR_REVIEWER_AGENT", "ACR_SUMMARIZER_AGENT",
 		"ACR_ARCH_REVIEWER_AGENT", "ACR_DIFF_REVIEWER_AGENTS",
@@ -2775,6 +2775,83 @@ func TestLoadEnvState_MediumDiffReviewers_Malformed(t *testing.T) {
 	}
 	if !hasWarningContaining(warnings, "ACR_MEDIUM_DIFF_REVIEWERS") {
 		t.Errorf("expected warning about ACR_MEDIUM_DIFF_REVIEWERS, got %v", warnings)
+	}
+}
+
+func TestResolve_SmallDiffReviewers_FromYAML(t *testing.T) {
+	cfg := &Config{SmallDiffReviewers: ptr(3)}
+	result := Resolve(cfg, EnvState{}, FlagState{}, ResolvedConfig{})
+	if result.SmallDiffReviewers != 3 {
+		t.Errorf("expected small_diff_reviewers=3 from yaml, got %d", result.SmallDiffReviewers)
+	}
+}
+
+func TestResolve_SmallDiffReviewers_EnvOverridesYAML(t *testing.T) {
+	cfg := &Config{SmallDiffReviewers: ptr(3)}
+	envState := EnvState{SmallDiffReviewers: 7, SmallDiffReviewersSet: true}
+	result := Resolve(cfg, envState, FlagState{}, ResolvedConfig{})
+	if result.SmallDiffReviewers != 7 {
+		t.Errorf("expected env small_diff_reviewers=7 to override yaml, got %d", result.SmallDiffReviewers)
+	}
+}
+
+func TestResolve_SmallDiffReviewers_CLIOverridesEnv(t *testing.T) {
+	cfg := &Config{SmallDiffReviewers: ptr(3)}
+	envState := EnvState{SmallDiffReviewers: 7, SmallDiffReviewersSet: true}
+	flagState := FlagState{SmallDiffReviewersSet: true}
+	flagValues := ResolvedConfig{SmallDiffReviewers: 10}
+	result := Resolve(cfg, envState, flagState, flagValues)
+	if result.SmallDiffReviewers != 10 {
+		t.Errorf("expected CLI small_diff_reviewers=10 to override env, got %d", result.SmallDiffReviewers)
+	}
+}
+
+func TestResolve_SmallDiffReviewers_DefaultsTo1(t *testing.T) {
+	result := Resolve(&Config{}, EnvState{}, FlagState{}, ResolvedConfig{})
+	if result.SmallDiffReviewers != 1 {
+		t.Errorf("expected default small_diff_reviewers=1, got %d", result.SmallDiffReviewers)
+	}
+	if Defaults.SmallDiffReviewers != 1 {
+		t.Errorf("expected Defaults.SmallDiffReviewers=1, got %d", Defaults.SmallDiffReviewers)
+	}
+}
+
+func TestValidate_RejectsZeroSmallDiffReviewers(t *testing.T) {
+	cfg := Defaults
+	cfg.SmallDiffReviewers = 0
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected error for small_diff_reviewers=0, got nil")
+	}
+	if !strings.Contains(err.Error(), "small_diff_reviewers must be >= 1") {
+		t.Errorf("expected 'small_diff_reviewers must be >= 1' in error, got: %v", err)
+	}
+}
+
+func TestLoadEnvState_SmallDiffReviewers(t *testing.T) {
+	clearACREnv(t)
+	t.Setenv("ACR_SMALL_DIFF_REVIEWERS", "4")
+	state, warnings := LoadEnvState()
+	if len(warnings) != 0 {
+		t.Errorf("expected no warnings, got %v", warnings)
+	}
+	if !state.SmallDiffReviewersSet {
+		t.Error("expected SmallDiffReviewersSet=true")
+	}
+	if state.SmallDiffReviewers != 4 {
+		t.Errorf("expected SmallDiffReviewers=4, got %d", state.SmallDiffReviewers)
+	}
+}
+
+func TestLoadEnvState_SmallDiffReviewers_Malformed(t *testing.T) {
+	clearACREnv(t)
+	t.Setenv("ACR_SMALL_DIFF_REVIEWERS", "bad")
+	state, warnings := LoadEnvState()
+	if state.SmallDiffReviewersSet {
+		t.Error("expected SmallDiffReviewersSet=false for invalid value")
+	}
+	if !hasWarningContaining(warnings, "ACR_SMALL_DIFF_REVIEWERS") {
+		t.Errorf("expected warning about ACR_SMALL_DIFF_REVIEWERS, got %v", warnings)
 	}
 }
 

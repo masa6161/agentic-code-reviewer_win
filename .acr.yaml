@@ -2,9 +2,9 @@
 # See https://github.com/richhaase/agentic-code-reviewer for documentation.
 
 # Number of parallel reviewers (default: 5)
-# This applies ONLY to flat review path (auto-phase OFF / size=small /
-# explicit --phase). Auto-phase grouped/medium use diff_groups /
-# medium_diff_reviewers below.
+# This applies ONLY to flat review path (auto-phase OFF, no --phase).
+# --phase diff uses small_diff_reviewers; --phase arch,diff uses
+# medium_diff_reviewers. Auto-phase selects automatically by diff size.
 reviewers: 5
 
 # Number of diff groups in auto-phase grouped path (large diff). Default: 4.
