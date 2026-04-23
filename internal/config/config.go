@@ -88,6 +88,7 @@ type Config struct {
 	Reviewers           *int      `yaml:"reviewers"`
 	DiffGroups          *int      `yaml:"diff_groups"`
 	MediumDiffReviewers *int      `yaml:"medium_diff_reviewers"`
+	SmallDiffReviewers  *int      `yaml:"small_diff_reviewers"`
 	Concurrency         *int      `yaml:"concurrency"`
 	Base                *string   `yaml:"base"`
 	Timeout             *Duration `yaml:"timeout"`
@@ -223,7 +224,7 @@ func (c *Config) validatePatterns() error {
 	return nil
 }
 
-var knownTopLevelKeys = []string{"reviewers", "diff_groups", "medium_diff_reviewers", "concurrency", "base", "timeout", "retries", "fetch", "reviewer_agent", "reviewer_agents", "arch_reviewer_agent", "diff_reviewer_agents", "summarizer_agent", "reviewer_model", "summarizer_model", "summarizer_timeout", "fp_filter_timeout", "cross_check_timeout", "guidance_file", "auto_phase", "filters", "fp_filter", "pr_feedback", "cross_check", "models"}
+var knownTopLevelKeys = []string{"reviewers", "diff_groups", "medium_diff_reviewers", "small_diff_reviewers", "concurrency", "base", "timeout", "retries", "fetch", "reviewer_agent", "reviewer_agents", "arch_reviewer_agent", "diff_reviewer_agents", "summarizer_agent", "reviewer_model", "summarizer_model", "summarizer_timeout", "fp_filter_timeout", "cross_check_timeout", "guidance_file", "auto_phase", "filters", "fp_filter", "pr_feedback", "cross_check", "models"}
 
 var knownFPFilterKeys = []string{"enabled", "threshold"}
 
@@ -490,6 +491,9 @@ func (r *ResolvedConfig) ValidateAll() []string {
 	}
 	if r.MediumDiffReviewers < 1 {
 		errs = append(errs, fmt.Sprintf("medium_diff_reviewers must be >= 1, got %d", r.MediumDiffReviewers))
+	}
+	if r.SmallDiffReviewers < 1 {
+		errs = append(errs, fmt.Sprintf("small_diff_reviewers must be >= 1, got %d", r.SmallDiffReviewers))
 	}
 	if r.Concurrency < 0 {
 		errs = append(errs, fmt.Sprintf("concurrency must be >= 0, got %d", r.Concurrency))
@@ -787,6 +791,7 @@ var Defaults = ResolvedConfig{
 	Reviewers:           5,
 	DiffGroups:          4,
 	MediumDiffReviewers: 2,
+	SmallDiffReviewers:  1,
 	Concurrency:         0,
 	Base:                "main",
 	Timeout:             10 * time.Minute,
@@ -812,6 +817,7 @@ type ResolvedConfig struct {
 	Reviewers           int
 	DiffGroups          int
 	MediumDiffReviewers int
+	SmallDiffReviewers  int
 	Concurrency         int
 	Base                string
 	Timeout             time.Duration
@@ -856,6 +862,7 @@ type FlagState struct {
 	ReviewersSet           bool
 	DiffGroupsSet          bool
 	MediumDiffReviewersSet bool
+	SmallDiffReviewersSet  bool
 	ConcurrencySet         bool
 	BaseSet                bool
 	TimeoutSet             bool
@@ -890,6 +897,8 @@ type EnvState struct {
 	DiffGroupsSet          bool
 	MediumDiffReviewers    int
 	MediumDiffReviewersSet bool
+	SmallDiffReviewers     int
+	SmallDiffReviewersSet  bool
 	Concurrency            int
 	ConcurrencySet         bool
 	Base                   string
@@ -970,6 +979,14 @@ func LoadEnvState() (EnvState, []string) {
 			state.MediumDiffReviewersSet = true
 		} else {
 			warnings = append(warnings, fmt.Sprintf("ACR_MEDIUM_DIFF_REVIEWERS=%q is not a valid integer, ignoring", v))
+		}
+	}
+	if v := os.Getenv("ACR_SMALL_DIFF_REVIEWERS"); v != "" {
+		if i, err := strconv.Atoi(v); err == nil {
+			state.SmallDiffReviewers = i
+			state.SmallDiffReviewersSet = true
+		} else {
+			warnings = append(warnings, fmt.Sprintf("ACR_SMALL_DIFF_REVIEWERS=%q is not a valid integer, ignoring", v))
 		}
 	}
 	if v := os.Getenv("ACR_CONCURRENCY"); v != "" {
@@ -1196,6 +1213,9 @@ func Resolve(cfg *Config, envState EnvState, flagState FlagState, flagValues Res
 		if cfg.MediumDiffReviewers != nil {
 			result.MediumDiffReviewers = *cfg.MediumDiffReviewers
 		}
+		if cfg.SmallDiffReviewers != nil {
+			result.SmallDiffReviewers = *cfg.SmallDiffReviewers
+		}
 		if cfg.Concurrency != nil {
 			result.Concurrency = *cfg.Concurrency
 		}
@@ -1279,6 +1299,9 @@ func Resolve(cfg *Config, envState EnvState, flagState FlagState, flagValues Res
 	if envState.MediumDiffReviewersSet {
 		result.MediumDiffReviewers = envState.MediumDiffReviewers
 	}
+	if envState.SmallDiffReviewersSet {
+		result.SmallDiffReviewers = envState.SmallDiffReviewers
+	}
 	if envState.ConcurrencySet {
 		result.Concurrency = envState.Concurrency
 	}
@@ -1357,6 +1380,9 @@ func Resolve(cfg *Config, envState EnvState, flagState FlagState, flagValues Res
 	}
 	if flagState.MediumDiffReviewersSet {
 		result.MediumDiffReviewers = flagValues.MediumDiffReviewers
+	}
+	if flagState.SmallDiffReviewersSet {
+		result.SmallDiffReviewers = flagValues.SmallDiffReviewers
 	}
 	if flagState.ConcurrencySet {
 		result.Concurrency = flagValues.Concurrency

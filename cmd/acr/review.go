@@ -238,9 +238,6 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 	phaseFromAuto := false
 	var useGroupedSpecs bool
 	var groupedSpecs []runner.ReviewerSpec
-	// mediumDiffCount > 0 → auto-phase chose arch,diff and the diff phase
-	// reviewer count must come from medium_diff_reviewers (not opts.Reviewers).
-	mediumDiffCount := 0
 	if shouldUseAutoPhase(opts) {
 		if !diffSizeClassified {
 			if opts.Verbose {
@@ -270,7 +267,6 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 			phaseStr = apr.PhaseStr
 			groupedSpecs = apr.GroupedSpecs
 			useGroupedSpecs = apr.UseGrouped
-			mediumDiffCount = apr.MediumDiffCount
 			// Enable per-phase role rebinding (arch_reviewer/diff_reviewer) only
 			// for medium/large diffs. Small diffs use flat diff review with the
 			// generic reviewer role.
@@ -334,10 +330,15 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 	} else if phaseStr != "" {
 		// Auto-phase medium/large fallback paths supply MediumDiffCount so the
 		// diff phase reviewer count comes from medium_diff_reviewers (NOT
-		// --reviewers, which is reserved for flat / explicit --phase paths).
+		// --reviewers is for --no-auto-phase (flat review). Phase-based
+		// paths use the corresponding knob: small_diff_reviewers for "diff",
+		// medium_diff_reviewers (+1 arch) for "arch,diff".
 		totalForParse := opts.Reviewers
-		if mediumDiffCount > 0 {
-			totalForParse = mediumDiffCount + 1 // +1 for arch
+		switch phaseStr {
+		case "diff":
+			totalForParse = opts.SmallDiffReviewers
+		case "arch,diff":
+			totalForParse = opts.MediumDiffReviewers + 1
 		}
 		phases, phaseErr := parsePhases(phaseStr, totalForParse)
 		if phaseErr != nil {
@@ -934,7 +935,7 @@ func resolveAutoPhase(
 ) (autoPhaseResult, error) {
 	switch size {
 	case git.DiffSizeSmall:
-		// Small: flat diff path; reviewer count is taken from --reviewers by caller.
+		// Small: flat diff path; reviewer count comes from small_diff_reviewers.
 		return autoPhaseResult{PhaseStr: "diff"}, nil
 	case git.DiffSizeLarge:
 		fileCount := len(git.ParseDiffSections(diff))
