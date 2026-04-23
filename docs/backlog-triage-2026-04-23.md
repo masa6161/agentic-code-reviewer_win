@@ -49,9 +49,29 @@ PR #4〜#6 の開発サイクル中に解決済みだが、バックログの持
 | config show | `cmd/acr/config_cmd.go` | 表示に追加 (PR C と統合可) |
 | テスト | `config_test.go`, `review_test.go` | validation + auto-phase small path テスト |
 
-### PR C: `config show` 拡張
+### PR C: `--phase` / config key 命名規則統一
 
-**見積: ~2-3h** | リスク: なし (表示ロジック追加のみ)
+**見積: ~4-5h** | リスク: 中 (公開 CLI / config key のリネーム、後方互換対応)
+
+`--phase` フラグの値が実装詳細 (`diff`, `arch,diff`) を露出しており、auto-phase の手動オーバーライドとしての意図と乖離。config key `diff_groups` も `small_diff_reviewers` / `medium_diff_reviewers` の命名規則と不整合。
+
+リネーム対象:
+
+| 現在 | 提案 | 影響範囲 |
+|------|------|----------|
+| `--phase diff` | `--phase small` | `parsePhases`, consumer switch, テスト |
+| `--phase arch,diff` | `--phase medium` | 同上 |
+| (Issue #11) `--phase grouped` | `--phase large` | 将来の実装時に反映 |
+| `diff_groups` (config/CLI/env) | `large_diff_groups` | Config struct, yaml tag, env var, CLI flag, Resolve, Validate, テスト |
+
+実装方針:
+- `parsePhases` 内部で `small` → `"diff"`, `medium` → `"arch,diff"` に変換（runner 層は phase 名に依存）
+- ~~旧名 (`diff`, `arch,diff`, `diff_groups`, `ACR_DIFF_GROUPS`) を deprecated alias として 1 リリース維持するか、破壊変更とするか要判断~~ → 後方互換性は不要
+- PR B で導入した `phaseStr == "diff"` / `phaseStr == "arch,diff"` の switch は内部表現として維持
+
+### PR D: `config show` 拡張
+
+**見積: ~2-3h** | リスク: なし (表示ロジック追加のみ)。PR C のリネーム後に実施。
 
 対象: `cmd/acr/config_cmd.go:30-68`
 
@@ -73,7 +93,7 @@ PR #4〜#6 の開発サイクル中に解決済みだが、バックログの持
 
 `config init` テンプレート (`config_cmd.go:88-145`) の拡充も含める。
 
-### PR D: 起動時 CLI 可用性チェック (Issue #7)
+### PR E: 起動時 CLI 可用性チェック (Issue #7)
 
 **見積: ~2-3h** | リスク: 低 (早期 fail-fast、既存 IsAvailable 基盤を利用)
 
@@ -86,7 +106,7 @@ PR #4〜#6 の開発サイクル中に解決済みだが、バックログの持
 4. 失敗時: 不足 CLI 名 + インストール指示付きエラーメッセージ → `domain.ExitError`
 5. `--verbose` 時: 利用可能 CLI の一覧ログ出力
 
-### PR E: N/M 表記ロール別分離
+### PR F: N/M 表記ロール別分離
 
 **見積: ~3-4h** | リスク: 中 (domain 型 + 全レポート箇所の変更)
 
@@ -165,16 +185,17 @@ ReviewStats.TotalReviewers int    ← 現状フェーズ混在
 ## 推奨着手順
 
 ```
-優先度  タスク                         見積    前提条件
-───────────────────────────────────────────────────────
-1       PR A (docstring・小修正)        ~30min  なし (即着手可)
-2       PR B (small_diff_reviewers)    ~2h     なし (Issue #8 設計確定済み)
-3       PR C (config show 拡張)        ~2-3h   PR B と統合可 (config show にフィールド追加)
-4       PR D (CLI check, Issue #7)     ~2-3h   なし
-5       PR E (N/M ロール別表記)         ~3-4h   なし (domain 型変更あり)
-6       Prompt Engineering Bundle      ~8h     設計議論
+優先度  タスク                              見積    前提条件
+──────────────────────────────────────────────────────────────
+1       PR A (docstring・小修正)             ~30min  完了 (PR #9)
+2       PR B (small_diff_reviewers)         ~2h     完了 (PR #10)
+3       PR C (--phase/config key リネーム)   ~4-5h   なし (命名規則統一)
+4       PR D (config show 拡張)             ~2-3h   PR C 後 (リネーム後の名前で表示)
+5       PR E (CLI check, Issue #7)          ~2-3h   なし
+6       PR F (N/M ロール別表記)              ~3-4h   なし (domain 型変更あり)
+7       Prompt Engineering Bundle           ~8h     設計議論
 ```
 
-PR A は即着手可。PR B と PR C は config 領域が重なるため同一 PR に統合してもよい。
-PR E は domain 型変更を伴うため独立 PR が望ましい。
-合計見積 (Prompt Engineering Bundle 除く): ~10-12h
+PR A, B は完了済み。PR C (命名規則統一) を先行し、PR D (config show) はリネーム後に実施。
+PR F は domain 型変更を伴うため独立 PR が望ましい。
+合計見積 (完了分・Prompt Engineering Bundle 除く): ~12-15h
