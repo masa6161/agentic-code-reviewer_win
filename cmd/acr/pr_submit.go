@@ -392,6 +392,7 @@ func confirmAndSubmitReview(ctx context.Context, body string, pr prContext, verd
 		return nil
 	}
 
+	// TODO(Issue #3): remove beta notice once PR posting is stabilized.
 	betaNoticeOnce.Do(func() {
 		logger.Logf(terminal.StyleWarning, "PR posting is beta in the Windows port; behavior may change.")
 	})
@@ -490,6 +491,7 @@ func confirmAndSubmitLGTM(ctx context.Context, body string, pr prContext, opts R
 		return nil
 	}
 
+	// TODO(Issue #3): remove beta notice once PR posting is stabilized.
 	betaNoticeOnce.Do(func() {
 		logger.Logf(terminal.StyleWarning, "PR posting is beta in the Windows port; behavior may change.")
 	})

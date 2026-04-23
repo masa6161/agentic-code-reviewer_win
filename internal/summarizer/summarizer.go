@@ -291,7 +291,7 @@ func backfillGroupKeys(grouped *domain.GroupedFindings, aggregated []domain.Aggr
 //   - Rule C (allow-list): unknown severity values normalize to "advisory".
 //   - Rule A (upgrade): any valid source with Severity=="blocking" → group Severity="blocking".
 //   - Rule B (downgrade): group Severity=="blocking" with valid sources but no blocking source
-//     → downgrade to "advisory" (LLM-fabricated).
+//     → downgrade to "advisory" (LLM-claimed blocking not supported by any blocking source is downgraded).
 //   - Rule B preserves Severity when no valid sources exist (empty Sources or all out-of-range):
 //     treated as information loss, not evidence of non-blocking.
 //   - Default: empty Severity → "advisory".
