@@ -935,7 +935,7 @@ func resolveAutoPhase(
 ) (autoPhaseResult, error) {
 	switch size {
 	case git.DiffSizeSmall:
-		// Small: flat diff path; reviewer count is taken from --reviewers by caller.
+		// Small: flat diff path; reviewer count comes from small_diff_reviewers.
 		return autoPhaseResult{PhaseStr: "diff"}, nil
 	case git.DiffSizeLarge:
 		fileCount := len(git.ParseDiffSections(diff))

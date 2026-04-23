@@ -14,12 +14,12 @@ diff_groups: 4
 
 # Number of reviewers in auto-phase small path. Default: 1.
 # Small diff = files <= 3 AND lines <= 100. Flat diff-only review (no arch).
-# small_diff_reviewers: 1
+small_diff_reviewers: 1
 
 # Number of diff reviewers in auto-phase medium path. Default: 2.
 # arch reviewer is always 1. Total reviewers in medium path =
 # 1 + medium_diff_reviewers.
-# medium_diff_reviewers: 2
+medium_diff_reviewers: 2
 
 # Maximum concurrent reviewers (default: same as reviewers)
 # concurrency: 0
@@ -94,9 +94,9 @@ cross_check:
 #     > agent built-in default
 #
 # Roles:
-#   reviewer       — flat review (auto-phase OFF / explicit --phase) and
-#                    auto-phase small path. Also fallback for arch_reviewer /
-#                    diff_reviewer when those are unset at the same cascade layer.
+#   reviewer       — flat review (auto-phase OFF / size=small / --phase diff)
+#                    and fallback for arch_reviewer / diff_reviewer when those
+#                    are unset at the same cascade layer.
 #   arch_reviewer  — auto-phase medium/large の arch フェーズのみ
 #   diff_reviewer  — auto-phase medium/large の diff フェーズのみ
 #   summarizer     — finding clustering
