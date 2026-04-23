@@ -1,6 +1,7 @@
 # CLAUDE.md - Development Guide
 
 This file provides guidance for AI assistants working on the ACR codebase.
+応答，コミットメッセージ，PR本文には日本語を使用すること
 
 ## Project Overview
 
