@@ -318,41 +318,20 @@ func TestConfigValidate_SyntaxErrorSkipsCrossCheckRuntimeFalsePositive(t *testin
 	}
 }
 
-// captureStdout captures os.Stdout output during fn execution.
-// config show uses fmt.Printf (not cmd.OutOrStdout()), so we must redirect os.Stdout.
-func captureStdout(t *testing.T, fn func()) string {
-	t.Helper()
-	old := os.Stdout
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	os.Stdout = w
-
-	fn()
-
-	w.Close()
-	os.Stdout = old
-	var buf bytes.Buffer
-	if _, err := buf.ReadFrom(r); err != nil {
-		t.Fatal(err)
-	}
-	return buf.String()
-}
-
 func TestConfigShow_DisplaysAllFields(t *testing.T) {
 	dir := t.TempDir()
 	chdir(t, dir)
 	initGitRepo(t, dir)
 
 	cmd := newConfigCmd()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
 	cmd.SetArgs([]string{"show"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
-	output := captureStdout(t, func() {
-		if err := cmd.Execute(); err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-	})
+	output := buf.String()
 
 	expectedKeys := []string{
 		"reviewers:", "concurrency:", "base:", "timeout:", "retries:", "fetch:",
@@ -388,13 +367,14 @@ func TestConfigShow_EnvOverrideReflected(t *testing.T) {
 	t.Setenv("ACR_LARGE_DIFF_REVIEWERS", "8")
 
 	cmd := newConfigCmd()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
 	cmd.SetArgs([]string{"show"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
-	output := captureStdout(t, func() {
-		if err := cmd.Execute(); err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-	})
+	output := buf.String()
 
 	if !strings.Contains(output, "strict:") || !strings.Contains(output, "true") {
 		t.Errorf("expected output to reflect ACR_STRICT=true.\nOutput:\n%s", output)
@@ -410,13 +390,14 @@ func TestConfigShow_FallbackDisplay(t *testing.T) {
 	initGitRepo(t, dir)
 
 	cmd := newConfigCmd()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
 	cmd.SetArgs([]string{"show"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
-	output := captureStdout(t, func() {
-		if err := cmd.Execute(); err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-	})
+	output := buf.String()
 
 	// arch_reviewer_agent fallback
 	if !strings.Contains(output, "(first of reviewer_agents)") {
