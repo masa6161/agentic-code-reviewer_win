@@ -62,7 +62,7 @@ PR #4〜#6 の開発サイクル中に解決済みだが、バックログの持
 | `--phase diff` | `--phase small` | `parsePhases`, consumer switch, テスト |
 | `--phase arch,diff` | `--phase medium` | 同上 |
 | (Issue #11) `--phase grouped` | `--phase large` | 将来の実装時に反映 |
-| `diff_groups` (config/CLI/env) | `large_diff_groups` | Config struct, yaml tag, env var, CLI flag, Resolve, Validate, テスト |
+| `diff_groups` (config/CLI/env) | `large_diff_reviewers` | Config struct, yaml tag, env var, CLI flag, Resolve, Validate, テスト |
 
 実装方針:
 - `parsePhases` 内部で `small` → `"diff"`, `medium` → `"arch,diff"` に変換（runner 層は phase 名に依存）

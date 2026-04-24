@@ -259,7 +259,7 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 				func() (agent.Agent, []agent.Agent, error) {
 					return buildPhaseAgents(opts, sizeStr)
 				},
-				opts.LargeDiffGroups, opts.MediumDiffReviewers)
+				opts.LargeDiffReviewers, opts.MediumDiffReviewers)
 			if agentsErr != nil {
 				logger.Logf(terminal.StyleError, "Failed to build per-phase reviewer agents: %v", agentsErr)
 				return domain.ExitError
@@ -274,8 +274,8 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 			if opts.Verbose {
 				switch {
 				case apr.UseGrouped:
-					logger.Logf(terminal.StyleInfo, "Auto-phase: grouped (large_diff_groups=%d, arch+%d diff groups)",
-						opts.LargeDiffGroups, len(groupedSpecs)-1)
+					logger.Logf(terminal.StyleInfo, "Auto-phase: grouped (large_diff_reviewers=%d, arch+%d diff groups)",
+						opts.LargeDiffReviewers, len(groupedSpecs)-1)
 					// Per-phase model matrix rows — only meaningful once we
 					// know the grouped path will actually run. Before this
 					// point, a large→flat fallback would have made these rows
@@ -889,7 +889,7 @@ type autoPhaseResult struct {
 // resolveAutoPhase determines phase configuration based on diff size and the
 // new auto-phase knobs.
 //
-//   - largeDiffGroups: target group count for the grouped (large) path; capped by
+//   - largeDiffReviewers: target group count for the grouped (large) path; capped by
 //     the actual file count to keep at least 1 file per group.
 //   - mediumDiffReviewers: diff-phase reviewer count for the medium path
 //     (medium) and for any large fallback to medium.
@@ -906,7 +906,7 @@ func resolveAutoPhase(
 	diff, guidance string,
 	diffPrecomputed bool,
 	buildAgents func() (agent.Agent, []agent.Agent, error),
-	largeDiffGroups int,
+	largeDiffReviewers int,
 	mediumDiffReviewers int,
 ) (autoPhaseResult, error) {
 	switch size {
@@ -916,7 +916,7 @@ func resolveAutoPhase(
 	case git.DiffSizeLarge:
 		fileCount := len(git.ParseDiffSections(diff))
 		// Sanity cap: 1 group must contain at least 1 file.
-		effectiveGroups := largeDiffGroups
+		effectiveGroups := largeDiffReviewers
 		if effectiveGroups > fileCount {
 			effectiveGroups = fileCount
 		}
@@ -929,8 +929,8 @@ func resolveAutoPhase(
 				PhaseStr:        "medium",
 				MediumDiffCount: mediumDiffReviewers,
 				FallbackReason: fmt.Sprintf(
-					"only %d non-empty diff group(s) possible (file_count=%d, large_diff_groups=%d)",
-					effectiveGroups, fileCount, largeDiffGroups),
+					"only %d non-empty diff group(s) possible (file_count=%d, large_diff_reviewers=%d)",
+					effectiveGroups, fileCount, largeDiffReviewers),
 			}, nil
 		}
 		// Grouped path confirmed viable; now build the per-phase agents. An
@@ -1115,7 +1115,7 @@ func logCrossCheckModelMatrix(logger *terminal.Logger, opts ReviewOpts, sizeStr 
 //     diffAgents assigned round-robin per non-empty diff group
 //
 // maxDiffGroups is supplied by the caller (resolveAutoPhase) from the
-// dedicated `large_diff_groups` knob, capped at the actual file count so that
+// dedicated `large_diff_reviewers` knob, capped at the actual file count so that
 // every group has at least 1 file.
 //
 // archAgent and diffAgents are independent so per-phase reviewer overrides

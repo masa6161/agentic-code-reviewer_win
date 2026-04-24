@@ -43,7 +43,7 @@ func parseDiffReviewerAgentsFlag(input string) []string {
 
 var (
 	reviewers           int
-	largeDiffGroups     int
+	largeDiffReviewers  int
 	mediumDiffReviewers int
 	smallDiffReviewers  int
 	concurrency         int
@@ -111,8 +111,8 @@ Exit codes:
 	// Configuration flags (defaults are resolved via config.Resolve with precedence: flag > env > config > default)
 	rootCmd.Flags().IntVarP(&reviewers, "reviewers", "r", 0,
 		"Number of parallel reviewers for flat review path (auto-phase OFF, no --phase). --phase small uses --small-diff-reviewers; --phase medium uses --medium-diff-reviewers. (default: 5, env: ACR_REVIEWERS)")
-	rootCmd.Flags().IntVar(&largeDiffGroups, "large-diff-groups", 0,
-		"Number of diff groups in auto-phase grouped path (large diff) (default: 4, env: ACR_LARGE_DIFF_GROUPS)")
+	rootCmd.Flags().IntVar(&largeDiffReviewers, "large-diff-reviewers", 0,
+		"Number of diff reviewers in auto-phase grouped path (large diff) (default: 4, env: ACR_LARGE_DIFF_REVIEWERS)")
 	rootCmd.Flags().IntVar(&mediumDiffReviewers, "medium-diff-reviewers", 0,
 		"Number of diff reviewers for auto-phase medium and --phase medium (default: 2, env: ACR_MEDIUM_DIFF_REVIEWERS)")
 	rootCmd.Flags().IntVar(&smallDiffReviewers, "small-diff-reviewers", 0,
@@ -407,7 +407,7 @@ func loadAndResolveConfig(cmd *cobra.Command, wt worktreeResult, logger *termina
 	autoPhaseAnySet := cmd.Flags().Changed("auto-phase") || cmd.Flags().Changed("no-auto-phase")
 	flagState := config.FlagState{
 		ReviewersSet:           cmd.Flags().Changed("reviewers"),
-		LargeDiffGroupsSet:     cmd.Flags().Changed("large-diff-groups"),
+		LargeDiffReviewersSet:  cmd.Flags().Changed("large-diff-reviewers"),
 		MediumDiffReviewersSet: cmd.Flags().Changed("medium-diff-reviewers"),
 		SmallDiffReviewersSet:  cmd.Flags().Changed("small-diff-reviewers"),
 		ConcurrencySet:         cmd.Flags().Changed("concurrency"),
@@ -457,7 +457,7 @@ func loadAndResolveConfig(cmd *cobra.Command, wt worktreeResult, logger *termina
 	autoPhaseValue := autoPhase && !noAutoPhase
 	flagValues := config.ResolvedConfig{
 		Reviewers:           reviewers,
-		LargeDiffGroups:     largeDiffGroups,
+		LargeDiffReviewers:  largeDiffReviewers,
 		MediumDiffReviewers: mediumDiffReviewers,
 		SmallDiffReviewers:  smallDiffReviewers,
 		Concurrency:         concurrency,
@@ -562,7 +562,7 @@ func loadAndResolveConfig(cmd *cobra.Command, wt worktreeResult, logger *termina
 // Used to default/clamp Concurrency so no phase is bottlenecked.
 func maxPotentialReviewers(r config.ResolvedConfig) int {
 	m := r.Reviewers
-	if v := 1 + r.LargeDiffGroups; v > m {
+	if v := 1 + r.LargeDiffReviewers; v > m {
 		m = v
 	}
 	if v := 1 + r.MediumDiffReviewers; v > m {
