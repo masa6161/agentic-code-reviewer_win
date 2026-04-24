@@ -74,7 +74,7 @@ summarizer_agent: claude
 cross_check:
   enabled: true
   agent: "codex,claude,gemini"
-  model: "gpt-5.4,claude-opus-4-7,gemini-3.1-pro-preview"
+  model: "gpt-5.5,claude-opus-4-7,gemini-3.1-pro-preview"
 
 # PR feedback summarization
 # pr_feedback:
@@ -153,10 +153,10 @@ models:
       cross_check:   { effort: high }
   agents:
     codex:
-      reviewer:      { model: gpt-5.4 }
-      arch_reviewer: { model: gpt-5.4 }
-      diff_reviewer: { model: gpt-5.4 }
-      cross_check:   { model: gpt-5.4 }
+      reviewer:      { model: gpt-5.5 }
+      arch_reviewer: { model: gpt-5.5 }
+      diff_reviewer: { model: gpt-5.5 }
+      cross_check:   { model: gpt-5.5 }
     claude:
       reviewer:      { model: claude-sonnet-4-6 }
       arch_reviewer: { model: claude-opus-4-7 }
