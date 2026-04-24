@@ -3,6 +3,7 @@ package agent
 
 import (
 	"fmt"
+	"os/exec"
 	"slices"
 	"sort"
 	"strings"
@@ -47,6 +48,28 @@ func ValidateAgentNames(names []string) error {
 			strings.Join(invalid, ", "), SupportedAgents)
 	}
 
+	return nil
+}
+
+// CheckCLIAvailability verifies that all named CLI binaries exist in PATH.
+// It does NOT construct agents or resolve models — just exec.LookPath.
+// Returns an error listing all missing CLIs (not just the first).
+func CheckCLIAvailability(names []string) error {
+	seen := make(map[string]bool)
+	var missing []string
+	for _, name := range names {
+		if seen[name] {
+			continue
+		}
+		seen[name] = true
+		if _, err := exec.LookPath(name); err != nil {
+			missing = append(missing, name)
+		}
+	}
+	if len(missing) > 0 {
+		sort.Strings(missing)
+		return fmt.Errorf("CLI not found in PATH: %s", strings.Join(missing, ", "))
+	}
 	return nil
 }
 

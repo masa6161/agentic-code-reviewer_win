@@ -34,6 +34,17 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 		return domain.ExitError
 	}
 
+	// Early CLI availability preflight when auto-phase is active.
+	// Auto-phase may invoke any configured agent role (arch, diff, cross-check)
+	// depending on diff size, so verify all CLIs upfront to avoid wasting
+	// review cycles on a missing binary.
+	if shouldUseAutoPhase(opts) {
+		if err := agent.CheckCLIAvailability(collectAllCLINames(opts)); err != nil {
+			logger.Logf(terminal.StyleError, "Preflight check failed: %v", err)
+			return domain.ExitError
+		}
+	}
+
 	// Resolve the base ref once before launching parallel reviewers.
 	// This ensures all reviewers compare against the same ref, avoiding
 	// inconsistent results if network conditions vary during parallel execution.
@@ -689,13 +700,50 @@ func applyVerdictExitPolicy(verdict string, strict bool, findingsCode domain.Exi
 	return findingsCode
 }
 
-// isLGTM reports whether the review result qualifies for LGTM:
 // shouldUseAutoPhase returns true when auto-phase is enabled and no explicit
 // --phase override was provided. Explicit --phase always takes precedence.
 func shouldUseAutoPhase(opts ReviewOpts) bool {
 	return opts.AutoPhase && opts.Phase == ""
 }
 
+// collectAllCLINames returns CLI names that may be invoked during an auto-phase
+// review run. The returned slice may contain duplicates; deduplication is handled
+// by CheckCLIAvailability. Fallback defaults for optional fields are resolved here
+// (arch_reviewer_agent → ReviewerAgents[0], cross_check.agent → SummarizerAgent, etc.).
+func collectAllCLINames(opts ReviewOpts) []string {
+	names := make([]string, 0, 8)
+	names = append(names, opts.ReviewerAgents...)
+	names = append(names, opts.SummarizerAgent)
+
+	// Arch reviewer: explicit override or first reviewer agent
+	archName := opts.ArchReviewerAgent
+	if archName == "" && len(opts.ReviewerAgents) > 0 {
+		archName = opts.ReviewerAgents[0]
+	}
+	if archName != "" {
+		names = append(names, archName)
+	}
+
+	// Diff reviewers: explicit override or all reviewer agents
+	diffNames := opts.DiffReviewerAgents
+	if len(diffNames) == 0 {
+		diffNames = opts.ReviewerAgents
+	}
+	names = append(names, diffNames...)
+
+	// Cross-check: only if enabled; parse comma-separated names
+	if opts.CrossCheckEnabled {
+		ccName := opts.CrossCheckAgent
+		if ccName == "" {
+			ccName = opts.SummarizerAgent
+		}
+		names = append(names, agent.ParseAgentNames(ccName)...)
+	}
+
+	return names
+}
+
+// isLGTM reports whether the review result qualifies for LGTM:
 // no grouped findings AND no blocking cross-check findings.
 // ccResult may be nil (nil-safe via CrossCheckResult.HasBlockingFindings).
 func isLGTM(grouped domain.GroupedFindings, cc *summarizer.CrossCheckResult) bool {

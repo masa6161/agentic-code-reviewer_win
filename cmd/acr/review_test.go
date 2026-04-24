@@ -1477,3 +1477,112 @@ func TestLogCrossCheckModelMatrix_EmitsOneRowPerResolvedAgent(t *testing.T) {
 	}
 	logCrossCheckModelMatrix(terminal.NewLogger(), opts, "large")
 }
+
+// --- collectAllCLINames tests ---
+
+func TestCollectAllCLINames_Defaults(t *testing.T) {
+	opts := ReviewOpts{
+		ResolvedConfig: config.ResolvedConfig{
+			ReviewerAgents:    []string{"codex"},
+			SummarizerAgent:   "codex",
+			CrossCheckEnabled: true,
+		},
+	}
+	names := collectAllCLINames(opts)
+	// Should contain: codex (reviewer), codex (summarizer), codex (arch fallback),
+	// codex (diff fallback), codex (cross-check fallback).
+	// PR feedback is intentionally excluded from preflight (soft-failure design).
+	// Duplicates are deduplicated by CheckCLIAvailability, not here.
+	found := false
+	for _, n := range names {
+		if n == "codex" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected 'codex' in CLI names")
+	}
+}
+
+func TestCollectAllCLINames_WithOverrides(t *testing.T) {
+	opts := ReviewOpts{
+		ResolvedConfig: config.ResolvedConfig{
+			ReviewerAgents:     []string{"codex", "claude"},
+			SummarizerAgent:    "gemini",
+			ArchReviewerAgent:  "claude",
+			DiffReviewerAgents: []string{"codex", "gemini"},
+			CrossCheckEnabled:  true,
+			CrossCheckAgent:    "claude",
+			PRFeedbackEnabled:  true,
+			PRFeedbackAgent:    "gemini",
+		},
+	}
+	names := collectAllCLINames(opts)
+	// Should include all three: codex, claude, gemini
+	nameSet := make(map[string]bool)
+	for _, n := range names {
+		nameSet[n] = true
+	}
+	for _, expected := range []string{"codex", "claude", "gemini"} {
+		if !nameSet[expected] {
+			t.Errorf("expected %q in CLI names, got: %v", expected, names)
+		}
+	}
+}
+
+func TestCollectAllCLINames_CrossCheckDisabled(t *testing.T) {
+	opts := ReviewOpts{
+		ResolvedConfig: config.ResolvedConfig{
+			ReviewerAgents:    []string{"codex"},
+			SummarizerAgent:   "codex",
+			CrossCheckEnabled: false,
+			CrossCheckAgent:   "gemini",
+		},
+	}
+	names := collectAllCLINames(opts)
+	for _, n := range names {
+		if n == "gemini" {
+			t.Error("cross-check disabled: gemini should not be in CLI names")
+		}
+	}
+}
+
+func TestCollectAllCLINames_PRFeedbackEnabled_NotIncluded(t *testing.T) {
+	opts := ReviewOpts{
+		ResolvedConfig: config.ResolvedConfig{
+			ReviewerAgents:    []string{"codex"},
+			SummarizerAgent:   "codex",
+			PRFeedbackEnabled: true,
+			PRFeedbackAgent:   "gemini",
+		},
+	}
+	names := collectAllCLINames(opts)
+	for _, n := range names {
+		if n == "gemini" {
+			t.Error("PR feedback enabled: gemini should still not be in CLI names (soft-failure design)")
+		}
+	}
+}
+
+func TestCollectAllCLINames_CrossCheckCommaSeparated(t *testing.T) {
+	opts := ReviewOpts{
+		ResolvedConfig: config.ResolvedConfig{
+			ReviewerAgents:    []string{"codex"},
+			SummarizerAgent:   "codex",
+			CrossCheckEnabled: true,
+			CrossCheckAgent:   "codex,claude",
+		},
+	}
+	names := collectAllCLINames(opts)
+	nameSet := make(map[string]bool)
+	for _, n := range names {
+		nameSet[n] = true
+	}
+	if !nameSet["claude"] {
+		t.Errorf("expected 'claude' from comma-separated cross-check agent, got: %v", names)
+	}
+	if nameSet["codex,claude"] {
+		t.Error("comma-separated value should be parsed, not passed as-is")
+	}
+}
