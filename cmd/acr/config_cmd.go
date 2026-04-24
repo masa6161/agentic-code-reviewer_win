@@ -27,6 +27,22 @@ func newConfigCmd() *cobra.Command {
 	return cmd
 }
 
+func formatModelSpec(ms *config.ModelSpec) string {
+	if ms == nil {
+		return "(not set)"
+	}
+	if ms.Model != "" && ms.Effort != "" {
+		return fmt.Sprintf("%s (effort: %s)", ms.Model, ms.Effort)
+	}
+	if ms.Model != "" {
+		return ms.Model
+	}
+	if ms.Effort != "" {
+		return fmt.Sprintf("(effort: %s)", ms.Effort)
+	}
+	return "(not set)"
+}
+
 func newConfigShowCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "show",
@@ -38,29 +54,128 @@ func newConfigShowCmd() *cobra.Command {
 				return fmt.Errorf("config error: %w", err)
 			}
 
-			envState, _ := config.LoadEnvState()
+			envState, envWarnings := config.LoadEnvState()
 
 			resolved := config.Resolve(result.Config, envState, config.FlagState{}, config.Defaults)
 
-			fmt.Println("Resolved configuration:")
-			fmt.Println()
-			fmt.Printf("  %-22s %d\n", "reviewers:", resolved.Reviewers)
-			fmt.Printf("  %-22s %d\n", "concurrency:", resolved.Concurrency)
-			fmt.Printf("  %-22s %s\n", "base:", resolved.Base)
-			fmt.Printf("  %-22s %s\n", "timeout:", resolved.Timeout)
-			fmt.Printf("  %-22s %d\n", "retries:", resolved.Retries)
-			fmt.Printf("  %-22s %t\n", "fetch:", resolved.Fetch)
-			fmt.Printf("  %-22s %s\n", "reviewer_agents:", strings.Join(resolved.ReviewerAgents, ", "))
-			fmt.Printf("  %-22s %s\n", "summarizer_agent:", resolved.SummarizerAgent)
-			fmt.Printf("  %-22s %s\n", "summarizer_timeout:", resolved.SummarizerTimeout)
-			fmt.Printf("  %-22s %s\n", "fp_filter_timeout:", resolved.FPFilterTimeout)
-			fmt.Printf("  %-22s %t\n", "fp_filter.enabled:", resolved.FPFilterEnabled)
-			fmt.Printf("  %-22s %d\n", "fp_filter.threshold:", resolved.FPThreshold)
-			fmt.Printf("  %-22s %t\n", "pr_feedback.enabled:", resolved.PRFeedbackEnabled)
-			if resolved.PRFeedbackAgent != "" {
-				fmt.Printf("  %-22s %s\n", "pr_feedback.agent:", resolved.PRFeedbackAgent)
+			// Display warnings from config loading
+			allWarnings := append(result.Warnings, envWarnings...)
+			for _, w := range allWarnings {
+				fmt.Fprintf(cmd.ErrOrStderr(), "[W] %s\n", w)
+			}
+
+			out := cmd.OutOrStdout()
+			fmt.Fprintln(out, "Resolved configuration:")
+			fmt.Fprintln(out)
+
+			// General
+			fmt.Fprintf(out, "  %-32s %d\n", "reviewers:", resolved.Reviewers)
+			if resolved.Concurrency == 0 {
+				fmt.Fprintf(out, "  %-32s %s\n", "concurrency:", "0 (auto)")
 			} else {
-				fmt.Printf("  %-22s %s\n", "pr_feedback.agent:", "(same as summarizer_agent)")
+				fmt.Fprintf(out, "  %-32s %d\n", "concurrency:", resolved.Concurrency)
+			}
+			fmt.Fprintf(out, "  %-32s %s\n", "base:", resolved.Base)
+			fmt.Fprintf(out, "  %-32s %s\n", "timeout:", resolved.Timeout)
+			fmt.Fprintf(out, "  %-32s %d\n", "retries:", resolved.Retries)
+			fmt.Fprintf(out, "  %-32s %t\n", "fetch:", resolved.Fetch)
+			fmt.Fprintf(out, "  %-32s %t\n", "auto_phase:", resolved.AutoPhase)
+			fmt.Fprintf(out, "  %-32s %t\n", "strict:", resolved.Strict)
+			fmt.Fprintln(out)
+
+			// Agents
+			fmt.Fprintf(out, "  %-32s %s\n", "reviewer_agents:", strings.Join(resolved.ReviewerAgents, ", "))
+			if resolved.ArchReviewerAgent != "" {
+				fmt.Fprintf(out, "  %-32s %s\n", "arch_reviewer_agent:", resolved.ArchReviewerAgent)
+			} else {
+				fmt.Fprintf(out, "  %-32s %s\n", "arch_reviewer_agent:", "(first of reviewer_agents)")
+			}
+			if len(resolved.DiffReviewerAgents) > 0 {
+				fmt.Fprintf(out, "  %-32s %s\n", "diff_reviewer_agents:", strings.Join(resolved.DiffReviewerAgents, ", "))
+			} else {
+				fmt.Fprintf(out, "  %-32s %s\n", "diff_reviewer_agents:", "(reviewer_agents)")
+			}
+			fmt.Fprintf(out, "  %-32s %s\n", "summarizer_agent:", resolved.SummarizerAgent)
+			fmt.Fprintln(out)
+
+			// Models
+			if resolved.ReviewerModel != "" {
+				fmt.Fprintf(out, "  %-32s %s\n", "reviewer_model:", resolved.ReviewerModel)
+			} else {
+				fmt.Fprintf(out, "  %-32s %s\n", "reviewer_model:", "(agent default)")
+			}
+			if resolved.SummarizerModel != "" {
+				fmt.Fprintf(out, "  %-32s %s\n", "summarizer_model:", resolved.SummarizerModel)
+			} else {
+				fmt.Fprintf(out, "  %-32s %s\n", "summarizer_model:", "(agent default)")
+			}
+			fmt.Fprintln(out)
+
+			// Phase knobs
+			fmt.Fprintf(out, "  %-32s %d\n", "large_diff_reviewers:", resolved.LargeDiffReviewers)
+			fmt.Fprintf(out, "  %-32s %d\n", "medium_diff_reviewers:", resolved.MediumDiffReviewers)
+			fmt.Fprintf(out, "  %-32s %d\n", "small_diff_reviewers:", resolved.SmallDiffReviewers)
+			fmt.Fprintln(out)
+
+			// Timeouts
+			fmt.Fprintf(out, "  %-32s %s\n", "summarizer_timeout:", resolved.SummarizerTimeout)
+			fmt.Fprintf(out, "  %-32s %s\n", "fp_filter_timeout:", resolved.FPFilterTimeout)
+			fmt.Fprintf(out, "  %-32s %s\n", "cross_check_timeout:", resolved.CrossCheckTimeout)
+			fmt.Fprintln(out)
+
+			// FP filter
+			fmt.Fprintf(out, "  %-32s %t\n", "fp_filter.enabled:", resolved.FPFilterEnabled)
+			fmt.Fprintf(out, "  %-32s %d\n", "fp_filter.threshold:", resolved.FPThreshold)
+			fmt.Fprintln(out)
+
+			// PR feedback
+			fmt.Fprintf(out, "  %-32s %t\n", "pr_feedback.enabled:", resolved.PRFeedbackEnabled)
+			if resolved.PRFeedbackAgent != "" {
+				fmt.Fprintf(out, "  %-32s %s\n", "pr_feedback.agent:", resolved.PRFeedbackAgent)
+			} else {
+				fmt.Fprintf(out, "  %-32s %s\n", "pr_feedback.agent:", "(same as summarizer_agent)")
+			}
+			fmt.Fprintln(out)
+
+			// Cross-check
+			fmt.Fprintf(out, "  %-32s %t\n", "cross_check.enabled:", resolved.CrossCheckEnabled)
+			if resolved.CrossCheckAgent != "" {
+				fmt.Fprintf(out, "  %-32s %s\n", "cross_check.agent:", resolved.CrossCheckAgent)
+			} else {
+				fmt.Fprintf(out, "  %-32s %s\n", "cross_check.agent:", "(same as summarizer_agent)")
+			}
+			if resolved.CrossCheckModel != "" {
+				fmt.Fprintf(out, "  %-32s %s\n", "cross_check.model:", resolved.CrossCheckModel)
+			} else {
+				fmt.Fprintf(out, "  %-32s %s\n", "cross_check.model:", "(from models config)")
+			}
+			fmt.Fprintln(out)
+
+			// Guidance
+			if resolved.GuidanceFile != "" {
+				fmt.Fprintf(out, "  %-32s %s\n", "guidance_file:", resolved.GuidanceFile)
+			} else {
+				fmt.Fprintf(out, "  %-32s %s\n", "guidance_file:", "(not set)")
+			}
+			fmt.Fprintln(out)
+
+			// Models config
+			fmt.Fprintf(out, "  %-32s %s\n", "models.defaults.reviewer:", formatModelSpec(resolved.Models.Defaults.Reviewer))
+			fmt.Fprintf(out, "  %-32s %s\n", "models.defaults.arch_reviewer:", formatModelSpec(resolved.Models.Defaults.ArchReviewer))
+			fmt.Fprintf(out, "  %-32s %s\n", "models.defaults.diff_reviewer:", formatModelSpec(resolved.Models.Defaults.DiffReviewer))
+			fmt.Fprintf(out, "  %-32s %s\n", "models.defaults.summarizer:", formatModelSpec(resolved.Models.Defaults.Summarizer))
+			fmt.Fprintf(out, "  %-32s %s\n", "models.defaults.fp_filter:", formatModelSpec(resolved.Models.Defaults.FPFilter))
+			fmt.Fprintf(out, "  %-32s %s\n", "models.defaults.cross_check:", formatModelSpec(resolved.Models.Defaults.CrossCheck))
+			fmt.Fprintf(out, "  %-32s %s\n", "models.defaults.pr_feedback:", formatModelSpec(resolved.Models.Defaults.PRFeedback))
+			if len(resolved.Models.Sizes) > 0 {
+				fmt.Fprintf(out, "  %-32s (%d entries)\n", "models.sizes:", len(resolved.Models.Sizes))
+			} else {
+				fmt.Fprintf(out, "  %-32s %s\n", "models.sizes:", "(none)")
+			}
+			if len(resolved.Models.Agents) > 0 {
+				fmt.Fprintf(out, "  %-32s (%d entries)\n", "models.agents:", len(resolved.Models.Agents))
+			} else {
+				fmt.Fprintf(out, "  %-32s %s\n", "models.agents:", "(none)")
 			}
 
 			return nil

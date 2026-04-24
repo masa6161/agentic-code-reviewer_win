@@ -259,7 +259,7 @@ func TestBuildGroupedDiffSpecs_FallbackOnError(t *testing.T) {
 //
 // Signature: resolveAutoPhase(size, diff, guidance, diffPrecomputed,
 //   buildAgents func() (agent.Agent, []agent.Agent, error),
-//   largeDiffGroups, mediumDiffReviewers) (autoPhaseResult, error)
+//   largeDiffReviewers, mediumDiffReviewers) (autoPhaseResult, error)
 //
 // Tests use testBuildAgents to return pre-constructed agents synchronously.
 // The closure is only invoked when the large grouped path decides to proceed,
@@ -272,7 +272,7 @@ func testBuildAgents(arch agent.Agent, diffs []agent.Agent) func() (agent.Agent,
 }
 
 func TestAutoPhase_Large_GroupedSpecs(t *testing.T) {
-	// Large diff with large_diff_groups=3 → grouped specs
+	// Large diff with large_diff_reviewers=3 → grouped specs
 	sections := makeSectionsForReview(12, 10)
 	fullDiff := git.JoinDiffSections(sections)
 	agents := []agent.Agent{agent.NewCodexAgent("")}
@@ -280,7 +280,7 @@ func TestAutoPhase_Large_GroupedSpecs(t *testing.T) {
 	apr, _ := resolveAutoPhase(git.DiffSizeLarge, fullDiff, "", true, testBuildAgents(agents[0], agents), 3, 2)
 
 	if !apr.UseGrouped {
-		t.Fatal("expected UseGrouped=true for large diff with large_diff_groups=3")
+		t.Fatal("expected UseGrouped=true for large diff with large_diff_reviewers=3")
 	}
 	if apr.PhaseStr != "" {
 		t.Errorf("expected empty PhaseStr, got %q", apr.PhaseStr)
@@ -612,9 +612,9 @@ func TestResolveCrossCheckAgents_AgentDefaultsToSummarizer(t *testing.T) {
 
 // TestResolveAutoPhase_OneDiffGroup_FallsBackToFlat verifies that exactly
 // 1 non-empty diff group (< 2) still triggers the fallback. With
-// large_diff_groups=1 the file_count cap also kicks in early.
+// large_diff_reviewers=1 the file_count cap also kicks in early.
 func TestResolveAutoPhase_OneDiffGroup_FallsBackToFlat(t *testing.T) {
-	// 2 files, large_diff_groups=1 → file_count cap → effectiveGroups=1 → fallback.
+	// 2 files, large_diff_reviewers=1 → file_count cap → effectiveGroups=1 → fallback.
 	sections := makeSectionsForReview(2, 10)
 	fullDiff := git.JoinDiffSections(sections)
 	agents := []agent.Agent{agent.NewCodexAgent("")}
@@ -622,7 +622,7 @@ func TestResolveAutoPhase_OneDiffGroup_FallsBackToFlat(t *testing.T) {
 	apr, _ := resolveAutoPhase(git.DiffSizeLarge, fullDiff, "", true, testBuildAgents(agents[0], agents), 1, 2)
 
 	if apr.UseGrouped {
-		t.Fatal("expected UseGrouped=false for large_diff_groups=1")
+		t.Fatal("expected UseGrouped=false for large_diff_reviewers=1")
 	}
 	if apr.PhaseStr != "medium" {
 		t.Errorf("expected PhaseStr 'medium', got %q", apr.PhaseStr)
@@ -635,10 +635,10 @@ func TestResolveAutoPhase_OneDiffGroup_FallsBackToFlat(t *testing.T) {
 	}
 }
 
-// TestResolveAutoPhase_TwoLargeDiffGroups_KeepsGrouped verifies that 2 or more
+// TestResolveAutoPhase_TwoLargeDiffReviewers_KeepsGrouped verifies that 2 or more
 // non-empty diff groups result in UseGrouped=true (no fallback).
-func TestResolveAutoPhase_TwoLargeDiffGroups_KeepsGrouped(t *testing.T) {
-	// 6 files, large_diff_groups=2 → expect 2 diff groups.
+func TestResolveAutoPhase_TwoLargeDiffReviewers_KeepsGrouped(t *testing.T) {
+	// 6 files, large_diff_reviewers=2 → expect 2 diff groups.
 	sections := makeSectionsForReview(6, 10)
 	fullDiff := git.JoinDiffSections(sections)
 	agents := []agent.Agent{agent.NewCodexAgent("")}
@@ -665,7 +665,7 @@ func TestLargeReview_GroupedSpecsProduceCrossCheckableTopology(t *testing.T) {
 	agents := []agent.Agent{agent.NewCodexAgent("")}
 	apr, _ := resolveAutoPhase(git.DiffSizeLarge, fullDiff, "", true, testBuildAgents(agents[0], agents), 3, 2)
 	if !apr.UseGrouped {
-		t.Fatal("expected UseGrouped=true for large diff with large_diff_groups=3")
+		t.Fatal("expected UseGrouped=true for large diff with large_diff_reviewers=3")
 	}
 	if apr.GroupedSpecs[0].GroupKey != "arch" {
 		t.Errorf("expected first spec GroupKey=arch, got %q", apr.GroupedSpecs[0].GroupKey)
@@ -981,14 +981,14 @@ func TestFlatPath_VerdictRendered(t *testing.T) {
 	}
 }
 
-// --- New auto-phase knob tests (large_diff_groups / medium_diff_reviewers) ---
+// --- New auto-phase knob tests (large_diff_reviewers / medium_diff_reviewers) ---
 
-// TestResolveAutoPhase_LargeUsesLargeDiffGroupsKnob verifies that the large_diff_groups
+// TestResolveAutoPhase_LargeUsesLargeDiffReviewersKnob verifies that the large_diff_reviewers
 // knob caps the grouped diff path. With many files / lines the greedy packer
-// would normally produce > largeDiffGroups groups; largeDiffGroups=3 caps the result.
-func TestResolveAutoPhase_LargeUsesLargeDiffGroupsKnob(t *testing.T) {
+// would normally produce > largeDiffReviewers groups; largeDiffReviewers=3 caps the result.
+func TestResolveAutoPhase_LargeUsesLargeDiffReviewersKnob(t *testing.T) {
 	// 25 files × 50 lines (1250 lines, default 200/group) → ~7 groups
-	// without cap; large_diff_groups=3 caps to 3.
+	// without cap; large_diff_reviewers=3 caps to 3.
 	sections := makeSectionsForReview(25, 50)
 	fullDiff := git.JoinDiffSections(sections)
 	agents := []agent.Agent{agent.NewCodexAgent("")}
@@ -1000,7 +1000,7 @@ func TestResolveAutoPhase_LargeUsesLargeDiffGroupsKnob(t *testing.T) {
 	}
 	diffGroupCount := len(apr.GroupedSpecs) - 1
 	if diffGroupCount > 3 {
-		t.Errorf("expected at most 3 diff groups (large_diff_groups=3 cap), got %d", diffGroupCount)
+		t.Errorf("expected at most 3 diff groups (large_diff_reviewers=3 cap), got %d", diffGroupCount)
 	}
 	if diffGroupCount < 2 {
 		t.Errorf("expected >=2 diff groups, got %d", diffGroupCount)
@@ -1011,7 +1011,7 @@ func TestResolveAutoPhase_LargeUsesLargeDiffGroupsKnob(t *testing.T) {
 // that when file_count<2 the grouped path is impossible and falls back to
 // medium carrying medium_diff_reviewers as MediumDiffCount.
 func TestResolveAutoPhase_LargeFallbackToMedium_WhenFileCountTooSmall(t *testing.T) {
-	// 1 file, large_diff_groups=4 → effectiveGroups=1 → fallback.
+	// 1 file, large_diff_reviewers=4 → effectiveGroups=1 → fallback.
 	sections := makeSectionsForReview(1, 10)
 	fullDiff := git.JoinDiffSections(sections)
 	agents := []agent.Agent{agent.NewCodexAgent("")}
@@ -1049,13 +1049,13 @@ func TestResolveAutoPhase_MediumUsesMediumDiffReviewersKnob(t *testing.T) {
 }
 
 // TestResolveAutoPhase_LargeRespectsFileCountUpperBound verifies that
-// effectiveGroups = min(largeDiffGroups, fileCount). With large_diff_groups>>fileCount
+// effectiveGroups = min(largeDiffReviewers, fileCount). With large_diff_reviewers>>fileCount
 // the cap is fileCount; the resulting group count never exceeds fileCount.
 func TestResolveAutoPhase_LargeRespectsFileCountUpperBound(t *testing.T) {
 	// 12 files (> default 5 files/group) so the greedy packer naturally
-	// produces multiple groups; large_diff_groups=10 is capped to fileCount=12.
+	// produces multiple groups; large_diff_reviewers=10 is capped to fileCount=12.
 	// We assert the resulting count never exceeds fileCount and remains
-	// within the large_diff_groups cap.
+	// within the large_diff_reviewers cap.
 	sections := makeSectionsForReview(12, 10)
 	fullDiff := git.JoinDiffSections(sections)
 	agents := []agent.Agent{agent.NewCodexAgent("")}
@@ -1063,14 +1063,14 @@ func TestResolveAutoPhase_LargeRespectsFileCountUpperBound(t *testing.T) {
 	apr, _ := resolveAutoPhase(git.DiffSizeLarge, fullDiff, "", true, testBuildAgents(agents[0], agents), 10, 2)
 
 	if !apr.UseGrouped {
-		t.Fatalf("expected UseGrouped=true with 12 files / large_diff_groups=10; FallbackReason=%q", apr.FallbackReason)
+		t.Fatalf("expected UseGrouped=true with 12 files / large_diff_reviewers=10; FallbackReason=%q", apr.FallbackReason)
 	}
 	diffGroupCount := len(apr.GroupedSpecs) - 1
 	if diffGroupCount > 12 {
 		t.Errorf("expected diff group count capped at fileCount=12, got %d", diffGroupCount)
 	}
 	if diffGroupCount > 10 {
-		t.Errorf("expected diff group count capped at large_diff_groups=10, got %d", diffGroupCount)
+		t.Errorf("expected diff group count capped at large_diff_reviewers=10, got %d", diffGroupCount)
 	}
 	if diffGroupCount < 2 {
 		t.Errorf("expected >=2 diff groups, got %d", diffGroupCount)
@@ -1295,27 +1295,27 @@ func TestMaxPotentialReviewers(t *testing.T) {
 	}{
 		{
 			name: "flat dominates",
-			cfg:  config.ResolvedConfig{Reviewers: 5, LargeDiffGroups: 3, MediumDiffReviewers: 2, SmallDiffReviewers: 1},
+			cfg:  config.ResolvedConfig{Reviewers: 5, LargeDiffReviewers: 3, MediumDiffReviewers: 2, SmallDiffReviewers: 1},
 			want: 5, // max(5, 1+3, 1+2, 1) = 5
 		},
 		{
 			name: "grouped dominates",
-			cfg:  config.ResolvedConfig{Reviewers: 3, LargeDiffGroups: 8, MediumDiffReviewers: 2, SmallDiffReviewers: 1},
+			cfg:  config.ResolvedConfig{Reviewers: 3, LargeDiffReviewers: 8, MediumDiffReviewers: 2, SmallDiffReviewers: 1},
 			want: 9, // max(3, 1+8, 1+2, 1) = 9
 		},
 		{
 			name: "medium dominates",
-			cfg:  config.ResolvedConfig{Reviewers: 2, LargeDiffGroups: 1, MediumDiffReviewers: 5, SmallDiffReviewers: 1},
+			cfg:  config.ResolvedConfig{Reviewers: 2, LargeDiffReviewers: 1, MediumDiffReviewers: 5, SmallDiffReviewers: 1},
 			want: 6, // max(2, 1+1, 1+5, 1) = 6
 		},
 		{
 			name: "all equal",
-			cfg:  config.ResolvedConfig{Reviewers: 3, LargeDiffGroups: 2, MediumDiffReviewers: 2, SmallDiffReviewers: 1},
+			cfg:  config.ResolvedConfig{Reviewers: 3, LargeDiffReviewers: 2, MediumDiffReviewers: 2, SmallDiffReviewers: 1},
 			want: 3, // max(3, 1+2, 1+2, 1) = 3
 		},
 		{
 			name: "small dominates",
-			cfg:  config.ResolvedConfig{Reviewers: 2, LargeDiffGroups: 1, MediumDiffReviewers: 1, SmallDiffReviewers: 10},
+			cfg:  config.ResolvedConfig{Reviewers: 2, LargeDiffReviewers: 1, MediumDiffReviewers: 1, SmallDiffReviewers: 10},
 			want: 10, // max(2, 1+1, 1+1, 10) = 10
 		},
 	}

@@ -317,3 +317,114 @@ func TestConfigValidate_SyntaxErrorSkipsCrossCheckRuntimeFalsePositive(t *testin
 		t.Errorf("expected exactly 1 error (config file syntax only) on syntax error, got %d: %q", n, err.Error())
 	}
 }
+
+func TestConfigShow_DisplaysAllFields(t *testing.T) {
+	dir := t.TempDir()
+	chdir(t, dir)
+	initGitRepo(t, dir)
+
+	cmd := newConfigCmd()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetArgs([]string{"show"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	output := buf.String()
+
+	expectedKeys := []string{
+		"reviewers:", "concurrency:", "base:", "timeout:", "retries:", "fetch:",
+		"auto_phase:", "strict:",
+		"reviewer_agents:", "arch_reviewer_agent:", "diff_reviewer_agents:", "summarizer_agent:",
+		"reviewer_model:", "summarizer_model:",
+		"large_diff_reviewers:", "medium_diff_reviewers:", "small_diff_reviewers:",
+		"summarizer_timeout:", "fp_filter_timeout:", "cross_check_timeout:",
+		"fp_filter.enabled:", "fp_filter.threshold:",
+		"pr_feedback.enabled:", "pr_feedback.agent:",
+		"cross_check.enabled:", "cross_check.agent:", "cross_check.model:",
+		"guidance_file:",
+		"models.defaults.reviewer:", "models.defaults.arch_reviewer:",
+		"models.defaults.diff_reviewer:", "models.defaults.summarizer:",
+		"models.defaults.fp_filter:", "models.defaults.cross_check:",
+		"models.defaults.pr_feedback:",
+		"models.sizes:", "models.agents:",
+	}
+
+	for _, key := range expectedKeys {
+		if !strings.Contains(output, key) {
+			t.Errorf("expected output to contain %q, but it did not.\nOutput:\n%s", key, output)
+		}
+	}
+}
+
+func TestConfigShow_EnvOverrideReflected(t *testing.T) {
+	dir := t.TempDir()
+	chdir(t, dir)
+	initGitRepo(t, dir)
+
+	t.Setenv("ACR_STRICT", "true")
+	t.Setenv("ACR_LARGE_DIFF_REVIEWERS", "8")
+
+	cmd := newConfigCmd()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetArgs([]string{"show"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	output := buf.String()
+
+	if !strings.Contains(output, "strict:                          true") {
+		t.Errorf("expected output to contain 'strict: true' reflecting ACR_STRICT=true.\nOutput:\n%s", output)
+	}
+	if !strings.Contains(output, "large_diff_reviewers:") || !strings.Contains(output, "8") {
+		t.Errorf("expected output to reflect ACR_LARGE_DIFF_REVIEWERS=8.\nOutput:\n%s", output)
+	}
+}
+
+func TestConfigShow_FallbackDisplay(t *testing.T) {
+	dir := t.TempDir()
+	chdir(t, dir)
+	initGitRepo(t, dir)
+
+	cmd := newConfigCmd()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetArgs([]string{"show"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	output := buf.String()
+
+	// arch_reviewer_agent fallback
+	if !strings.Contains(output, "(first of reviewer_agents)") {
+		t.Errorf("expected arch_reviewer_agent fallback text.\nOutput:\n%s", output)
+	}
+	// diff_reviewer_agents fallback
+	if !strings.Contains(output, "(reviewer_agents)") {
+		t.Errorf("expected diff_reviewer_agents fallback text.\nOutput:\n%s", output)
+	}
+	// reviewer_model and summarizer_model fallback
+	if !strings.Contains(output, "(agent default)") {
+		t.Errorf("expected model fallback text.\nOutput:\n%s", output)
+	}
+	// pr_feedback.agent and cross_check.agent fallback
+	if !strings.Contains(output, "(same as summarizer_agent)") {
+		t.Errorf("expected agent fallback text.\nOutput:\n%s", output)
+	}
+	// guidance_file and models.defaults.* fallback
+	if !strings.Contains(output, "(not set)") {
+		t.Errorf("expected '(not set)' fallback text.\nOutput:\n%s", output)
+	}
+	// models.sizes and models.agents fallback
+	if !strings.Contains(output, "(none)") {
+		t.Errorf("expected '(none)' fallback text.\nOutput:\n%s", output)
+	}
+	// concurrency: 0 fallback
+	if !strings.Contains(output, "(auto)") {
+		t.Errorf("expected concurrency fallback text.\nOutput:\n%s", output)
+	}
+}

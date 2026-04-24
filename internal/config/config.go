@@ -86,7 +86,7 @@ type ModelsConfig struct {
 
 type Config struct {
 	Reviewers           *int      `yaml:"reviewers"`
-	LargeDiffGroups     *int      `yaml:"large_diff_groups"`
+	LargeDiffReviewers  *int      `yaml:"large_diff_reviewers"`
 	MediumDiffReviewers *int      `yaml:"medium_diff_reviewers"`
 	SmallDiffReviewers  *int      `yaml:"small_diff_reviewers"`
 	Concurrency         *int      `yaml:"concurrency"`
@@ -224,7 +224,7 @@ func (c *Config) validatePatterns() error {
 	return nil
 }
 
-var knownTopLevelKeys = []string{"reviewers", "large_diff_groups", "medium_diff_reviewers", "small_diff_reviewers", "concurrency", "base", "timeout", "retries", "fetch", "reviewer_agent", "reviewer_agents", "arch_reviewer_agent", "diff_reviewer_agents", "summarizer_agent", "reviewer_model", "summarizer_model", "summarizer_timeout", "fp_filter_timeout", "cross_check_timeout", "guidance_file", "auto_phase", "filters", "fp_filter", "pr_feedback", "cross_check", "models"}
+var knownTopLevelKeys = []string{"reviewers", "large_diff_reviewers", "medium_diff_reviewers", "small_diff_reviewers", "concurrency", "base", "timeout", "retries", "fetch", "reviewer_agent", "reviewer_agents", "arch_reviewer_agent", "diff_reviewer_agents", "summarizer_agent", "reviewer_model", "summarizer_model", "summarizer_timeout", "fp_filter_timeout", "cross_check_timeout", "guidance_file", "auto_phase", "filters", "fp_filter", "pr_feedback", "cross_check", "models"}
 
 var knownFPFilterKeys = []string{"enabled", "threshold"}
 
@@ -486,8 +486,8 @@ func (r *ResolvedConfig) ValidateAll() []string {
 	if r.Reviewers < 1 {
 		errs = append(errs, fmt.Sprintf("reviewers must be >= 1, got %d", r.Reviewers))
 	}
-	if r.LargeDiffGroups < 1 {
-		errs = append(errs, fmt.Sprintf("large_diff_groups must be >= 1, got %d", r.LargeDiffGroups))
+	if r.LargeDiffReviewers < 1 {
+		errs = append(errs, fmt.Sprintf("large_diff_reviewers must be >= 1, got %d", r.LargeDiffReviewers))
 	}
 	if r.MediumDiffReviewers < 1 {
 		errs = append(errs, fmt.Sprintf("medium_diff_reviewers must be >= 1, got %d", r.MediumDiffReviewers))
@@ -789,7 +789,7 @@ func (r *ResolvedConfig) Validate() error {
 
 var Defaults = ResolvedConfig{
 	Reviewers:           5,
-	LargeDiffGroups:     4,
+	LargeDiffReviewers:  4,
 	MediumDiffReviewers: 2,
 	SmallDiffReviewers:  1,
 	Concurrency:         0,
@@ -815,7 +815,7 @@ var Defaults = ResolvedConfig{
 
 type ResolvedConfig struct {
 	Reviewers           int
-	LargeDiffGroups     int
+	LargeDiffReviewers  int
 	MediumDiffReviewers int
 	SmallDiffReviewers  int
 	Concurrency         int
@@ -860,7 +860,7 @@ type ResolvedConfig struct {
 
 type FlagState struct {
 	ReviewersSet           bool
-	LargeDiffGroupsSet     bool
+	LargeDiffReviewersSet  bool
 	MediumDiffReviewersSet bool
 	SmallDiffReviewersSet  bool
 	ConcurrencySet         bool
@@ -893,8 +893,8 @@ type FlagState struct {
 type EnvState struct {
 	Reviewers              int
 	ReviewersSet           bool
-	LargeDiffGroups        int
-	LargeDiffGroupsSet     bool
+	LargeDiffReviewers     int
+	LargeDiffReviewersSet  bool
 	MediumDiffReviewers    int
 	MediumDiffReviewersSet bool
 	SmallDiffReviewers     int
@@ -965,12 +965,12 @@ func LoadEnvState() (EnvState, []string) {
 			warnings = append(warnings, fmt.Sprintf("ACR_REVIEWERS=%q is not a valid integer, ignoring", v))
 		}
 	}
-	if v := os.Getenv("ACR_LARGE_DIFF_GROUPS"); v != "" {
+	if v := os.Getenv("ACR_LARGE_DIFF_REVIEWERS"); v != "" {
 		if i, err := strconv.Atoi(v); err == nil {
-			state.LargeDiffGroups = i
-			state.LargeDiffGroupsSet = true
+			state.LargeDiffReviewers = i
+			state.LargeDiffReviewersSet = true
 		} else {
-			warnings = append(warnings, fmt.Sprintf("ACR_LARGE_DIFF_GROUPS=%q is not a valid integer, ignoring", v))
+			warnings = append(warnings, fmt.Sprintf("ACR_LARGE_DIFF_REVIEWERS=%q is not a valid integer, ignoring", v))
 		}
 	}
 	if v := os.Getenv("ACR_MEDIUM_DIFF_REVIEWERS"); v != "" {
@@ -1207,8 +1207,8 @@ func Resolve(cfg *Config, envState EnvState, flagState FlagState, flagValues Res
 		if cfg.Reviewers != nil {
 			result.Reviewers = *cfg.Reviewers
 		}
-		if cfg.LargeDiffGroups != nil {
-			result.LargeDiffGroups = *cfg.LargeDiffGroups
+		if cfg.LargeDiffReviewers != nil {
+			result.LargeDiffReviewers = *cfg.LargeDiffReviewers
 		}
 		if cfg.MediumDiffReviewers != nil {
 			result.MediumDiffReviewers = *cfg.MediumDiffReviewers
@@ -1293,8 +1293,8 @@ func Resolve(cfg *Config, envState EnvState, flagState FlagState, flagValues Res
 	if envState.ReviewersSet {
 		result.Reviewers = envState.Reviewers
 	}
-	if envState.LargeDiffGroupsSet {
-		result.LargeDiffGroups = envState.LargeDiffGroups
+	if envState.LargeDiffReviewersSet {
+		result.LargeDiffReviewers = envState.LargeDiffReviewers
 	}
 	if envState.MediumDiffReviewersSet {
 		result.MediumDiffReviewers = envState.MediumDiffReviewers
@@ -1375,8 +1375,8 @@ func Resolve(cfg *Config, envState EnvState, flagState FlagState, flagValues Res
 	if flagState.ReviewersSet {
 		result.Reviewers = flagValues.Reviewers
 	}
-	if flagState.LargeDiffGroupsSet {
-		result.LargeDiffGroups = flagValues.LargeDiffGroups
+	if flagState.LargeDiffReviewersSet {
+		result.LargeDiffReviewers = flagValues.LargeDiffReviewers
 	}
 	if flagState.MediumDiffReviewersSet {
 		result.MediumDiffReviewers = flagValues.MediumDiffReviewers
