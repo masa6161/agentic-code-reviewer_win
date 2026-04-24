@@ -376,8 +376,8 @@ func TestConfigShow_EnvOverrideReflected(t *testing.T) {
 
 	output := buf.String()
 
-	if !strings.Contains(output, "strict:") || !strings.Contains(output, "true") {
-		t.Errorf("expected output to reflect ACR_STRICT=true.\nOutput:\n%s", output)
+	if !strings.Contains(output, "strict:                          true") {
+		t.Errorf("expected output to contain 'strict: true' reflecting ACR_STRICT=true.\nOutput:\n%s", output)
 	}
 	if !strings.Contains(output, "large_diff_reviewers:") || !strings.Contains(output, "8") {
 		t.Errorf("expected output to reflect ACR_LARGE_DIFF_REVIEWERS=8.\nOutput:\n%s", output)

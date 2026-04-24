@@ -86,7 +86,7 @@ type ModelsConfig struct {
 
 type Config struct {
 	Reviewers           *int      `yaml:"reviewers"`
-	LargeDiffReviewers     *int      `yaml:"large_diff_reviewers"`
+	LargeDiffReviewers  *int      `yaml:"large_diff_reviewers"`
 	MediumDiffReviewers *int      `yaml:"medium_diff_reviewers"`
 	SmallDiffReviewers  *int      `yaml:"small_diff_reviewers"`
 	Concurrency         *int      `yaml:"concurrency"`
@@ -789,7 +789,7 @@ func (r *ResolvedConfig) Validate() error {
 
 var Defaults = ResolvedConfig{
 	Reviewers:           5,
-	LargeDiffReviewers:     4,
+	LargeDiffReviewers:  4,
 	MediumDiffReviewers: 2,
 	SmallDiffReviewers:  1,
 	Concurrency:         0,
@@ -815,7 +815,7 @@ var Defaults = ResolvedConfig{
 
 type ResolvedConfig struct {
 	Reviewers           int
-	LargeDiffReviewers     int
+	LargeDiffReviewers  int
 	MediumDiffReviewers int
 	SmallDiffReviewers  int
 	Concurrency         int
@@ -860,7 +860,7 @@ type ResolvedConfig struct {
 
 type FlagState struct {
 	ReviewersSet           bool
-	LargeDiffReviewersSet     bool
+	LargeDiffReviewersSet  bool
 	MediumDiffReviewersSet bool
 	SmallDiffReviewersSet  bool
 	ConcurrencySet         bool
@@ -893,8 +893,8 @@ type FlagState struct {
 type EnvState struct {
 	Reviewers              int
 	ReviewersSet           bool
-	LargeDiffReviewers        int
-	LargeDiffReviewersSet     bool
+	LargeDiffReviewers     int
+	LargeDiffReviewersSet  bool
 	MediumDiffReviewers    int
 	MediumDiffReviewersSet bool
 	SmallDiffReviewers     int
