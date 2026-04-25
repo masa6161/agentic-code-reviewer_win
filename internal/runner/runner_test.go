@@ -506,3 +506,73 @@ func TestNewWithSpecs_DuplicateReviewerIDError(t *testing.T) {
 		t.Errorf("expected 'duplicate' in error message, got: %v", err)
 	}
 }
+
+func TestBuildStats_PerPhaseCount(t *testing.T) {
+	results := []domain.ReviewerResult{
+		{ReviewerID: 1, Phase: "arch", ExitCode: 0},
+		{ReviewerID: 2, Phase: "diff", ExitCode: 0},
+		{ReviewerID: 3, Phase: "diff", ExitCode: 0},
+		{ReviewerID: 4, Phase: "diff", ExitCode: 0},
+		{ReviewerID: 5, Phase: "diff", ExitCode: 0},
+	}
+	stats := BuildStats(results, 5, 0)
+
+	if stats.ArchReviewers != 1 {
+		t.Errorf("ArchReviewers = %d, want 1", stats.ArchReviewers)
+	}
+	if stats.DiffReviewers != 4 {
+		t.Errorf("DiffReviewers = %d, want 4", stats.DiffReviewers)
+	}
+	if stats.SuccessfulArchReviewers != 1 {
+		t.Errorf("SuccessfulArchReviewers = %d, want 1", stats.SuccessfulArchReviewers)
+	}
+	if stats.SuccessfulDiffReviewers != 4 {
+		t.Errorf("SuccessfulDiffReviewers = %d, want 4", stats.SuccessfulDiffReviewers)
+	}
+}
+
+func TestBuildStats_PerPhaseCount_FlatReview(t *testing.T) {
+	results := []domain.ReviewerResult{
+		{ReviewerID: 1, Phase: "", ExitCode: 0},
+		{ReviewerID: 2, Phase: "", ExitCode: 0},
+		{ReviewerID: 3, Phase: "", ExitCode: 0},
+	}
+	stats := BuildStats(results, 3, 0)
+
+	if stats.ArchReviewers != 0 {
+		t.Errorf("ArchReviewers = %d, want 0", stats.ArchReviewers)
+	}
+	if stats.DiffReviewers != 0 {
+		t.Errorf("DiffReviewers = %d, want 0", stats.DiffReviewers)
+	}
+	if stats.TotalReviewers != 3 {
+		t.Errorf("TotalReviewers = %d, want 3", stats.TotalReviewers)
+	}
+	if stats.SuccessfulReviewers != 3 {
+		t.Errorf("SuccessfulReviewers = %d, want 3", stats.SuccessfulReviewers)
+	}
+}
+
+func TestBuildStats_PerPhaseCount_PartialFailure(t *testing.T) {
+	results := []domain.ReviewerResult{
+		{ReviewerID: 1, Phase: "arch", ExitCode: 0},
+		{ReviewerID: 2, Phase: "diff", ExitCode: 0},
+		{ReviewerID: 3, Phase: "diff", ExitCode: 0},
+		{ReviewerID: 4, Phase: "diff", ExitCode: -1, TimedOut: true},
+		{ReviewerID: 5, Phase: "diff", ExitCode: 1},
+	}
+	stats := BuildStats(results, 5, 0)
+
+	if stats.ArchReviewers != 1 {
+		t.Errorf("ArchReviewers = %d, want 1", stats.ArchReviewers)
+	}
+	if stats.SuccessfulArchReviewers != 1 {
+		t.Errorf("SuccessfulArchReviewers = %d, want 1", stats.SuccessfulArchReviewers)
+	}
+	if stats.DiffReviewers != 4 {
+		t.Errorf("DiffReviewers = %d, want 4", stats.DiffReviewers)
+	}
+	if stats.SuccessfulDiffReviewers != 2 {
+		t.Errorf("SuccessfulDiffReviewers = %d, want 2", stats.SuccessfulDiffReviewers)
+	}
+}

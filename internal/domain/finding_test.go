@@ -1,6 +1,8 @@
 package domain
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -372,5 +374,227 @@ func TestReviewStats_AllFailed(t *testing.T) {
 				t.Errorf("AllFailed() = %v, want %v", got, tt.expected)
 			}
 		})
+	}
+}
+
+func TestBackfillPhaseReviewerCounts_ArchOnly(t *testing.T) {
+	aggregated := []AggregatedFinding{
+		{Text: "f1", Reviewers: []int{1}},
+	}
+	grouped := &GroupedFindings{
+		Findings: []FindingGroup{
+			{Sources: []int{0}},
+		},
+	}
+	reviewerPhases := map[int]string{1: "arch"}
+
+	BackfillPhaseReviewerCounts(grouped, aggregated, reviewerPhases)
+
+	fg := grouped.Findings[0]
+	if fg.ArchReviewerCount != 1 {
+		t.Errorf("ArchReviewerCount = %d, want 1", fg.ArchReviewerCount)
+	}
+	if fg.DiffReviewerCount != 0 {
+		t.Errorf("DiffReviewerCount = %d, want 0", fg.DiffReviewerCount)
+	}
+}
+
+func TestBackfillPhaseReviewerCounts_DiffOnly(t *testing.T) {
+	aggregated := []AggregatedFinding{
+		{Text: "f1", Reviewers: []int{2}},
+	}
+	grouped := &GroupedFindings{
+		Findings: []FindingGroup{
+			{Sources: []int{0}},
+		},
+	}
+	reviewerPhases := map[int]string{2: "diff"}
+
+	BackfillPhaseReviewerCounts(grouped, aggregated, reviewerPhases)
+
+	fg := grouped.Findings[0]
+	if fg.ArchReviewerCount != 0 {
+		t.Errorf("ArchReviewerCount = %d, want 0", fg.ArchReviewerCount)
+	}
+	if fg.DiffReviewerCount != 1 {
+		t.Errorf("DiffReviewerCount = %d, want 1", fg.DiffReviewerCount)
+	}
+}
+
+func TestBackfillPhaseReviewerCounts_Mixed(t *testing.T) {
+	aggregated := []AggregatedFinding{
+		{Text: "f1", Reviewers: []int{1, 2}},
+		{Text: "f2", Reviewers: []int{3}},
+	}
+	grouped := &GroupedFindings{
+		Findings: []FindingGroup{
+			{Sources: []int{0, 1}},
+		},
+	}
+	reviewerPhases := map[int]string{1: "arch", 2: "diff", 3: "diff"}
+
+	BackfillPhaseReviewerCounts(grouped, aggregated, reviewerPhases)
+
+	fg := grouped.Findings[0]
+	if fg.ArchReviewerCount != 1 {
+		t.Errorf("ArchReviewerCount = %d, want 1", fg.ArchReviewerCount)
+	}
+	if fg.DiffReviewerCount != 2 {
+		t.Errorf("DiffReviewerCount = %d, want 2", fg.DiffReviewerCount)
+	}
+}
+
+func TestBackfillPhaseReviewerCounts_DeduplicatesReviewerIDs(t *testing.T) {
+	// Two aggregated findings both reference reviewer 1 (arch).
+	// The function should count reviewer 1 only once.
+	aggregated := []AggregatedFinding{
+		{Text: "f1", Reviewers: []int{1}},
+		{Text: "f2", Reviewers: []int{1}},
+	}
+	grouped := &GroupedFindings{
+		Findings: []FindingGroup{
+			{Sources: []int{0, 1}},
+		},
+	}
+	reviewerPhases := map[int]string{1: "arch"}
+
+	BackfillPhaseReviewerCounts(grouped, aggregated, reviewerPhases)
+
+	fg := grouped.Findings[0]
+	if fg.ArchReviewerCount != 1 {
+		t.Errorf("ArchReviewerCount = %d, want 1 (deduplicated)", fg.ArchReviewerCount)
+	}
+	if fg.DiffReviewerCount != 0 {
+		t.Errorf("DiffReviewerCount = %d, want 0", fg.DiffReviewerCount)
+	}
+}
+
+func TestBackfillPhaseReviewerCounts_EmptySources(t *testing.T) {
+	aggregated := []AggregatedFinding{
+		{Text: "f1", Reviewers: []int{1}},
+	}
+	grouped := &GroupedFindings{
+		Findings: []FindingGroup{
+			{Sources: []int{}},
+		},
+	}
+	reviewerPhases := map[int]string{1: "arch"}
+
+	BackfillPhaseReviewerCounts(grouped, aggregated, reviewerPhases)
+
+	fg := grouped.Findings[0]
+	if fg.ArchReviewerCount != 0 {
+		t.Errorf("ArchReviewerCount = %d, want 0", fg.ArchReviewerCount)
+	}
+	if fg.DiffReviewerCount != 0 {
+		t.Errorf("DiffReviewerCount = %d, want 0", fg.DiffReviewerCount)
+	}
+}
+
+func TestBackfillPhaseReviewerCounts_OutOfRangeIndex(t *testing.T) {
+	aggregated := []AggregatedFinding{
+		{Text: "f1", Reviewers: []int{1}},
+	}
+	grouped := &GroupedFindings{
+		Findings: []FindingGroup{
+			{Sources: []int{-1, 5, 100}},
+		},
+	}
+	reviewerPhases := map[int]string{1: "arch"}
+
+	// Must not panic
+	BackfillPhaseReviewerCounts(grouped, aggregated, reviewerPhases)
+
+	fg := grouped.Findings[0]
+	if fg.ArchReviewerCount != 0 {
+		t.Errorf("ArchReviewerCount = %d, want 0", fg.ArchReviewerCount)
+	}
+	if fg.DiffReviewerCount != 0 {
+		t.Errorf("DiffReviewerCount = %d, want 0", fg.DiffReviewerCount)
+	}
+}
+
+func TestBackfillPhaseReviewerCounts_NoPhaseInfo(t *testing.T) {
+	aggregated := []AggregatedFinding{
+		{Text: "f1", Reviewers: []int{1, 2}},
+	}
+	grouped := &GroupedFindings{
+		Findings: []FindingGroup{
+			{Sources: []int{0}},
+		},
+	}
+	// Empty map simulates flat review (no phase info)
+	reviewerPhases := map[int]string{}
+
+	BackfillPhaseReviewerCounts(grouped, aggregated, reviewerPhases)
+
+	fg := grouped.Findings[0]
+	if fg.ArchReviewerCount != 0 {
+		t.Errorf("ArchReviewerCount = %d, want 0", fg.ArchReviewerCount)
+	}
+	if fg.DiffReviewerCount != 0 {
+		t.Errorf("DiffReviewerCount = %d, want 0", fg.DiffReviewerCount)
+	}
+}
+
+func TestBackfillPhaseReviewerCounts_InfoGroups(t *testing.T) {
+	aggregated := []AggregatedFinding{
+		{Text: "info1", Reviewers: []int{1}},
+		{Text: "info2", Reviewers: []int{2}},
+	}
+	grouped := &GroupedFindings{
+		Info: []FindingGroup{
+			{Sources: []int{0}},
+			{Sources: []int{1}},
+		},
+	}
+	reviewerPhases := map[int]string{1: "arch", 2: "diff"}
+
+	BackfillPhaseReviewerCounts(grouped, aggregated, reviewerPhases)
+
+	info0 := grouped.Info[0]
+	if info0.ArchReviewerCount != 1 {
+		t.Errorf("Info[0].ArchReviewerCount = %d, want 1", info0.ArchReviewerCount)
+	}
+	if info0.DiffReviewerCount != 0 {
+		t.Errorf("Info[0].DiffReviewerCount = %d, want 0", info0.DiffReviewerCount)
+	}
+
+	info1 := grouped.Info[1]
+	if info1.ArchReviewerCount != 0 {
+		t.Errorf("Info[1].ArchReviewerCount = %d, want 0", info1.ArchReviewerCount)
+	}
+	if info1.DiffReviewerCount != 1 {
+		t.Errorf("Info[1].DiffReviewerCount = %d, want 1", info1.DiffReviewerCount)
+	}
+}
+
+func TestFindingGroup_JSON_OmitsZeroPhaseReviewerCounts(t *testing.T) {
+	fg := FindingGroup{Title: "test", ReviewerCount: 3}
+	b, err := json.Marshal(fg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(b)
+	if strings.Contains(s, "arch_reviewer_count") {
+		t.Errorf("expected arch_reviewer_count omitted when zero; got %s", s)
+	}
+	if strings.Contains(s, "diff_reviewer_count") {
+		t.Errorf("expected diff_reviewer_count omitted when zero; got %s", s)
+	}
+}
+
+func TestFindingGroup_JSON_IncludesNonZeroPhaseReviewerCounts(t *testing.T) {
+	fg := FindingGroup{Title: "test", ReviewerCount: 3, ArchReviewerCount: 1, DiffReviewerCount: 2}
+	b, err := json.Marshal(fg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(b)
+	if !strings.Contains(s, `"arch_reviewer_count":1`) {
+		t.Errorf("expected arch_reviewer_count:1 in JSON; got %s", s)
+	}
+	if !strings.Contains(s, `"diff_reviewer_count":2`) {
+		t.Errorf("expected diff_reviewer_count:2 in JSON; got %s", s)
 	}
 }

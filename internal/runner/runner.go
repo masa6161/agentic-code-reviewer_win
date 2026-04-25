@@ -370,6 +370,9 @@ func (r *Runner) runReviewer(ctx context.Context, reviewerID int) domain.Reviewe
 		}
 	}
 
+	// Stamp phase on the result itself
+	result.Phase = reviewConfig.Phase
+
 	// Stamp phase on all findings (parser has no access to ReviewConfig)
 	if reviewConfig.Phase != "" {
 		for i := range result.Findings {
@@ -454,6 +457,19 @@ func BuildStats(results []domain.ReviewerResult, totalReviewers int, wallClock t
 			stats.FailedReviewers = append(stats.FailedReviewers, r.ReviewerID)
 		} else {
 			stats.SuccessfulReviewers++
+		}
+
+		switch r.Phase {
+		case "arch":
+			stats.ArchReviewers++
+			if !r.TimedOut && !r.AuthFailed && r.ExitCode == 0 {
+				stats.SuccessfulArchReviewers++
+			}
+		case "diff":
+			stats.DiffReviewers++
+			if !r.TimedOut && !r.AuthFailed && r.ExitCode == 0 {
+				stats.SuccessfulDiffReviewers++
+			}
 		}
 	}
 

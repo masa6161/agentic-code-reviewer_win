@@ -26,13 +26,15 @@ type AggregatedFinding struct {
 
 // FindingGroup represents a grouped/clustered finding from the summarizer.
 type FindingGroup struct {
-	Title         string   `json:"title"`
-	Summary       string   `json:"summary"`
-	Messages      []string `json:"messages"`
-	ReviewerCount int      `json:"reviewer_count"`
-	Sources       []int    `json:"sources"`
-	GroupKey      string   `json:"group_key,omitempty"` // propagated from source findings
-	Severity      string   `json:"severity,omitempty"`  // "blocking" | "advisory" | "" (empty = advisory)
+	Title             string   `json:"title"`
+	Summary           string   `json:"summary"`
+	Messages          []string `json:"messages"`
+	ReviewerCount     int      `json:"reviewer_count"`
+	ArchReviewerCount int      `json:"arch_reviewer_count,omitempty"`
+	DiffReviewerCount int      `json:"diff_reviewer_count,omitempty"`
+	Sources           []int    `json:"sources"`
+	GroupKey          string   `json:"group_key,omitempty"` // propagated from source findings
+	Severity          string   `json:"severity,omitempty"`  // "blocking" | "advisory" | "" (empty = advisory)
 }
 
 // GroupedFindings represents the output from the summarizer.
@@ -175,6 +177,38 @@ func BuildDispositions(
 	}
 
 	return dispositions
+}
+
+// BackfillPhaseReviewerCounts populates ArchReviewerCount and DiffReviewerCount
+// on each FindingGroup by partitioning source reviewer IDs by phase.
+func BackfillPhaseReviewerCounts(
+	grouped *GroupedFindings,
+	aggregated []AggregatedFinding,
+	reviewerPhases map[int]string,
+) {
+	fill := func(groups []FindingGroup) {
+		for i := range groups {
+			archSet := make(map[int]struct{})
+			diffSet := make(map[int]struct{})
+			for _, srcIdx := range groups[i].Sources {
+				if srcIdx < 0 || srcIdx >= len(aggregated) {
+					continue
+				}
+				for _, rid := range aggregated[srcIdx].Reviewers {
+					switch reviewerPhases[rid] {
+					case "arch":
+						archSet[rid] = struct{}{}
+					case "diff":
+						diffSet[rid] = struct{}{}
+					}
+				}
+			}
+			groups[i].ArchReviewerCount = len(archSet)
+			groups[i].DiffReviewerCount = len(diffSet)
+		}
+	}
+	fill(grouped.Findings)
+	fill(grouped.Info)
 }
 
 // addGroupKeyTokens splits raw by "," and inserts each non-empty trimmed token into tokens.
