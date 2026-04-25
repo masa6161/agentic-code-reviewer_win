@@ -15,7 +15,7 @@ func TestNewSelector_AllSelectedByDefault(t *testing.T) {
 		{Title: "Finding 3"},
 	}
 
-	m := NewSelector(findings)
+	m := NewSelector(findings, domain.ReviewStats{})
 
 	for i := range findings {
 		if !m.selected[i] {
@@ -25,7 +25,7 @@ func TestNewSelector_AllSelectedByDefault(t *testing.T) {
 }
 
 func TestNewSelector_EmptyFindings(t *testing.T) {
-	m := NewSelector(nil)
+	m := NewSelector(nil, domain.ReviewStats{})
 
 	if len(m.findings) != 0 {
 		t.Errorf("expected 0 findings, got %d", len(m.findings))
@@ -42,7 +42,7 @@ func TestSelectedIndices_ReturnsCorrectIndices(t *testing.T) {
 		{Title: "Finding 3"},
 	}
 
-	m := NewSelector(findings)
+	m := NewSelector(findings, domain.ReviewStats{})
 	m.selected[1] = false // Deselect middle finding
 
 	indices := m.SelectedIndices()
@@ -62,7 +62,7 @@ func TestSelectedIndices_Sorted(t *testing.T) {
 		{Title: "Finding 3"},
 	}
 
-	m := NewSelector(findings)
+	m := NewSelector(findings, domain.ReviewStats{})
 	// Indices should be sorted regardless of iteration order
 	indices := m.SelectedIndices()
 
@@ -78,7 +78,7 @@ func TestUpdate_CursorMoveDown(t *testing.T) {
 		{Title: "Finding 1"},
 		{Title: "Finding 2"},
 	}
-	m := NewSelector(findings)
+	m := NewSelector(findings, domain.ReviewStats{})
 
 	newModel, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
 	m = newModel.(SelectorModel)
@@ -93,7 +93,7 @@ func TestUpdate_CursorMoveUp(t *testing.T) {
 		{Title: "Finding 1"},
 		{Title: "Finding 2"},
 	}
-	m := NewSelector(findings)
+	m := NewSelector(findings, domain.ReviewStats{})
 	m.cursor = 1
 
 	newModel, _ := m.Update(tea.KeyMsg{Type: tea.KeyUp})
@@ -109,7 +109,7 @@ func TestUpdate_CursorStopsAtTop(t *testing.T) {
 		{Title: "Finding 1"},
 		{Title: "Finding 2"},
 	}
-	m := NewSelector(findings)
+	m := NewSelector(findings, domain.ReviewStats{})
 	m.cursor = 0
 
 	newModel, _ := m.Update(tea.KeyMsg{Type: tea.KeyUp})
@@ -125,7 +125,7 @@ func TestUpdate_CursorStopsAtBottom(t *testing.T) {
 		{Title: "Finding 1"},
 		{Title: "Finding 2"},
 	}
-	m := NewSelector(findings)
+	m := NewSelector(findings, domain.ReviewStats{})
 	m.cursor = 1
 
 	newModel, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
@@ -144,7 +144,7 @@ func TestUpdate_VimKeybindings(t *testing.T) {
 	}
 
 	// Test j for down
-	m := NewSelector(findings)
+	m := NewSelector(findings, domain.ReviewStats{})
 	newModel, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
 	m = newModel.(SelectorModel)
 
@@ -165,7 +165,7 @@ func TestUpdate_SpaceTogglesSelection(t *testing.T) {
 	findings := []domain.FindingGroup{
 		{Title: "Finding 1"},
 	}
-	m := NewSelector(findings)
+	m := NewSelector(findings, domain.ReviewStats{})
 
 	// Initially selected, toggle off
 	newModel, _ := m.Update(tea.KeyMsg{Type: tea.KeySpace})
@@ -190,7 +190,7 @@ func TestUpdate_SelectAll(t *testing.T) {
 		{Title: "Finding 2"},
 		{Title: "Finding 3"},
 	}
-	m := NewSelector(findings)
+	m := NewSelector(findings, domain.ReviewStats{})
 	m.selected[0] = false
 	m.selected[1] = false
 
@@ -210,7 +210,7 @@ func TestUpdate_SelectNone(t *testing.T) {
 		{Title: "Finding 2"},
 		{Title: "Finding 3"},
 	}
-	m := NewSelector(findings)
+	m := NewSelector(findings, domain.ReviewStats{})
 
 	newModel, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
 	m = newModel.(SelectorModel)
@@ -226,7 +226,7 @@ func TestUpdate_ExpandToggle(t *testing.T) {
 	findings := []domain.FindingGroup{
 		{Title: "Finding 1", Summary: "Summary 1"},
 	}
-	m := NewSelector(findings)
+	m := NewSelector(findings, domain.ReviewStats{})
 
 	// Initially not expanded
 	if m.expanded[0] {
@@ -254,7 +254,7 @@ func TestUpdate_EnterConfirms(t *testing.T) {
 	findings := []domain.FindingGroup{
 		{Title: "Finding 1"},
 	}
-	m := NewSelector(findings)
+	m := NewSelector(findings, domain.ReviewStats{})
 
 	newModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m = newModel.(SelectorModel)
@@ -271,7 +271,7 @@ func TestUpdate_QuitQuitsImmediately(t *testing.T) {
 	findings := []domain.FindingGroup{
 		{Title: "Finding 1"},
 	}
-	m := NewSelector(findings)
+	m := NewSelector(findings, domain.ReviewStats{})
 
 	newModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
 	m = newModel.(SelectorModel)
@@ -288,7 +288,7 @@ func TestUpdate_EscQuitsImmediately(t *testing.T) {
 	findings := []domain.FindingGroup{
 		{Title: "Finding 1"},
 	}
-	m := NewSelector(findings)
+	m := NewSelector(findings, domain.ReviewStats{})
 
 	newModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	m = newModel.(SelectorModel)
@@ -302,7 +302,7 @@ func TestUpdate_EscQuitsImmediately(t *testing.T) {
 }
 
 func TestView_EmptyFindings(t *testing.T) {
-	m := NewSelector(nil)
+	m := NewSelector(nil, domain.ReviewStats{})
 	view := m.View()
 
 	if view != "No findings to select.\n" {
@@ -314,7 +314,7 @@ func TestView_ContainsTitle(t *testing.T) {
 	findings := []domain.FindingGroup{
 		{Title: "Test Finding Title"},
 	}
-	m := NewSelector(findings)
+	m := NewSelector(findings, domain.ReviewStats{})
 	view := m.View()
 
 	if !containsString(view, "Test Finding Title") {
@@ -326,23 +326,27 @@ func TestView_ContainsReviewerCount(t *testing.T) {
 	findings := []domain.FindingGroup{
 		{Title: "Finding", ReviewerCount: 3},
 	}
-	m := NewSelector(findings)
+	m := NewSelector(findings, domain.ReviewStats{TotalReviewers: 5})
 	view := m.View()
 
-	if !containsString(view, "3 reviewers") {
-		t.Error("expected view to contain reviewer count")
+	if !containsString(view, "3/5 reviewers") {
+		t.Error("expected view to contain reviewer count with denominator")
 	}
 }
 
-func TestView_SingleReviewerGrammar(t *testing.T) {
+func TestView_PhaseReviewerCount(t *testing.T) {
 	findings := []domain.FindingGroup{
-		{Title: "Finding", ReviewerCount: 1},
+		{Title: "Finding", ArchReviewerCount: 1, DiffReviewerCount: 2},
 	}
-	m := NewSelector(findings)
+	stats := domain.ReviewStats{ArchReviewers: 1, DiffReviewers: 4}
+	m := NewSelector(findings, stats)
 	view := m.View()
 
-	if !containsString(view, "1 reviewer)") {
-		t.Error("expected view to show '1 reviewer' (singular)")
+	if !containsString(view, "arch: 1/1") {
+		t.Error("expected view to contain arch reviewer count")
+	}
+	if !containsString(view, "diff: 2/4") {
+		t.Error("expected view to contain diff reviewer count")
 	}
 }
 
@@ -350,7 +354,7 @@ func TestView_ExpandedShowsSummary(t *testing.T) {
 	findings := []domain.FindingGroup{
 		{Title: "Finding", Summary: "This is the detailed summary"},
 	}
-	m := NewSelector(findings)
+	m := NewSelector(findings, domain.ReviewStats{})
 	m.expanded[0] = true
 	view := m.View()
 
@@ -363,7 +367,7 @@ func TestView_CollapsedHidesSummary(t *testing.T) {
 	findings := []domain.FindingGroup{
 		{Title: "Finding", Summary: "This is the detailed summary"},
 	}
-	m := NewSelector(findings)
+	m := NewSelector(findings, domain.ReviewStats{})
 	// expanded[0] is false by default
 	view := m.View()
 
@@ -376,7 +380,7 @@ func TestView_ContainsHelpText(t *testing.T) {
 	findings := []domain.FindingGroup{
 		{Title: "Finding"},
 	}
-	m := NewSelector(findings)
+	m := NewSelector(findings, domain.ReviewStats{})
 	view := m.View()
 
 	if !containsString(view, "navigate") || !containsString(view, "toggle") {

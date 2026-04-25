@@ -297,6 +297,10 @@ func (r *Runner) runReviewer(ctx context.Context, reviewerID int) domain.Reviewe
 		TargetFiles:     spec.TargetFiles,
 	}
 
+	// Stamp phase early so that failed/timed-out reviewers are counted
+	// in per-phase denominators by BuildStats.
+	result.Phase = reviewConfig.Phase
+
 	// Execute the review
 	execResult, err := selectedAgent.ExecuteReview(timeoutCtx, reviewConfig)
 	if err != nil {
@@ -454,6 +458,19 @@ func BuildStats(results []domain.ReviewerResult, totalReviewers int, wallClock t
 			stats.FailedReviewers = append(stats.FailedReviewers, r.ReviewerID)
 		} else {
 			stats.SuccessfulReviewers++
+		}
+
+		switch r.Phase {
+		case "arch":
+			stats.ArchReviewers++
+			if !r.TimedOut && !r.AuthFailed && r.ExitCode == 0 {
+				stats.SuccessfulArchReviewers++
+			}
+		case "diff":
+			stats.DiffReviewers++
+			if !r.TimedOut && !r.AuthFailed && r.ExitCode == 0 {
+				stats.SuccessfulDiffReviewers++
+			}
 		}
 	}
 
