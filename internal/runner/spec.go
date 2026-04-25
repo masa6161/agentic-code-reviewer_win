@@ -1,6 +1,42 @@
 package runner
 
-import "github.com/richhaase/agentic-code-reviewer/internal/agent"
+import (
+	"fmt"
+	"sort"
+	"strings"
+
+	"github.com/richhaase/agentic-code-reviewer/internal/agent"
+)
+
+// FormatDistributionFromSpecs returns a human-readable distribution summary
+// derived from the actual reviewer specs. Unlike agent.FormatDistribution
+// (which simulates round-robin), this counts the real agent assignments.
+// Returns "" when specs is empty or only a single agent type is present.
+func FormatDistributionFromSpecs(specs []ReviewerSpec) string {
+	if len(specs) == 0 {
+		return ""
+	}
+	counts := make(map[string]int)
+	for _, s := range specs {
+		if s.Agent == nil {
+			continue
+		}
+		counts[s.Agent.Name()]++
+	}
+	if len(counts) <= 1 {
+		return ""
+	}
+	names := make([]string, 0, len(counts))
+	for name := range counts {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	parts := make([]string, 0, len(names))
+	for _, name := range names {
+		parts = append(parts, fmt.Sprintf("%d×%s", counts[name], name))
+	}
+	return strings.Join(parts, ", ")
+}
 
 // ReviewerSpec defines the configuration for a single reviewer instance.
 // It replaces round-robin agent assignment with explicit per-reviewer specs.

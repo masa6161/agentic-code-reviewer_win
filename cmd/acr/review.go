@@ -194,16 +194,6 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 		logger.Logf(terminal.StyleDim, "  pr_feedback       : %s", formatSpec(agent.AgentOptions{Model: prFeedbackSpecLog.Model, Effort: prFeedbackSpecLog.Effort}))
 	}
 
-	// Show agent distribution if multiple agents
-	if len(reviewAgents) > 1 {
-		distribution := agent.FormatDistribution(reviewAgents, opts.Reviewers)
-		logger.Logf(terminal.StyleInfo, "Agent distribution: %s%s%s",
-			terminal.Color(terminal.Dim), distribution, terminal.Color(terminal.Reset))
-	} else if opts.Verbose && len(opts.ReviewerAgents) > 0 {
-		logger.Logf(terminal.StyleDim, "%sUsing agent: %s%s",
-			terminal.Color(terminal.Dim), opts.ReviewerAgents[0], terminal.Color(terminal.Reset))
-	}
-
 	// Pre-compute the git diff once and share it across all reviewers.
 	// Always compute (even for codex-only) so we can short-circuit empty diffs.
 	diff, err := git.GetDiff(ctx, resolvedBaseRef, opts.WorkDir)
@@ -317,6 +307,7 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 	}
 
 	var r *runner.Runner
+	var distributionStr string
 	actualReviewers := opts.Reviewers
 	if useGroupedSpecs {
 		// Auto-phase grouped path: per-phase model/effort rebind using
@@ -326,6 +317,7 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 			groupedSpecs[i].Agent = rebindSpecAgent(groupedSpecs[i].Agent, groupedSpecs[i].Phase)
 		}
 		actualReviewers = len(groupedSpecs)
+		distributionStr = runner.FormatDistributionFromSpecs(groupedSpecs)
 		r, err = runner.NewWithSpecs(runnerConfig, groupedSpecs, logger)
 	} else if phaseStr != "" {
 		// Auto-phase medium/large fallback paths supply MediumDiffCount so the
@@ -364,13 +356,26 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 			}
 		}
 		actualReviewers = len(specs)
+		distributionStr = runner.FormatDistributionFromSpecs(specs)
 		r, err = runner.NewWithSpecs(runnerConfig, specs, logger)
 	} else {
+		if len(reviewAgents) > 1 {
+			distributionStr = agent.FormatDistribution(reviewAgents, opts.Reviewers)
+		}
 		r, err = runner.New(runnerConfig, reviewAgents, logger)
 	}
+
 	if err != nil {
 		logger.Logf(terminal.StyleError, "Runner initialization failed: %v", err)
 		return domain.ExitError
+	}
+
+	if distributionStr != "" {
+		logger.Logf(terminal.StyleInfo, "Agent distribution: %s%s%s",
+			terminal.Color(terminal.Dim), distributionStr, terminal.Color(terminal.Reset))
+	} else if opts.Verbose && len(opts.ReviewerAgents) > 0 {
+		logger.Logf(terminal.StyleDim, "%sUsing agent: %s%s",
+			terminal.Color(terminal.Dim), opts.ReviewerAgents[0], terminal.Color(terminal.Reset))
 	}
 
 	if opts.Concurrency < actualReviewers {
