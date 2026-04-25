@@ -124,7 +124,7 @@ func (m SelectorModel) View() string {
 
 		// Title with number and reviewer count (per-phase when available)
 		title := fmt.Sprintf("%s %d. %s", checkbox, i+1, finding.Title)
-		if m.stats.ArchReviewers > 0 || m.stats.DiffReviewers > 0 {
+		if m.stats.ArchReviewers > 0 && m.stats.DiffReviewers > 0 {
 			var parts []string
 			if finding.ArchReviewerCount > 0 {
 				parts = append(parts, fmt.Sprintf("arch: %d/%d", finding.ArchReviewerCount, m.stats.ArchReviewers))
@@ -134,8 +134,10 @@ func (m SelectorModel) View() string {
 			}
 			if len(parts) > 0 {
 				title += fmt.Sprintf(" (%s reviewers)", strings.Join(parts, ", "))
+			} else if finding.ReviewerCount > 0 && m.stats.TotalReviewers > 0 {
+				title += fmt.Sprintf(" (%d/%d reviewers)", finding.ReviewerCount, m.stats.TotalReviewers)
 			}
-		} else if finding.ReviewerCount > 0 {
+		} else if finding.ReviewerCount > 0 && m.stats.TotalReviewers > 0 {
 			title += fmt.Sprintf(" (%d/%d reviewers)", finding.ReviewerCount, m.stats.TotalReviewers)
 		}
 

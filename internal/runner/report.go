@@ -289,7 +289,7 @@ func formatVerdictLine(verdict string) string {
 
 // formatPhaseReviewerCount returns a per-phase or flat reviewer count string for findings.
 func formatPhaseReviewerCount(finding domain.FindingGroup, stats domain.ReviewStats) string {
-	if stats.ArchReviewers > 0 || stats.DiffReviewers > 0 {
+	if stats.ArchReviewers > 0 && stats.DiffReviewers > 0 {
 		var parts []string
 		if finding.ArchReviewerCount > 0 {
 			parts = append(parts, fmt.Sprintf("arch: %d/%d", finding.ArchReviewerCount, stats.ArchReviewers))
@@ -309,7 +309,7 @@ func formatPhaseReviewerCount(finding domain.FindingGroup, stats domain.ReviewSt
 
 // formatPhaseLGTMCount returns a per-phase or flat reviewer count string for LGTM banners.
 func formatPhaseLGTMCount(stats domain.ReviewStats) string {
-	if stats.ArchReviewers > 0 || stats.DiffReviewers > 0 {
+	if stats.ArchReviewers > 0 && stats.DiffReviewers > 0 {
 		var parts []string
 		if stats.ArchReviewers > 0 {
 			parts = append(parts, fmt.Sprintf("arch: %d/%d", stats.SuccessfulArchReviewers, stats.ArchReviewers))
@@ -326,7 +326,7 @@ func formatPhaseLGTMCount(stats domain.ReviewStats) string {
 
 // formatPhaseLGTMSentence returns a sentence-form per-phase or flat reviewer count for LGTM markdown.
 func formatPhaseLGTMSentence(stats domain.ReviewStats) string {
-	if stats.ArchReviewers > 0 || stats.DiffReviewers > 0 {
+	if stats.ArchReviewers > 0 && stats.DiffReviewers > 0 {
 		var parts []string
 		if stats.ArchReviewers > 0 {
 			parts = append(parts, fmt.Sprintf("%d of %d arch", stats.SuccessfulArchReviewers, stats.ArchReviewers))
@@ -341,7 +341,7 @@ func formatPhaseLGTMSentence(stats domain.ReviewStats) string {
 
 // formatPhaseLGTMCompletedSentence returns a sentence-form per-phase or flat reviewer count for dismissed LGTM.
 func formatPhaseLGTMCompletedSentence(stats domain.ReviewStats) string {
-	if stats.ArchReviewers > 0 || stats.DiffReviewers > 0 {
+	if stats.ArchReviewers > 0 && stats.DiffReviewers > 0 {
 		var parts []string
 		if stats.ArchReviewers > 0 {
 			parts = append(parts, fmt.Sprintf("%d of %d arch", stats.SuccessfulArchReviewers, stats.ArchReviewers))

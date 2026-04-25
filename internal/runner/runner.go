@@ -297,6 +297,10 @@ func (r *Runner) runReviewer(ctx context.Context, reviewerID int) domain.Reviewe
 		TargetFiles:     spec.TargetFiles,
 	}
 
+	// Stamp phase early so that failed/timed-out reviewers are counted
+	// in per-phase denominators by BuildStats.
+	result.Phase = reviewConfig.Phase
+
 	// Execute the review
 	execResult, err := selectedAgent.ExecuteReview(timeoutCtx, reviewConfig)
 	if err != nil {
@@ -369,9 +373,6 @@ func (r *Runner) runReviewer(ctx context.Context, reviewerID int) domain.Reviewe
 				terminal.Color(terminal.Dim), text, terminal.Color(terminal.Reset))
 		}
 	}
-
-	// Stamp phase on the result itself
-	result.Phase = reviewConfig.Phase
 
 	// Stamp phase on all findings (parser has no access to ReviewConfig)
 	if reviewConfig.Phase != "" {
