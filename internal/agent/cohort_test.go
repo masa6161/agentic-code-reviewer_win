@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"strings"
 	"testing"
 )
 
@@ -238,6 +239,43 @@ func TestFormatDistribution(t *testing.T) {
 				t.Errorf("expected %q, got %q", tt.expected, result)
 			}
 		})
+	}
+}
+
+func TestCheckCLIAvailability_AllPresent(t *testing.T) {
+	// "go" and "git" are expected to exist in CI and local environments
+	err := CheckCLIAvailability([]string{"go", "git"})
+	if err != nil {
+		t.Fatalf("expected no error for present CLIs, got: %v", err)
+	}
+}
+
+func TestCheckCLIAvailability_SomeMissing(t *testing.T) {
+	err := CheckCLIAvailability([]string{"go", "nonexistent-cli-xyz-12345"})
+	if err == nil {
+		t.Fatal("expected error for missing CLI")
+	}
+	if !strings.Contains(err.Error(), "nonexistent-cli-xyz-12345") {
+		t.Errorf("error should mention missing CLI name, got: %v", err)
+	}
+}
+
+func TestCheckCLIAvailability_Dedup(t *testing.T) {
+	// Same name repeated — should only check once, no error
+	err := CheckCLIAvailability([]string{"go", "go", "go"})
+	if err != nil {
+		t.Fatalf("expected no error for duplicated present CLI, got: %v", err)
+	}
+}
+
+func TestCheckCLIAvailability_AllMissing(t *testing.T) {
+	err := CheckCLIAvailability([]string{"nonexistent-aaa", "nonexistent-bbb"})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	// Both missing CLIs should be listed
+	if !strings.Contains(err.Error(), "nonexistent-aaa") || !strings.Contains(err.Error(), "nonexistent-bbb") {
+		t.Errorf("error should list all missing CLIs, got: %v", err)
 	}
 }
 
