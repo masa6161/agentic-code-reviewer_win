@@ -134,6 +134,8 @@ func (m SelectorModel) View() string {
 			}
 			if len(parts) > 0 {
 				title += fmt.Sprintf(" (%s reviewers)", strings.Join(parts, ", "))
+			} else if finding.ReviewerCount > 0 {
+				title += fmt.Sprintf(" (%d/%d reviewers)", finding.ReviewerCount, m.stats.TotalReviewers)
 			}
 		} else if finding.ReviewerCount > 0 {
 			title += fmt.Sprintf(" (%d/%d reviewers)", finding.ReviewerCount, m.stats.TotalReviewers)
