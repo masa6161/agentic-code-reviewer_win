@@ -142,7 +142,7 @@ func TestBuildReviewBody_EmptyGroupedWithCC_UsesCCOnly(t *testing.T) {
 		},
 	}
 
-	body := buildReviewBody(grouped, 0, nil, cc, "test")
+	body := buildReviewBody(grouped, domain.ReviewStats{}, nil, cc, "test")
 
 	if body == "" {
 		t.Fatal("expected cross-check-only body, got empty string")
@@ -160,7 +160,7 @@ func TestBuildReviewBody_EmptyGroupedWithCC_UsesCCOnly(t *testing.T) {
 
 func TestBuildReviewBody_EmptyBoth_ReturnsEmpty(t *testing.T) {
 	grouped := domain.GroupedFindings{}
-	got := buildReviewBody(grouped, 0, nil, nil, "test")
+	got := buildReviewBody(grouped, domain.ReviewStats{}, nil, nil, "test")
 	if got != "" {
 		t.Errorf("expected empty body, got %q", got)
 	}
@@ -172,7 +172,7 @@ func TestBuildReviewBody_GroupedOnly_NoCC_ReturnsFindingsBody(t *testing.T) {
 			{Title: "Some Issue", Summary: "Details"},
 		},
 	}
-	got := buildReviewBody(grouped, 1, nil, nil, "test")
+	got := buildReviewBody(grouped, domain.ReviewStats{TotalReviewers: 1}, nil, nil, "test")
 	if !strings.Contains(got, "## Findings") {
 		t.Errorf("expected '## Findings' header; got:\n%s", got)
 	}
@@ -360,7 +360,7 @@ func TestPRBody_IncludesCrossCheckWhenGroupedEmpty(t *testing.T) {
 		},
 	}
 
-	body := buildReviewBody(grouped, 2, nil, cc, "test")
+	body := buildReviewBody(grouped, domain.ReviewStats{TotalReviewers: 2}, nil, cc, "test")
 
 	if !strings.Contains(body, "Cross-Group Findings") {
 		t.Errorf("PR body missing cross-check section; got:\n%s", body)

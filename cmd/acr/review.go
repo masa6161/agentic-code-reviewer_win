@@ -576,6 +576,17 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 
 	stats.SummarizerDuration = summaryResult.Duration
 
+	// Backfill per-phase reviewer counts for role-separated display
+	reviewerPhases := make(map[int]string, len(results))
+	for _, r := range results {
+		if r.Phase != "" {
+			reviewerPhases[r.ReviewerID] = r.Phase
+		}
+	}
+	if len(reviewerPhases) > 0 {
+		domain.BackfillPhaseReviewerCounts(&summaryResult.Grouped, aggregated, reviewerPhases)
+	}
+
 	// Wait for PR feedback summarizer to complete
 	feedbackWg.Wait()
 
