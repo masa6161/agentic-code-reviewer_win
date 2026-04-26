@@ -102,9 +102,8 @@ func RenderReport(
 
 			lines = append(lines, "")
 			confidence := ""
-			if stats.TotalReviewers > 0 && finding.ReviewerCount > 0 {
-				confidence = fmt.Sprintf(" %s(%d/%d reviewers)%s",
-					terminal.Color(terminal.Dim), finding.ReviewerCount, stats.TotalReviewers, terminal.Color(terminal.Reset))
+			if rc := formatPhaseReviewerCount(finding, stats); rc != "" {
+				confidence = fmt.Sprintf(" %s%s%s", terminal.Color(terminal.Dim), rc, terminal.Color(terminal.Reset))
 			}
 			severityLabel := formatSeverityLabel(finding.Severity)
 			lines = append(lines, fmt.Sprintf("%s%s%d.%s %s%s%s%s%s",
@@ -247,10 +246,10 @@ func RenderReport(
 		(!ccResult.Skipped || summarizer.IsStructuralSkipReason(ccResult.SkipReason)))
 	if !grouped.HasFindings() && ccQuiet {
 		lines = append(lines, "")
-		lines = append(lines, fmt.Sprintf("%s✓%s %s%sLGTM%s %s(%d/%d reviewers)%s",
+		lines = append(lines, fmt.Sprintf("%s✓%s %s%sLGTM%s %s%s%s",
 			terminal.Color(terminal.Green), terminal.Color(terminal.Reset),
 			terminal.Color(terminal.Green), terminal.Color(terminal.Bold), terminal.Color(terminal.Reset),
-			terminal.Color(terminal.Dim), stats.SuccessfulReviewers, stats.TotalReviewers, terminal.Color(terminal.Reset)))
+			terminal.Color(terminal.Dim), formatPhaseLGTMCount(stats), terminal.Color(terminal.Reset)))
 	}
 
 	return strings.Join(lines, "\n")
@@ -288,12 +287,79 @@ func formatVerdictLine(verdict string) string {
 	}
 }
 
+// formatPhaseReviewerCount returns a per-phase or flat reviewer count string for findings.
+func formatPhaseReviewerCount(finding domain.FindingGroup, stats domain.ReviewStats) string {
+	if stats.ArchReviewers > 0 && stats.DiffReviewers > 0 {
+		var parts []string
+		if finding.ArchReviewerCount > 0 {
+			parts = append(parts, fmt.Sprintf("arch: %d/%d", finding.ArchReviewerCount, stats.ArchReviewers))
+		}
+		if finding.DiffReviewerCount > 0 {
+			parts = append(parts, fmt.Sprintf("diff: %d/%d", finding.DiffReviewerCount, stats.DiffReviewers))
+		}
+		if len(parts) > 0 {
+			return fmt.Sprintf("(%s reviewers)", strings.Join(parts, ", "))
+		}
+	}
+	if stats.TotalReviewers > 0 && finding.ReviewerCount > 0 {
+		return fmt.Sprintf("(%d/%d reviewers)", finding.ReviewerCount, stats.TotalReviewers)
+	}
+	return ""
+}
+
+// formatPhaseLGTMCount returns a per-phase or flat reviewer count string for LGTM banners.
+func formatPhaseLGTMCount(stats domain.ReviewStats) string {
+	if stats.ArchReviewers > 0 && stats.DiffReviewers > 0 {
+		var parts []string
+		if stats.ArchReviewers > 0 {
+			parts = append(parts, fmt.Sprintf("arch: %d/%d", stats.SuccessfulArchReviewers, stats.ArchReviewers))
+		}
+		if stats.DiffReviewers > 0 {
+			parts = append(parts, fmt.Sprintf("diff: %d/%d", stats.SuccessfulDiffReviewers, stats.DiffReviewers))
+		}
+		if len(parts) > 0 {
+			return fmt.Sprintf("(%s reviewers)", strings.Join(parts, ", "))
+		}
+	}
+	return fmt.Sprintf("(%d/%d reviewers)", stats.SuccessfulReviewers, stats.TotalReviewers)
+}
+
+// formatPhaseLGTMSentence returns a sentence-form per-phase or flat reviewer count for LGTM markdown.
+func formatPhaseLGTMSentence(stats domain.ReviewStats) string {
+	if stats.ArchReviewers > 0 && stats.DiffReviewers > 0 {
+		var parts []string
+		if stats.ArchReviewers > 0 {
+			parts = append(parts, fmt.Sprintf("%d of %d arch", stats.SuccessfulArchReviewers, stats.ArchReviewers))
+		}
+		if stats.DiffReviewers > 0 {
+			parts = append(parts, fmt.Sprintf("%d of %d diff", stats.SuccessfulDiffReviewers, stats.DiffReviewers))
+		}
+		return strings.Join(parts, " and ") + " reviewers found no issues."
+	}
+	return fmt.Sprintf("%d of %d reviewers found no issues.", stats.SuccessfulReviewers, stats.TotalReviewers)
+}
+
+// formatPhaseLGTMCompletedSentence returns a sentence-form per-phase or flat reviewer count for dismissed LGTM.
+func formatPhaseLGTMCompletedSentence(stats domain.ReviewStats) string {
+	if stats.ArchReviewers > 0 && stats.DiffReviewers > 0 {
+		var parts []string
+		if stats.ArchReviewers > 0 {
+			parts = append(parts, fmt.Sprintf("%d of %d arch", stats.SuccessfulArchReviewers, stats.ArchReviewers))
+		}
+		if stats.DiffReviewers > 0 {
+			parts = append(parts, fmt.Sprintf("%d of %d diff", stats.SuccessfulDiffReviewers, stats.DiffReviewers))
+		}
+		return strings.Join(parts, " and ") + " reviewers completed review."
+	}
+	return fmt.Sprintf("%d of %d reviewers completed review.", stats.SuccessfulReviewers, stats.TotalReviewers)
+}
+
 // RenderCommentMarkdown renders GitHub comment markdown for findings.
 // Returns an empty string when there are no findings so callers can
 // compose cross-check sections independently.
 func RenderCommentMarkdown(
 	grouped domain.GroupedFindings,
-	totalReviewers int,
+	stats domain.ReviewStats,
 	aggregated []domain.AggregatedFinding,
 	version string,
 ) string {
@@ -310,8 +376,8 @@ func RenderCommentMarkdown(
 		}
 
 		confidence := ""
-		if finding.ReviewerCount > 0 {
-			confidence = fmt.Sprintf(" (%d/%d reviewers)", finding.ReviewerCount, totalReviewers)
+		if rc := formatPhaseReviewerCount(finding, stats); rc != "" {
+			confidence = " " + rc
 		}
 
 		lines = append(lines, "")
@@ -335,7 +401,7 @@ func RenderCommentMarkdown(
 
 	// Raw findings section
 	rawIndices := collectSourceIndices(grouped.Findings)
-	rawSection := formatRawFindings(aggregated, rawIndices, totalReviewers)
+	rawSection := formatRawFindings(aggregated, rawIndices, stats)
 	if rawSection != "" {
 		lines = append(lines, "")
 		lines = append(lines, "_Expand for verbatim findings._")
@@ -361,11 +427,11 @@ type AnnotatedComment struct {
 // RenderLGTMMarkdown renders approval comment markdown.
 // annotatedComments maps reviewer ID to their findings with disposition annotations.
 // If nil, falls back to unannotated rendering.
-func RenderLGTMMarkdown(totalReviewers, successfulReviewers int, annotatedComments map[int][]AnnotatedComment, version string) string {
+func RenderLGTMMarkdown(stats domain.ReviewStats, annotatedComments map[int][]AnnotatedComment, version string) string {
 	var lines []string
 	lines = append(lines, "## LGTM :white_check_mark:")
 	lines = append(lines, "")
-	lines = append(lines, fmt.Sprintf("**%d of %d reviewers found no issues.**", successfulReviewers, totalReviewers))
+	lines = append(lines, fmt.Sprintf("**%s**", formatPhaseLGTMSentence(stats)))
 
 	if len(annotatedComments) > 0 {
 		lines = append(lines, "")
@@ -419,8 +485,7 @@ func RenderDismissedLGTMMarkdown(findings []domain.FindingGroup, stats domain.Re
 	var lines []string
 	lines = append(lines, "## LGTM :white_check_mark:")
 	lines = append(lines, "")
-	lines = append(lines, fmt.Sprintf("**%d of %d reviewers completed review. All findings dismissed after human review.**",
-		stats.SuccessfulReviewers, stats.TotalReviewers))
+	lines = append(lines, fmt.Sprintf("**%s All findings dismissed after human review.**", formatPhaseLGTMCompletedSentence(stats)))
 	lines = append(lines, "")
 
 	count := len(findings)
@@ -508,7 +573,7 @@ func collectSourceIndices(groups []domain.FindingGroup) []int {
 	return indices
 }
 
-func formatRawFindings(aggregated []domain.AggregatedFinding, indices []int, totalReviewers int) string {
+func formatRawFindings(aggregated []domain.AggregatedFinding, indices []int, stats domain.ReviewStats) string {
 	if len(indices) == 0 {
 		return ""
 	}
@@ -521,7 +586,7 @@ func formatRawFindings(aggregated []domain.AggregatedFinding, indices []int, tot
 		entry := aggregated[src]
 		reviewerCount := len(entry.Reviewers)
 		lines = append(lines, "")
-		lines = append(lines, fmt.Sprintf("%d. (%d/%d reviewers)", idx+1, reviewerCount, totalReviewers))
+		lines = append(lines, fmt.Sprintf("%d. (%d/%d reviewers)", idx+1, reviewerCount, stats.TotalReviewers))
 		lines = append(lines, "```")
 		lines = append(lines, strings.TrimRight(entry.Text, " \n"))
 		lines = append(lines, "```")

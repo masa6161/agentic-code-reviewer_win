@@ -51,12 +51,12 @@ func TestFormatRawFindings_ReturnsEmptyForNoIndices(t *testing.T) {
 		{Text: "Finding 1", Reviewers: []int{1, 2}},
 	}
 
-	result := formatRawFindings(aggregated, nil, 5)
+	result := formatRawFindings(aggregated, nil, domain.ReviewStats{TotalReviewers: 5})
 	if result != "" {
 		t.Errorf("expected empty string for nil indices, got %q", result)
 	}
 
-	result = formatRawFindings(aggregated, []int{}, 5)
+	result = formatRawFindings(aggregated, []int{}, domain.ReviewStats{TotalReviewers: 5})
 	if result != "" {
 		t.Errorf("expected empty string for empty indices, got %q", result)
 	}
@@ -69,7 +69,7 @@ func TestFormatRawFindings_SkipsOutOfBoundsIndices(t *testing.T) {
 	}
 
 	// Index 5 is out of bounds, -1 is invalid
-	result := formatRawFindings(aggregated, []int{0, 5, -1, 1}, 3)
+	result := formatRawFindings(aggregated, []int{0, 5, -1, 1}, domain.ReviewStats{TotalReviewers: 3})
 
 	// Should only include indices 0 and 1
 	if !strings.Contains(result, "Finding 0") {
@@ -85,7 +85,7 @@ func TestFormatRawFindings_FormatsAsMarkdownCodeBlocks(t *testing.T) {
 		{Text: "This is a finding", Reviewers: []int{1, 2}},
 	}
 
-	result := formatRawFindings(aggregated, []int{0}, 5)
+	result := formatRawFindings(aggregated, []int{0}, domain.ReviewStats{TotalReviewers: 5})
 
 	if !strings.Contains(result, "```") {
 		t.Error("expected markdown code blocks")
@@ -103,7 +103,7 @@ func TestFormatRawFindings_TrimsTrailingWhitespace(t *testing.T) {
 		{Text: "Finding with trailing space   \n\n", Reviewers: []int{1}},
 	}
 
-	result := formatRawFindings(aggregated, []int{0}, 3)
+	result := formatRawFindings(aggregated, []int{0}, domain.ReviewStats{TotalReviewers: 3})
 
 	// Text should be trimmed of trailing whitespace
 	lines := strings.Split(result, "\n")
@@ -115,7 +115,7 @@ func TestFormatRawFindings_TrimsTrailingWhitespace(t *testing.T) {
 }
 
 func TestRenderLGTMMarkdown_BasicFormat(t *testing.T) {
-	result := RenderLGTMMarkdown(5, 5, nil, "dev")
+	result := RenderLGTMMarkdown(domain.ReviewStats{TotalReviewers: 5, SuccessfulReviewers: 5}, nil, "dev")
 
 	if !strings.Contains(result, "LGTM") {
 		t.Error("expected 'LGTM' in output")
@@ -134,7 +134,7 @@ func TestRenderLGTMMarkdown_WithComments(t *testing.T) {
 		1: {{Text: "Code looks clean"}},
 	}
 
-	result := RenderLGTMMarkdown(3, 3, comments, "dev")
+	result := RenderLGTMMarkdown(domain.ReviewStats{TotalReviewers: 3, SuccessfulReviewers: 3}, comments, "dev")
 
 	if !strings.Contains(result, "Reviewer comments") {
 		t.Error("expected 'Reviewer comments' section")
@@ -157,7 +157,7 @@ func TestRenderLGTMMarkdown_SortsCommentsByReviewerID(t *testing.T) {
 		2: {{Text: "Second"}},
 	}
 
-	result := RenderLGTMMarkdown(3, 3, comments, "dev")
+	result := RenderLGTMMarkdown(domain.ReviewStats{TotalReviewers: 3, SuccessfulReviewers: 3}, comments, "dev")
 
 	// Reviewer 1 should appear before Reviewer 2, which should appear before Reviewer 3
 	idx1 := strings.Index(result, "Reviewer 1")
@@ -194,7 +194,7 @@ func TestRenderLGTMMarkdown_WithDispositionAnnotations(t *testing.T) {
 		},
 	}
 
-	result := RenderLGTMMarkdown(3, 3, comments, "dev")
+	result := RenderLGTMMarkdown(domain.ReviewStats{TotalReviewers: 3, SuccessfulReviewers: 3}, comments, "dev")
 
 	if !strings.Contains(result, "Categorized as informational during summarization") {
 		t.Error("expected info disposition annotation")
@@ -215,7 +215,7 @@ func TestRenderLGTMMarkdown_MultipleCommentsPerReviewer(t *testing.T) {
 		},
 	}
 
-	result := RenderLGTMMarkdown(3, 3, comments, "dev")
+	result := RenderLGTMMarkdown(domain.ReviewStats{TotalReviewers: 3, SuccessfulReviewers: 3}, comments, "dev")
 
 	if strings.Count(result, "Reviewer 1") != 2 {
 		t.Errorf("expected 2 entries for Reviewer 1, got %d", strings.Count(result, "Reviewer 1"))
@@ -238,7 +238,7 @@ func TestRenderLGTMMarkdown_UnmappedDispositionNoAnnotation(t *testing.T) {
 		},
 	}
 
-	result := RenderLGTMMarkdown(3, 3, comments, "dev")
+	result := RenderLGTMMarkdown(domain.ReviewStats{TotalReviewers: 3, SuccessfulReviewers: 3}, comments, "dev")
 
 	// Unmapped should render as plain comment without annotation
 	if !strings.Contains(result, "- **Reviewer 1:** Some comment") {
@@ -263,7 +263,7 @@ func TestRenderCommentMarkdown_BasicFormat(t *testing.T) {
 		},
 	}
 
-	result := RenderCommentMarkdown(grouped, 5, nil, "dev")
+	result := RenderCommentMarkdown(grouped, domain.ReviewStats{TotalReviewers: 5}, nil, "dev")
 
 	if !strings.Contains(result, "## Findings") {
 		t.Error("expected '## Findings' header")
@@ -288,7 +288,7 @@ func TestRenderCommentMarkdown_NumbersFindings(t *testing.T) {
 		},
 	}
 
-	result := RenderCommentMarkdown(grouped, 3, nil, "dev")
+	result := RenderCommentMarkdown(grouped, domain.ReviewStats{TotalReviewers: 3}, nil, "dev")
 
 	if !strings.Contains(result, "1. **First**") {
 		t.Error("expected first finding to be numbered 1")
@@ -308,7 +308,7 @@ func TestRenderCommentMarkdown_UntitledFindingsFallback(t *testing.T) {
 		},
 	}
 
-	result := RenderCommentMarkdown(grouped, 3, nil, "dev")
+	result := RenderCommentMarkdown(grouped, domain.ReviewStats{TotalReviewers: 3}, nil, "dev")
 
 	if !strings.Contains(result, "**Untitled**") {
 		t.Error("expected 'Untitled' fallback for empty title")
@@ -325,7 +325,7 @@ func TestRenderCommentMarkdown_IncludesEvidence(t *testing.T) {
 		},
 	}
 
-	result := RenderCommentMarkdown(grouped, 3, nil, "dev")
+	result := RenderCommentMarkdown(grouped, domain.ReviewStats{TotalReviewers: 3}, nil, "dev")
 
 	if !strings.Contains(result, "Evidence:") {
 		t.Error("expected 'Evidence:' label")
@@ -353,7 +353,7 @@ func TestRenderCommentMarkdown_IncludesRawSection(t *testing.T) {
 		{Text: "Raw finding text", Reviewers: []int{1, 2}},
 	}
 
-	result := RenderCommentMarkdown(grouped, 5, aggregated, "dev")
+	result := RenderCommentMarkdown(grouped, domain.ReviewStats{TotalReviewers: 5}, aggregated, "dev")
 
 	if !strings.Contains(result, "<details>") {
 		t.Error("expected collapsible details section")
@@ -1104,7 +1104,7 @@ func TestRenderReport_CCSkippedAllAgentsFailed_NoLGTM(t *testing.T) {
 func TestRenderCommentMarkdown_EmptyFindings_ReturnsEmpty(t *testing.T) {
 	grouped := domain.GroupedFindings{}
 
-	result := RenderCommentMarkdown(grouped, 5, nil, "dev")
+	result := RenderCommentMarkdown(grouped, domain.ReviewStats{TotalReviewers: 5}, nil, "dev")
 
 	if result != "" {
 		t.Errorf("expected empty string for empty findings, got %q", result)
@@ -1118,7 +1118,7 @@ func TestRenderCommentMarkdown_WithFindings_ReturnsBody(t *testing.T) {
 		},
 	}
 
-	result := RenderCommentMarkdown(grouped, 3, nil, "dev")
+	result := RenderCommentMarkdown(grouped, domain.ReviewStats{TotalReviewers: 3}, nil, "dev")
 
 	if !strings.Contains(result, "## Findings") {
 		t.Error("expected '## Findings' header in non-empty output")
@@ -1126,4 +1126,157 @@ func TestRenderCommentMarkdown_WithFindings_ReturnsBody(t *testing.T) {
 	if !strings.Contains(result, "Some Issue") {
 		t.Error("expected finding title in output")
 	}
+}
+
+func TestFormatPhaseReviewerCount_Grouped(t *testing.T) {
+	finding := domain.FindingGroup{
+		ArchReviewerCount: 1,
+		DiffReviewerCount: 2,
+	}
+	stats := domain.ReviewStats{
+		ArchReviewers: 1,
+		DiffReviewers: 4,
+	}
+	got := formatPhaseReviewerCount(finding, stats)
+	expected := "(arch: 1/1, diff: 2/4 reviewers)"
+	if got != expected {
+		t.Errorf("expected %q, got %q", expected, got)
+	}
+}
+
+func TestFormatPhaseReviewerCount_ArchOnly(t *testing.T) {
+	finding := domain.FindingGroup{
+		ArchReviewerCount: 1,
+		DiffReviewerCount: 0,
+	}
+	stats := domain.ReviewStats{
+		ArchReviewers: 1,
+		DiffReviewers: 4,
+	}
+	got := formatPhaseReviewerCount(finding, stats)
+	expected := "(arch: 1/1 reviewers)"
+	if got != expected {
+		t.Errorf("expected %q, got %q", expected, got)
+	}
+}
+
+func TestFormatPhaseReviewerCount_FlatFallback(t *testing.T) {
+	finding := domain.FindingGroup{
+		ReviewerCount: 3,
+	}
+	stats := domain.ReviewStats{
+		ArchReviewers:  0,
+		DiffReviewers:  0,
+		TotalReviewers: 5,
+	}
+	got := formatPhaseReviewerCount(finding, stats)
+	expected := "(3/5 reviewers)"
+	if got != expected {
+		t.Errorf("expected %q, got %q", expected, got)
+	}
+}
+
+func TestFormatPhaseReviewerCount_EmptyStats(t *testing.T) {
+	finding := domain.FindingGroup{}
+	stats := domain.ReviewStats{}
+	got := formatPhaseReviewerCount(finding, stats)
+	if got != "" {
+		t.Errorf("expected empty string, got %q", got)
+	}
+}
+
+func TestFormatPhaseLGTMCount_Grouped(t *testing.T) {
+	stats := domain.ReviewStats{
+		ArchReviewers:           1,
+		DiffReviewers:           4,
+		SuccessfulArchReviewers: 1,
+		SuccessfulDiffReviewers: 4,
+	}
+	got := formatPhaseLGTMCount(stats)
+	expected := "(arch: 1/1, diff: 4/4 reviewers)"
+	if got != expected {
+		t.Errorf("expected %q, got %q", expected, got)
+	}
+}
+
+func TestFormatPhaseLGTMCount_FlatFallback(t *testing.T) {
+	stats := domain.ReviewStats{
+		ArchReviewers:       0,
+		DiffReviewers:       0,
+		TotalReviewers:      5,
+		SuccessfulReviewers: 5,
+	}
+	got := formatPhaseLGTMCount(stats)
+	expected := "(5/5 reviewers)"
+	if got != expected {
+		t.Errorf("expected %q, got %q", expected, got)
+	}
+}
+
+func TestFormatPhaseLGTMSentence_Grouped(t *testing.T) {
+	stats := domain.ReviewStats{
+		ArchReviewers:           1,
+		DiffReviewers:           4,
+		SuccessfulArchReviewers: 1,
+		SuccessfulDiffReviewers: 4,
+	}
+	got := formatPhaseLGTMSentence(stats)
+	expected := "1 of 1 arch and 4 of 4 diff reviewers found no issues."
+	if got != expected {
+		t.Errorf("expected %q, got %q", expected, got)
+	}
+}
+
+func TestFormatPhaseLGTMSentence_FlatFallback(t *testing.T) {
+	stats := domain.ReviewStats{
+		ArchReviewers:       0,
+		DiffReviewers:       0,
+		TotalReviewers:      3,
+		SuccessfulReviewers: 3,
+	}
+	got := formatPhaseLGTMSentence(stats)
+	expected := "3 of 3 reviewers found no issues."
+	if got != expected {
+		t.Errorf("expected %q, got %q", expected, got)
+	}
+}
+
+func TestFormatPhaseLGTMCompletedSentence_Grouped(t *testing.T) {
+	stats := domain.ReviewStats{
+		ArchReviewers:           1,
+		DiffReviewers:           4,
+		SuccessfulArchReviewers: 1,
+		SuccessfulDiffReviewers: 4,
+	}
+	got := formatPhaseLGTMCompletedSentence(stats)
+	expected := "1 of 1 arch and 4 of 4 diff reviewers completed review."
+	if got != expected {
+		t.Errorf("expected %q, got %q", expected, got)
+	}
+}
+
+func TestRenderReport_FlatReviewNoRegression(t *testing.T) {
+	terminal.WithColorsDisabled(func() {
+		grouped := domain.GroupedFindings{
+			Findings: []domain.FindingGroup{
+				{
+					Title:         "Some Issue",
+					Summary:       "Details",
+					ReviewerCount: 3,
+				},
+			},
+		}
+		summaryResult := &summarizer.Result{ExitCode: 0}
+		stats := domain.ReviewStats{
+			ArchReviewers:  0,
+			DiffReviewers:  0,
+			TotalReviewers: 5,
+		}
+
+		result := RenderReport(grouped, summaryResult, stats, nil)
+
+		if !strings.Contains(result, "(3/5 reviewers)") {
+			t.Errorf("expected flat '(N/M reviewers)' format in output, got:\n%s", result)
+		}
+	})
 }

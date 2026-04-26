@@ -38,21 +38,23 @@ var (
 // SelectorModel is the bubbletea model for the interactive finding selector.
 type SelectorModel struct {
 	findings  []domain.FindingGroup
-	selected  map[int]bool // selection state (kept out of domain types)
-	expanded  map[int]bool // which items show full details
+	stats     domain.ReviewStats // for per-phase reviewer count display
+	selected  map[int]bool       // selection state (kept out of domain types)
+	expanded  map[int]bool       // which items show full details
 	cursor    int
 	confirmed bool
 	quitted   bool
 }
 
 // NewSelector creates a new selector model with all findings selected by default.
-func NewSelector(findings []domain.FindingGroup) SelectorModel {
+func NewSelector(findings []domain.FindingGroup, stats domain.ReviewStats) SelectorModel {
 	selected := make(map[int]bool, len(findings))
 	for i := range findings {
 		selected[i] = true
 	}
 	return SelectorModel{
 		findings: findings,
+		stats:    stats,
 		selected: selected,
 		expanded: make(map[int]bool),
 		cursor:   0,
@@ -120,14 +122,23 @@ func (m SelectorModel) View() string {
 			checkbox = selectorCheckboxSelected
 		}
 
-		// Title with number and reviewer count
+		// Title with number and reviewer count (per-phase when available)
 		title := fmt.Sprintf("%s %d. %s", checkbox, i+1, finding.Title)
-		if finding.ReviewerCount > 0 {
-			title += fmt.Sprintf(" (%d reviewer", finding.ReviewerCount)
-			if finding.ReviewerCount > 1 {
-				title += "s"
+		if m.stats.ArchReviewers > 0 && m.stats.DiffReviewers > 0 {
+			var parts []string
+			if finding.ArchReviewerCount > 0 {
+				parts = append(parts, fmt.Sprintf("arch: %d/%d", finding.ArchReviewerCount, m.stats.ArchReviewers))
 			}
-			title += ")"
+			if finding.DiffReviewerCount > 0 {
+				parts = append(parts, fmt.Sprintf("diff: %d/%d", finding.DiffReviewerCount, m.stats.DiffReviewers))
+			}
+			if len(parts) > 0 {
+				title += fmt.Sprintf(" (%s reviewers)", strings.Join(parts, ", "))
+			} else if finding.ReviewerCount > 0 && m.stats.TotalReviewers > 0 {
+				title += fmt.Sprintf(" (%d/%d reviewers)", finding.ReviewerCount, m.stats.TotalReviewers)
+			}
+		} else if finding.ReviewerCount > 0 && m.stats.TotalReviewers > 0 {
+			title += fmt.Sprintf(" (%d/%d reviewers)", finding.ReviewerCount, m.stats.TotalReviewers)
 		}
 
 		// Apply cursor highlighting
@@ -184,12 +195,12 @@ func (m SelectorModel) Quitted() bool {
 //   - selectedIndices: indices of findings the user selected
 //   - canceled: true if user quit without confirming
 //   - err: any error from the TUI program
-func RunSelector(findings []domain.FindingGroup) (selectedIndices []int, canceled bool, err error) {
+func RunSelector(findings []domain.FindingGroup, stats domain.ReviewStats) (selectedIndices []int, canceled bool, err error) {
 	if len(findings) == 0 {
 		return nil, false, nil
 	}
 
-	model := NewSelector(findings)
+	model := NewSelector(findings, stats)
 	p := tea.NewProgram(model)
 
 	finalModel, err := p.Run()

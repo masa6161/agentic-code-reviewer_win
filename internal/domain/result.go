@@ -6,6 +6,7 @@ import "time"
 type ReviewerResult struct {
 	ReviewerID  int
 	AgentName   string // Which agent type was used (codex, claude, gemini)
+	Phase       string // "arch" | "diff" | ""
 	Findings    []Finding
 	ExitCode    int
 	ParseErrors int
@@ -15,19 +16,23 @@ type ReviewerResult struct {
 }
 
 type ReviewStats struct {
-	TotalReviewers      int
-	SuccessfulReviewers int
-	FailedReviewers     []int
-	TimedOutReviewers   []int
-	AuthFailedReviewers []int
-	ParseErrors         int
-	ReviewerDurations   map[int]time.Duration
-	ReviewerAgentNames  map[int]string
-	WallClockDuration   time.Duration
-	SummarizerDuration  time.Duration
-	FPFilterDuration    time.Duration
-	CrossCheckDuration  time.Duration
-	FPFilteredCount     int
+	TotalReviewers          int
+	SuccessfulReviewers     int
+	ArchReviewers           int
+	DiffReviewers           int
+	SuccessfulArchReviewers int
+	SuccessfulDiffReviewers int
+	FailedReviewers         []int
+	TimedOutReviewers       []int
+	AuthFailedReviewers     []int
+	ParseErrors             int
+	ReviewerDurations       map[int]time.Duration
+	ReviewerAgentNames      map[int]string
+	WallClockDuration       time.Duration
+	SummarizerDuration      time.Duration
+	FPFilterDuration        time.Duration
+	CrossCheckDuration      time.Duration
+	FPFilteredCount         int
 }
 
 // AllFailed returns true if all reviewers failed.

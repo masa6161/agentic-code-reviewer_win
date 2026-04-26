@@ -155,7 +155,7 @@ func handleLGTM(ctx context.Context, opts ReviewOpts, allFindings []domain.Findi
 		annotatedComments[f.ReviewerID] = append(annotatedComments[f.ReviewerID], ac)
 	}
 
-	lgtmBody := runner.RenderLGTMMarkdown(stats.TotalReviewers, stats.SuccessfulReviewers, annotatedComments, version)
+	lgtmBody := runner.RenderLGTMMarkdown(stats, annotatedComments, version)
 	pr := getPRContext(ctx, opts)
 
 	if err := confirmAndSubmitLGTM(ctx, lgtmBody, pr, opts, logger); err != nil {
@@ -290,8 +290,8 @@ func sanitizeCrossCheckSkipReason(reason string) string {
 // optional cross-check results. RenderCommentMarkdown returns "" when there
 // are no grouped findings, so this function handles the cross-check-only
 // path cleanly without leaving stray leading/trailing blank sections.
-func buildReviewBody(grouped domain.GroupedFindings, totalReviewers int, aggregated []domain.AggregatedFinding, cc *summarizer.CrossCheckResult, ver string) string {
-	body := runner.RenderCommentMarkdown(grouped, totalReviewers, aggregated, ver)
+func buildReviewBody(grouped domain.GroupedFindings, stats domain.ReviewStats, aggregated []domain.AggregatedFinding, cc *summarizer.CrossCheckResult, ver string) string {
+	body := runner.RenderCommentMarkdown(grouped, stats, aggregated, ver)
 	ccSection := formatCrossCheckForPR(cc)
 	switch {
 	case body == "" && ccSection == "":
@@ -316,7 +316,7 @@ func handleFindings(ctx context.Context, opts ReviewOpts, grouped domain.Grouped
 	// Interactive selection when in TTY and not auto-submitting (skip in local mode).
 	// Only show selector when there are grouped findings to choose from.
 	if !opts.Local && !opts.AutoYes && terminal.IsStdoutTTY() && len(grouped.Findings) > 0 {
-		indices, canceled, err := terminal.RunSelector(grouped.Findings)
+		indices, canceled, err := terminal.RunSelector(grouped.Findings, stats)
 		if err != nil {
 			logger.Logf(terminal.StyleError, "Selector error: %v", err)
 			return domain.ExitError, verdict
@@ -361,7 +361,7 @@ func handleFindings(ctx context.Context, opts ReviewOpts, grouped domain.Grouped
 		Findings: selectedFindings,
 		Info:     grouped.Info,
 	}
-	reviewBody := buildReviewBody(filteredGrouped, stats.TotalReviewers, aggregated, ccResult, version)
+	reviewBody := buildReviewBody(filteredGrouped, stats, aggregated, ccResult, version)
 
 	if err := confirmAndSubmitReview(ctx, reviewBody, pr, verdict, strict, opts, logger); err != nil {
 		return domain.ExitError, verdict
