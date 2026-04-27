@@ -257,7 +257,7 @@ type DiffSize int
 const (
 	DiffSizeSmall  DiffSize = iota // ≤3 files AND ≤100 changed lines
 	DiffSizeMedium                 // 4-10 files OR 101-500 changed lines
-	DiffSizeLarge                  // >10 files OR >500 changed lines
+	DiffSizeLarge                  // (>10 files OR >500 changed lines) AND ≥2 files
 )
 
 // String returns a human-readable label.
@@ -330,7 +330,7 @@ func parseDiffStat(output string) (fileCount, lineCount int) {
 
 // classifySize applies size thresholds to file and line counts.
 func classifySize(fileCount, lineCount int) DiffSize {
-	if fileCount > 10 || lineCount > 500 {
+	if (fileCount > 10 || lineCount > 500) && fileCount >= 2 {
 		return DiffSizeLarge
 	}
 	if fileCount > 3 || lineCount > 100 {

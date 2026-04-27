@@ -103,20 +103,22 @@ type Config struct {
 	// DiffReviewerAgents is the optional per-phase override for the diff phase
 	// in auto-phase grouped diff (round-robin). When empty, it falls back to
 	// ReviewerAgents.
-	DiffReviewerAgents []string         `yaml:"diff_reviewer_agents"`
-	SummarizerAgent    *string          `yaml:"summarizer_agent"`
-	ReviewerModel      *string          `yaml:"reviewer_model"`
-	SummarizerModel    *string          `yaml:"summarizer_model"`
-	SummarizerTimeout  *Duration        `yaml:"summarizer_timeout"`
-	FPFilterTimeout    *Duration        `yaml:"fp_filter_timeout"`
-	CrossCheckTimeout  *Duration        `yaml:"cross_check_timeout"`
-	GuidanceFile       *string          `yaml:"guidance_file"`
-	AutoPhase          *bool            `yaml:"auto_phase"`
-	Filters            FilterConfig     `yaml:"filters"`
-	FPFilter           FPFilterConfig   `yaml:"fp_filter"`
-	PRFeedback         PRFeedbackConfig `yaml:"pr_feedback"`
-	CrossCheck         CrossCheckConfig `yaml:"cross_check"`
-	Models             ModelsConfig     `yaml:"models"`
+	DiffReviewerAgents     []string         `yaml:"diff_reviewer_agents"`
+	SummarizerAgent        *string          `yaml:"summarizer_agent"`
+	ReviewerModel          *string          `yaml:"reviewer_model"`
+	SummarizerModel        *string          `yaml:"summarizer_model"`
+	SummarizerTimeout      *Duration        `yaml:"summarizer_timeout"`
+	FPFilterTimeout        *Duration        `yaml:"fp_filter_timeout"`
+	CrossCheckTimeout      *Duration        `yaml:"cross_check_timeout"`
+	GuidanceFile           *string          `yaml:"guidance_file"`
+	AutoPhase              *bool            `yaml:"auto_phase"`
+	Filters                FilterConfig     `yaml:"filters"`
+	FPFilter               FPFilterConfig   `yaml:"fp_filter"`
+	PRFeedback             PRFeedbackConfig `yaml:"pr_feedback"`
+	CrossCheck             CrossCheckConfig `yaml:"cross_check"`
+	Models                 ModelsConfig     `yaml:"models"`
+	MinLargeDiffReviewers  *int             `yaml:"min_large_diff_reviewers"`
+	MinMediumDiffReviewers *int             `yaml:"min_medium_diff_reviewers"`
 }
 
 // CrossCheckConfig holds cross-check verification settings.
@@ -224,7 +226,7 @@ func (c *Config) validatePatterns() error {
 	return nil
 }
 
-var knownTopLevelKeys = []string{"reviewers", "large_diff_reviewers", "medium_diff_reviewers", "small_diff_reviewers", "concurrency", "base", "timeout", "retries", "fetch", "reviewer_agent", "reviewer_agents", "arch_reviewer_agent", "diff_reviewer_agents", "summarizer_agent", "reviewer_model", "summarizer_model", "summarizer_timeout", "fp_filter_timeout", "cross_check_timeout", "guidance_file", "auto_phase", "filters", "fp_filter", "pr_feedback", "cross_check", "models"}
+var knownTopLevelKeys = []string{"reviewers", "large_diff_reviewers", "medium_diff_reviewers", "small_diff_reviewers", "concurrency", "base", "timeout", "retries", "fetch", "reviewer_agent", "reviewer_agents", "arch_reviewer_agent", "diff_reviewer_agents", "summarizer_agent", "reviewer_model", "summarizer_model", "summarizer_timeout", "fp_filter_timeout", "cross_check_timeout", "guidance_file", "auto_phase", "filters", "fp_filter", "pr_feedback", "cross_check", "models", "min_large_diff_reviewers", "min_medium_diff_reviewers"}
 
 var knownFPFilterKeys = []string{"enabled", "threshold"}
 
@@ -510,6 +512,12 @@ func (r *ResolvedConfig) ValidateAll() []string {
 	if r.FPFilterTimeout <= 0 {
 		errs = append(errs, fmt.Sprintf("fp_filter_timeout must be > 0, got %s", r.FPFilterTimeout))
 	}
+	if r.MinLargeDiffReviewers < 2 {
+		errs = append(errs, fmt.Sprintf("min_large_diff_reviewers must be >= 2, got %d", r.MinLargeDiffReviewers))
+	}
+	if r.MinMediumDiffReviewers < 2 {
+		errs = append(errs, fmt.Sprintf("min_medium_diff_reviewers must be >= 2, got %d", r.MinMediumDiffReviewers))
+	}
 	if len(r.ReviewerAgents) == 0 {
 		errs = append(errs, "reviewer_agents must not be empty")
 	}
@@ -788,29 +796,31 @@ func (r *ResolvedConfig) Validate() error {
 }
 
 var Defaults = ResolvedConfig{
-	Reviewers:           5,
-	LargeDiffReviewers:  4,
-	MediumDiffReviewers: 2,
-	SmallDiffReviewers:  1,
-	Concurrency:         0,
-	Base:                "main",
-	Timeout:             10 * time.Minute,
-	Retries:             1,
-	Fetch:               true,
-	ReviewerAgents:      []string{agent.DefaultAgent},
-	SummarizerAgent:     agent.DefaultSummarizerAgent,
-	SummarizerTimeout:   5 * time.Minute,
-	FPFilterTimeout:     5 * time.Minute,
-	CrossCheckTimeout:   5 * time.Minute,
-	FPFilterEnabled:     true,
-	FPThreshold:         75,
-	PRFeedbackEnabled:   true,
-	PRFeedbackAgent:     "", // empty means use summarizer agent
-	CrossCheckEnabled:   true,
-	CrossCheckAgent:     "", // empty means use summarizer agent
-	CrossCheckModel:     "", // empty: must resolve via models config or ValidateRuntime will error
-	AutoPhase:           true,
-	Strict:              false,
+	Reviewers:              5,
+	LargeDiffReviewers:     4,
+	MediumDiffReviewers:    2,
+	SmallDiffReviewers:     1,
+	Concurrency:            0,
+	Base:                   "main",
+	Timeout:                10 * time.Minute,
+	Retries:                1,
+	Fetch:                  true,
+	ReviewerAgents:         []string{agent.DefaultAgent},
+	SummarizerAgent:        agent.DefaultSummarizerAgent,
+	SummarizerTimeout:      5 * time.Minute,
+	FPFilterTimeout:        5 * time.Minute,
+	CrossCheckTimeout:      5 * time.Minute,
+	FPFilterEnabled:        true,
+	FPThreshold:            75,
+	PRFeedbackEnabled:      true,
+	PRFeedbackAgent:        "", // empty means use summarizer agent
+	CrossCheckEnabled:      true,
+	CrossCheckAgent:        "", // empty means use summarizer agent
+	CrossCheckModel:        "", // empty: must resolve via models config or ValidateRuntime will error
+	AutoPhase:              true,
+	Strict:                 false,
+	MinLargeDiffReviewers:  2,
+	MinMediumDiffReviewers: 2,
 }
 
 type ResolvedConfig struct {
@@ -831,24 +841,26 @@ type ResolvedConfig struct {
 	// DiffReviewerAgents is the per-phase override for the diff phase in
 	// auto-phase grouped diff (round-robin). Empty slice means fall back to
 	// ReviewerAgents.
-	DiffReviewerAgents []string
-	SummarizerAgent    string
-	ReviewerModel      string
-	SummarizerModel    string
-	SummarizerTimeout  time.Duration
-	FPFilterTimeout    time.Duration
-	CrossCheckTimeout  time.Duration
-	Guidance           string
-	GuidanceFile       string
-	FPFilterEnabled    bool
-	FPThreshold        int
-	PRFeedbackEnabled  bool
-	PRFeedbackAgent    string
-	CrossCheckEnabled  bool
-	CrossCheckAgent    string // empty means use summarizer agent
-	CrossCheckModel    string // empty means use summarizer model
-	AutoPhase          bool
-	Strict             bool // when true, advisory verdict exits 1 (default false)
+	DiffReviewerAgents     []string
+	SummarizerAgent        string
+	ReviewerModel          string
+	SummarizerModel        string
+	SummarizerTimeout      time.Duration
+	FPFilterTimeout        time.Duration
+	CrossCheckTimeout      time.Duration
+	Guidance               string
+	GuidanceFile           string
+	FPFilterEnabled        bool
+	FPThreshold            int
+	PRFeedbackEnabled      bool
+	PRFeedbackAgent        string
+	CrossCheckEnabled      bool
+	CrossCheckAgent        string // empty means use summarizer agent
+	CrossCheckModel        string // empty means use summarizer model
+	AutoPhase              bool
+	Strict                 bool // when true, advisory verdict exits 1 (default false)
+	MinLargeDiffReviewers  int
+	MinMediumDiffReviewers int
 	// ReviewerModelFromCLI is true when --reviewer-model or ACR_REVIEWER_MODEL
 	// set the ReviewerModel field, making it a CLI/env override that should win
 	// over models.agents/sizes/defaults config.
@@ -1284,6 +1296,12 @@ func Resolve(cfg *Config, envState EnvState, flagState FlagState, flagValues Res
 		}
 		if cfg.AutoPhase != nil {
 			result.AutoPhase = *cfg.AutoPhase
+		}
+		if cfg.MinLargeDiffReviewers != nil {
+			result.MinLargeDiffReviewers = *cfg.MinLargeDiffReviewers
+		}
+		if cfg.MinMediumDiffReviewers != nil {
+			result.MinMediumDiffReviewers = *cfg.MinMediumDiffReviewers
 		}
 		// Models configuration is a struct (not a pointer); copy as-is.
 		result.Models = cfg.Models

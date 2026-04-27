@@ -2828,6 +2828,70 @@ func TestValidate_RejectsZeroSmallDiffReviewers(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// min_large_diff_reviewers / min_medium_diff_reviewers (yaml-only floor keys)
+// ---------------------------------------------------------------------------
+
+func TestResolve_MinLargeDiffReviewers_DefaultsTo2(t *testing.T) {
+	result := Resolve(&Config{}, EnvState{}, FlagState{}, ResolvedConfig{})
+	if result.MinLargeDiffReviewers != 2 {
+		t.Errorf("expected default min_large_diff_reviewers=2, got %d", result.MinLargeDiffReviewers)
+	}
+	if Defaults.MinLargeDiffReviewers != 2 {
+		t.Errorf("expected Defaults.MinLargeDiffReviewers=2, got %d", Defaults.MinLargeDiffReviewers)
+	}
+}
+
+func TestResolve_MinLargeDiffReviewers_FromYAML(t *testing.T) {
+	cfg := &Config{MinLargeDiffReviewers: ptr(3)}
+	result := Resolve(cfg, EnvState{}, FlagState{}, ResolvedConfig{})
+	if result.MinLargeDiffReviewers != 3 {
+		t.Errorf("expected min_large_diff_reviewers=3 from yaml, got %d", result.MinLargeDiffReviewers)
+	}
+}
+
+func TestResolve_MinMediumDiffReviewers_DefaultsTo2(t *testing.T) {
+	result := Resolve(&Config{}, EnvState{}, FlagState{}, ResolvedConfig{})
+	if result.MinMediumDiffReviewers != 2 {
+		t.Errorf("expected default min_medium_diff_reviewers=2, got %d", result.MinMediumDiffReviewers)
+	}
+	if Defaults.MinMediumDiffReviewers != 2 {
+		t.Errorf("expected Defaults.MinMediumDiffReviewers=2, got %d", Defaults.MinMediumDiffReviewers)
+	}
+}
+
+func TestResolve_MinMediumDiffReviewers_FromYAML(t *testing.T) {
+	cfg := &Config{MinMediumDiffReviewers: ptr(4)}
+	result := Resolve(cfg, EnvState{}, FlagState{}, ResolvedConfig{})
+	if result.MinMediumDiffReviewers != 4 {
+		t.Errorf("expected min_medium_diff_reviewers=4 from yaml, got %d", result.MinMediumDiffReviewers)
+	}
+}
+
+func TestValidate_RejectsMinLargeDiffReviewersBelow2(t *testing.T) {
+	cfg := Defaults
+	cfg.MinLargeDiffReviewers = 1
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected error for min_large_diff_reviewers=1, got nil")
+	}
+	if !strings.Contains(err.Error(), "min_large_diff_reviewers must be >= 2") {
+		t.Errorf("expected 'min_large_diff_reviewers must be >= 2' in error, got: %v", err)
+	}
+}
+
+func TestValidate_RejectsMinMediumDiffReviewersBelow2(t *testing.T) {
+	cfg := Defaults
+	cfg.MinMediumDiffReviewers = 1
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected error for min_medium_diff_reviewers=1, got nil")
+	}
+	if !strings.Contains(err.Error(), "min_medium_diff_reviewers must be >= 2") {
+		t.Errorf("expected 'min_medium_diff_reviewers must be >= 2' in error, got: %v", err)
+	}
+}
+
 func TestLoadEnvState_SmallDiffReviewers(t *testing.T) {
 	clearACREnv(t)
 	t.Setenv("ACR_SMALL_DIFF_REVIEWERS", "4")
