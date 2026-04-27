@@ -21,7 +21,7 @@ type ReviewOpts struct {
 	UseRefFile      bool
 	ExcludePatterns []string
 	WorkDir         string // Worktree path (empty = current directory)
-	Phase           string // Review phase: "small", "medium" (empty = auto-phase / flat)
+	Phase           string // Review phase: "small", "medium", "large" (empty = auto-phase / flat)
 	Format          string // Output format: "text" (default) or "json"
 	// AutoPhase is inherited from the embedded ResolvedConfig field.
 }

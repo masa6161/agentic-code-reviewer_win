@@ -185,7 +185,7 @@ Exit codes:
 	rootCmd.Flags().DurationVar(&crossCheckTimeout, "cross-check-timeout", 0,
 		"Timeout for cross-check phase (default: 5m, env: ACR_CROSS_CHECK_TIMEOUT)")
 	rootCmd.Flags().StringVar(&phase, "phase", "",
-		"Override auto-phase: small, medium")
+		"Override auto-phase: small, medium, large (large falls back to medium if <2 splittable groups)")
 	rootCmd.Flags().StringVar(&formatOutput, "format", "text",
 		"Output format: text or json")
 	rootCmd.Flags().BoolVar(&autoPhase, "auto-phase", true,

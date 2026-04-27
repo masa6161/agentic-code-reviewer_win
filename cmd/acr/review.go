@@ -93,6 +93,11 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 		logger.Logf(terminal.StyleWarning, "Diff size classification failed: %v (model resolver will skip size layer)", classifyErr)
 	}
 
+	// --phase large: override sizeStr so model resolution uses sizes.large.
+	if opts.Phase == "large" && sizeStr != "large" {
+		sizeStr = "large"
+	}
+
 	// Resolve generic (phase="") reviewer specs with per-agent-name effort/model
 	// via the size-aware phase-aware model config resolver. This covers the flat
 	// review path (auto-phase OFF / size=small / explicit `--phase diff`); the
@@ -260,7 +265,8 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 				func() (agent.Agent, []agent.Agent, error) {
 					return buildPhaseAgents(opts, sizeStr)
 				},
-				opts.LargeDiffReviewers, opts.MediumDiffReviewers)
+				opts.LargeDiffReviewers, opts.MediumDiffReviewers,
+				opts.MinLargeDiffReviewers, opts.MinMediumDiffReviewers)
 			if agentsErr != nil {
 				logger.Logf(terminal.StyleError, "Failed to build per-phase reviewer agents: %v", agentsErr)
 				return domain.ExitError
@@ -275,15 +281,15 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 			if opts.Verbose {
 				switch {
 				case apr.UseGrouped && sizeStr == "large":
-					logger.Logf(terminal.StyleInfo, "Auto-phase: grouped (large_diff_reviewers=%d, arch+%d diff groups)",
-						opts.LargeDiffReviewers, len(groupedSpecs)-1)
+					logger.Logf(terminal.StyleInfo, "Auto-phase: grouped (arch+%d diff groups)",
+						len(groupedSpecs)-1)
 					logPerPhaseModelMatrix(logger, opts, sizeStr)
 					if opts.CrossCheckEnabled {
 						logCrossCheckModelMatrix(logger, opts, sizeStr)
 					}
 				case apr.UseGrouped:
-					logger.Logf(terminal.StyleInfo, "Auto-phase: medium split (medium_diff_reviewers=%d, arch+%d diff groups)",
-						opts.MediumDiffReviewers, len(groupedSpecs)-1)
+					logger.Logf(terminal.StyleInfo, "Auto-phase: medium split (arch+%d diff groups)",
+						len(groupedSpecs)-1)
 					logPerPhaseModelMatrix(logger, opts, sizeStr)
 				case apr.MediumDiffCount > 0 && apr.FallbackReason != "":
 					logger.Logf(terminal.StyleWarning,
@@ -295,6 +301,47 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 				case apr.FallbackReason != "":
 					logger.Logf(terminal.StyleWarning, "Auto-phase: falling back to medium (%s)", apr.FallbackReason)
 				}
+			}
+		}
+	}
+
+	// --phase large: build grouped specs before dispatch (defensive fallback to medium)
+	if phaseStr == "large" && !useGroupedSpecs {
+		plr, agentsErr := resolvePhaseLarge(diff, opts.Guidance, diffPrecomputed,
+			func() (agent.Agent, []agent.Agent, error) {
+				return buildPhaseAgents(opts, sizeStr)
+			},
+			opts.LargeDiffReviewers, opts.MinLargeDiffReviewers, opts.MediumDiffReviewers)
+		if agentsErr != nil {
+			logger.Logf(terminal.StyleError, "Failed to build per-phase agents for --phase large: %v", agentsErr)
+			return domain.ExitError
+		}
+		if plr.UseGrouped {
+			groupedSpecs = plr.GroupedSpecs
+			useGroupedSpecs = true
+			if opts.Verbose {
+				effectiveReviewers := opts.LargeDiffReviewers
+				if effectiveReviewers < opts.MinLargeDiffReviewers {
+					effectiveReviewers = opts.MinLargeDiffReviewers
+					logger.Logf(terminal.StyleDim,
+						"--phase large: large_diff_reviewers=%d clamped to min_large_diff_reviewers=%d",
+						opts.LargeDiffReviewers, effectiveReviewers)
+				}
+				logger.Logf(terminal.StyleInfo,
+					"--phase large: grouped (effective_reviewers=%d, arch+%d diff groups)",
+					effectiveReviewers, len(groupedSpecs)-1)
+				logPerPhaseModelMatrix(logger, opts, sizeStr)
+				if opts.CrossCheckEnabled {
+					logCrossCheckModelMatrix(logger, opts, sizeStr)
+				}
+			}
+		} else {
+			phaseStr = plr.PhaseStr
+			logger.Logf(terminal.StyleWarning,
+				"--phase large: falling back to %s (%s)", plr.PhaseStr, plr.FallbackReason)
+			if opts.CrossCheckEnabled {
+				logger.Logf(terminal.StyleWarning,
+					"--phase large: cross-check requires grouped review; skipped after fallback to %s", plr.PhaseStr)
 			}
 		}
 	}
@@ -961,6 +1008,8 @@ func resolveAutoPhase(
 	buildAgents func() (agent.Agent, []agent.Agent, error),
 	largeDiffReviewers int,
 	mediumDiffReviewers int,
+	minLargeDiffReviewers int,
+	minMediumDiffReviewers int,
 ) (autoPhaseResult, error) {
 	switch size {
 	case git.DiffSizeSmall:
@@ -968,8 +1017,10 @@ func resolveAutoPhase(
 		return autoPhaseResult{PhaseStr: "small"}, nil
 	case git.DiffSizeLarge:
 		fileCount := len(git.ParseDiffSections(diff))
-		// Sanity cap: 1 group must contain at least 1 file.
 		effectiveGroups := largeDiffReviewers
+		if effectiveGroups < minLargeDiffReviewers {
+			effectiveGroups = minLargeDiffReviewers
+		}
 		if effectiveGroups > fileCount {
 			effectiveGroups = fileCount
 		}
@@ -1025,6 +1076,9 @@ func resolveAutoPhase(
 		}
 		fileCount := len(git.ParseDiffSections(diff))
 		effectiveGroups := mediumDiffReviewers
+		if effectiveGroups < minMediumDiffReviewers {
+			effectiveGroups = minMediumDiffReviewers
+		}
 		if effectiveGroups > fileCount {
 			effectiveGroups = fileCount
 		}
@@ -1041,7 +1095,7 @@ func resolveAutoPhase(
 		if agentsErr != nil {
 			return autoPhaseResult{}, agentsErr
 		}
-		medSpecs, medErr := buildMediumDiffSpecs(diff, guidance, diffPrecomputed, archAgent, diffAgents, mediumDiffReviewers)
+		medSpecs, medErr := buildMediumDiffSpecs(diff, guidance, diffPrecomputed, archAgent, diffAgents, effectiveGroups)
 		if medErr != nil {
 			return autoPhaseResult{}, medErr
 		}
@@ -1057,6 +1111,59 @@ func resolveAutoPhase(
 			UseGrouped:   true,
 		}, nil
 	}
+}
+
+// resolvePhaseLarge handles the --phase large explicit override path.
+// It builds grouped specs (arch + N diff groups) or falls back to medium.
+func resolvePhaseLarge(
+	diff, guidance string,
+	diffPrecomputed bool,
+	buildAgents func() (agent.Agent, []agent.Agent, error),
+	largeDiffReviewers int,
+	minLargeDiffReviewers int,
+	mediumDiffReviewers int,
+) (autoPhaseResult, error) {
+	sections := git.ParseDiffSections(diff)
+	fileCount := len(sections)
+	effectiveReviewers := largeDiffReviewers
+	if effectiveReviewers < minLargeDiffReviewers {
+		effectiveReviewers = minLargeDiffReviewers
+	}
+	effectiveGroups := effectiveReviewers
+	if effectiveGroups > fileCount {
+		effectiveGroups = fileCount
+	}
+	if effectiveGroups < 2 {
+		return autoPhaseResult{
+			PhaseStr:        "medium",
+			MediumDiffCount: mediumDiffReviewers,
+			FallbackReason:  fmt.Sprintf("only %d file(s), need >=2 for grouped review", fileCount),
+		}, nil
+	}
+	archAgent, diffAgents, agentsErr := buildAgents()
+	if agentsErr != nil {
+		return autoPhaseResult{}, agentsErr
+	}
+	specs, err := buildGroupedDiffSpecs(diff, guidance, diffPrecomputed, archAgent, diffAgents, effectiveGroups)
+	if err != nil {
+		return autoPhaseResult{
+			PhaseStr:        "medium",
+			MediumDiffCount: mediumDiffReviewers,
+			FallbackReason:  fmt.Sprintf("buildGroupedDiffSpecs failed: %v", err),
+		}, nil
+	}
+	diffGroupCount := len(specs) - 1
+	if diffGroupCount < 2 {
+		return autoPhaseResult{
+			PhaseStr:        "medium",
+			MediumDiffCount: mediumDiffReviewers,
+			FallbackReason:  fmt.Sprintf("only %d non-empty diff group(s) after building", diffGroupCount),
+		}, nil
+	}
+	return autoPhaseResult{
+		GroupedSpecs: specs,
+		UseGrouped:   true,
+	}, nil
 }
 
 // buildPhaseAgents constructs the arch-phase agent and diff-phase agent slice
