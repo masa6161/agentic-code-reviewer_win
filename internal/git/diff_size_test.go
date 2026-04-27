@@ -76,7 +76,7 @@ func TestClassifySize(t *testing.T) {
 		{"medium - single file huge", 1, 2000, DiffSizeMedium},
 		{"large - many files", 11, 50, DiffSizeLarge},
 		{"large - many lines", 2, 501, DiffSizeLarge},
-		{"large - boundary 2 files many lines", 2, 501, DiffSizeLarge},
+		{"medium - boundary 2 files 500 lines", 2, 500, DiffSizeMedium},
 		{"large - both large", 15, 1000, DiffSizeLarge},
 		{"zero values", 0, 0, DiffSizeSmall},
 	}
