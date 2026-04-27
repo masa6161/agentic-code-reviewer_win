@@ -1586,3 +1586,274 @@ func TestCollectAllCLINames_CrossCheckCommaSeparated(t *testing.T) {
 		t.Error("comma-separated value should be parsed, not passed as-is")
 	}
 }
+
+// --- buildMediumDiffSpecs tests ---
+
+func TestBuildMediumDiffSpecs_BasicSplit(t *testing.T) {
+	sections := makeSectionsForReview(6, 10)
+	fullDiff := git.JoinDiffSections(sections)
+	archAg := agent.NewCodexAgent("")
+	diffAgs := []agent.Agent{agent.NewCodexAgent("")}
+
+	specs, err := buildMediumDiffSpecs(fullDiff, "test guidance", true, archAg, diffAgs, 2)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if specs == nil {
+		t.Fatalf("expected non-nil specs")
+	}
+	if len(specs) != 3 {
+		t.Fatalf("expected 3 specs (1 arch + 2 diff), got %d", len(specs))
+	}
+
+	if specs[0].Phase != "arch" {
+		t.Errorf("specs[0].Phase = %q, want %q", specs[0].Phase, "arch")
+	}
+	if specs[0].Diff != fullDiff {
+		t.Errorf("specs[0].Diff should equal fullDiff")
+	}
+	if specs[0].DiffPrecomputed != true {
+		t.Errorf("specs[0].DiffPrecomputed = %v, want true", specs[0].DiffPrecomputed)
+	}
+	if specs[0].GroupKey != "arch" {
+		t.Errorf("specs[0].GroupKey = %q, want %q", specs[0].GroupKey, "arch")
+	}
+	if specs[0].Guidance != "test guidance" {
+		t.Errorf("specs[0].Guidance = %q, want %q", specs[0].Guidance, "test guidance")
+	}
+
+	if specs[1].Phase != "diff" {
+		t.Errorf("specs[1].Phase = %q, want %q", specs[1].Phase, "diff")
+	}
+	if specs[2].Phase != "diff" {
+		t.Errorf("specs[2].Phase = %q, want %q", specs[2].Phase, "diff")
+	}
+	if specs[1].Diff == specs[2].Diff {
+		t.Errorf("specs[1].Diff should differ from specs[2].Diff")
+	}
+
+	pathSet1 := make(map[string]bool)
+	for _, s := range git.ParseDiffSections(specs[1].Diff) {
+		pathSet1[s.FilePath] = true
+	}
+	pathSet2 := make(map[string]bool)
+	for _, s := range git.ParseDiffSections(specs[2].Diff) {
+		pathSet2[s.FilePath] = true
+	}
+	allPaths := make(map[string]bool)
+	for _, s := range sections {
+		allPaths[s.FilePath] = true
+	}
+	for p := range pathSet1 {
+		if pathSet2[p] {
+			t.Errorf("file %q appears in both diff specs (should be disjoint)", p)
+		}
+	}
+	union := make(map[string]bool)
+	for p := range pathSet1 {
+		union[p] = true
+	}
+	for p := range pathSet2 {
+		union[p] = true
+	}
+	for p := range allPaths {
+		if !union[p] {
+			t.Errorf("file %q missing from diff specs union", p)
+		}
+	}
+}
+
+func TestBuildMediumDiffSpecs_SingleFile_Fallback(t *testing.T) {
+	sections := makeSectionsForReview(1, 10)
+	fullDiff := git.JoinDiffSections(sections)
+	archAg := agent.NewCodexAgent("")
+	diffAgs := []agent.Agent{agent.NewCodexAgent("")}
+
+	specs, err := buildMediumDiffSpecs(fullDiff, "", false, archAg, diffAgs, 3)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if specs != nil {
+		t.Errorf("expected nil for single file, got %d specs", len(specs))
+	}
+}
+
+func TestBuildMediumDiffSpecs_OneDiffReviewer_Fallback(t *testing.T) {
+	sections := makeSectionsForReview(6, 10)
+	fullDiff := git.JoinDiffSections(sections)
+	archAg := agent.NewCodexAgent("")
+	diffAgs := []agent.Agent{agent.NewCodexAgent("")}
+
+	specs, err := buildMediumDiffSpecs(fullDiff, "", false, archAg, diffAgs, 1)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if specs != nil {
+		t.Errorf("expected nil for 1 diff reviewer, got %d specs", len(specs))
+	}
+}
+
+func TestBuildMediumDiffSpecs_TargetFiles(t *testing.T) {
+	sections := makeSectionsForReview(6, 10)
+	fullDiff := git.JoinDiffSections(sections)
+	archAg := agent.NewCodexAgent("")
+	diffAgs := []agent.Agent{agent.NewCodexAgent("")}
+
+	specs, err := buildMediumDiffSpecs(fullDiff, "", true, archAg, diffAgs, 2)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if specs == nil {
+		t.Fatalf("expected non-nil specs")
+	}
+	if len(specs) < 3 {
+		t.Fatalf("expected at least 3 specs, got %d", len(specs))
+	}
+
+	for i := 1; i < len(specs); i++ {
+		if len(specs[i].TargetFiles) == 0 {
+			t.Errorf("specs[%d].TargetFiles is empty", i)
+			continue
+		}
+		parsed := git.ParseDiffSections(specs[i].Diff)
+		var parsedPaths []string
+		for _, s := range parsed {
+			parsedPaths = append(parsedPaths, s.FilePath)
+		}
+		if len(parsedPaths) != len(specs[i].TargetFiles) {
+			t.Errorf("specs[%d]: parsed paths len=%d, TargetFiles len=%d", i, len(parsedPaths), len(specs[i].TargetFiles))
+			continue
+		}
+		for j, p := range parsedPaths {
+			if p != specs[i].TargetFiles[j] {
+				t.Errorf("specs[%d]: parsed path[%d]=%q, TargetFiles[%d]=%q", i, j, p, j, specs[i].TargetFiles[j])
+			}
+		}
+	}
+}
+
+func TestBuildMediumDiffSpecs_AgentPerRole(t *testing.T) {
+	sections := makeSectionsForReview(6, 10)
+	fullDiff := git.JoinDiffSections(sections)
+	archAg := agent.NewClaudeAgent("")
+	diffAgs := []agent.Agent{agent.NewCodexAgent(""), agent.NewGeminiAgent("")}
+
+	specs, err := buildMediumDiffSpecs(fullDiff, "", true, archAg, diffAgs, 2)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if specs == nil {
+		t.Fatalf("expected non-nil specs")
+	}
+	if len(specs) != 3 {
+		t.Fatalf("expected 3 specs, got %d", len(specs))
+	}
+
+	if specs[0].Agent.Name() != "claude" {
+		t.Errorf("arch agent: got %q, want %q", specs[0].Agent.Name(), "claude")
+	}
+	if specs[1].Agent.Name() != "codex" {
+		t.Errorf("diff[0] agent: got %q, want %q", specs[1].Agent.Name(), "codex")
+	}
+	if specs[2].Agent.Name() != "gemini" {
+		t.Errorf("diff[1] agent: got %q, want %q", specs[2].Agent.Name(), "gemini")
+	}
+}
+
+func TestBuildMediumDiffSpecs_FewFiles_Split(t *testing.T) {
+	tests := []struct {
+		name      string
+		fileCount int
+		reviewers int
+	}{
+		{"2 files 2 reviewers", 2, 2},
+		{"3 files 2 reviewers", 3, 2},
+		{"4 files 2 reviewers", 4, 2},
+		{"4 files 3 reviewers", 4, 3},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			sections := makeSectionsForReview(tc.fileCount, 10)
+			fullDiff := git.JoinDiffSections(sections)
+			archAg := agent.NewCodexAgent("")
+			diffAgs := []agent.Agent{agent.NewCodexAgent("")}
+
+			specs, err := buildMediumDiffSpecs(fullDiff, "", true, archAg, diffAgs, tc.reviewers)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if specs == nil {
+				t.Fatalf("expected non-nil specs for %d files / %d reviewers", tc.fileCount, tc.reviewers)
+			}
+			diffSpecs := specs[1:]
+			if len(diffSpecs) < 2 {
+				t.Fatalf("expected >=2 diff specs, got %d", len(diffSpecs))
+			}
+
+			seen := make(map[string]bool)
+			for i, s := range diffSpecs {
+				if len(s.TargetFiles) == 0 {
+					t.Errorf("diffSpecs[%d].TargetFiles is empty", i)
+				}
+				for _, f := range s.TargetFiles {
+					if seen[f] {
+						t.Errorf("file %q appears in multiple diff specs (should be disjoint)", f)
+					}
+					seen[f] = true
+				}
+			}
+			for _, s := range sections {
+				if !seen[s.FilePath] {
+					t.Errorf("file %q missing from diff specs union", s.FilePath)
+				}
+			}
+		})
+	}
+}
+
+func TestBuildMediumDiffSpecs_DiffPrecomputed(t *testing.T) {
+	sections := makeSectionsForReview(6, 10)
+	fullDiff := git.JoinDiffSections(sections)
+	archAg := agent.NewCodexAgent("")
+	diffAgs := []agent.Agent{agent.NewCodexAgent("")}
+
+	specs, err := buildMediumDiffSpecs(fullDiff, "", true, archAg, diffAgs, 2)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if specs == nil {
+		t.Fatalf("expected non-nil specs (diffPrecomputed=true)")
+	}
+	if len(specs) < 3 {
+		t.Fatalf("expected at least 3 specs, got %d", len(specs))
+	}
+	if specs[0].DiffPrecomputed != true {
+		t.Errorf("diffPrecomputed=true: specs[0].DiffPrecomputed = %v, want true", specs[0].DiffPrecomputed)
+	}
+	if specs[1].DiffPrecomputed != true {
+		t.Errorf("diffPrecomputed=true: specs[1].DiffPrecomputed = %v, want true", specs[1].DiffPrecomputed)
+	}
+	if specs[2].DiffPrecomputed != true {
+		t.Errorf("diffPrecomputed=true: specs[2].DiffPrecomputed = %v, want true", specs[2].DiffPrecomputed)
+	}
+
+	specsF, errF := buildMediumDiffSpecs(fullDiff, "", false, archAg, diffAgs, 2)
+	if errF != nil {
+		t.Fatalf("unexpected error: %v", errF)
+	}
+	if specsF == nil {
+		t.Fatalf("expected non-nil specs (diffPrecomputed=false)")
+	}
+	if len(specsF) < 3 {
+		t.Fatalf("expected at least 3 specs, got %d", len(specsF))
+	}
+	if specsF[0].DiffPrecomputed != false {
+		t.Errorf("diffPrecomputed=false: specs[0].DiffPrecomputed = %v, want false", specsF[0].DiffPrecomputed)
+	}
+	if specsF[1].DiffPrecomputed != true {
+		t.Errorf("diffPrecomputed=false: specs[1].DiffPrecomputed = %v, want true", specsF[1].DiffPrecomputed)
+	}
+	if specsF[2].DiffPrecomputed != true {
+		t.Errorf("diffPrecomputed=false: specs[2].DiffPrecomputed = %v, want true", specsF[2].DiffPrecomputed)
+	}
+}

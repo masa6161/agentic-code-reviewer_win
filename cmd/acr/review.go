@@ -274,20 +274,17 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 			phaseFromAuto = size != git.DiffSizeSmall
 			if opts.Verbose {
 				switch {
-				case apr.UseGrouped:
+				case apr.UseGrouped && sizeStr == "large":
 					logger.Logf(terminal.StyleInfo, "Auto-phase: grouped (large_diff_reviewers=%d, arch+%d diff groups)",
 						opts.LargeDiffReviewers, len(groupedSpecs)-1)
-					// Per-phase model matrix rows — only meaningful once we
-					// know the grouped path will actually run. Before this
-					// point, a large→flat fallback would have made these rows
-					// misleading, so emission is deferred until here.
 					logPerPhaseModelMatrix(logger, opts, sizeStr)
-					// cross_check rows — same rationale: cross-check fires only
-					// when useGroupedSpecs=true. Emitted here so the verbose
-					// log groups all grouped-path-specific rows together.
 					if opts.CrossCheckEnabled {
 						logCrossCheckModelMatrix(logger, opts, sizeStr)
 					}
+				case apr.UseGrouped:
+					logger.Logf(terminal.StyleInfo, "Auto-phase: medium split (medium_diff_reviewers=%d, arch+%d diff groups)",
+						opts.MediumDiffReviewers, len(groupedSpecs)-1)
+					logPerPhaseModelMatrix(logger, opts, sizeStr)
 				case apr.MediumDiffCount > 0 && apr.FallbackReason != "":
 					logger.Logf(terminal.StyleWarning,
 						"Auto-phase: medium (medium_diff_reviewers=%d) — fallback: %s",
@@ -331,11 +328,6 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 		distributionStr = runner.FormatDistributionFromSpecs(groupedSpecs)
 		r, err = runner.NewWithSpecs(runnerConfig, groupedSpecs, logger)
 	} else if phaseStr != "" {
-		// Auto-phase medium/large fallback paths supply MediumDiffCount so the
-		// diff phase reviewer count comes from medium_diff_reviewers (NOT
-		// --reviewers is for --no-auto-phase (flat review). Phase-based
-		// paths use the corresponding knob: small_diff_reviewers for "small",
-		// medium_diff_reviewers (+1 arch) for "medium".
 		totalForParse := opts.Reviewers
 		switch phaseStr {
 		case "small":
@@ -358,9 +350,6 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 			logger.Logf(terminal.StyleError, "Phase config error: %v", specErr)
 			return domain.ExitError
 		}
-		// Per-phase rebind: only when phases were produced by auto-phase.
-		// Explicit `--phase` flags use the generic reviewer role per the
-		// documented contract (flat review path).
 		if phaseFromAuto {
 			for i := range specs {
 				specs[i].Agent = rebindSpecAgent(specs[i].Agent, specs[i].Phase)
@@ -469,14 +458,14 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 	allFindings := runner.CollectFindings(results)
 	aggregated := domain.AggregateFindings(allFindings)
 
-	// Cross-check: run only for grouped diff reviews with >=2 groups.
+	// Cross-check: run only for large grouped diff reviews with >=2 groups.
+	// Medium grouped specs also set useGroupedSpecs=true but cross-check
+	// config/model resolution only supports sizes.large.
 	var ccResult *summarizer.CrossCheckResult
-	if useGroupedSpecs && opts.CrossCheckEnabled && ctx.Err() == nil {
+	if useGroupedSpecs && sizeStr == "large" && opts.CrossCheckEnabled && ctx.Err() == nil {
 		// Lazy resolve: top-level cross_check.model parsing and per-agent
-		// modelconfig.Resolve happen here, NOT at startup. Round-14 F#1
-		// guarantees this gate is reached only when sizeStr=="large" (since
-		// useGroupedSpecs=true is exclusive to DiffSizeLarge in
-		// resolveAutoPhase), so the size layer cascade lines up with
+		// modelconfig.Resolve happen here, NOT at startup. The sizeStr=="large"
+		// guard ensures the size layer cascade lines up with
 		// canResolveCrossCheckModelForAgent's sizes["large"] view.
 		ccAgentNames, ccModels, ccErr := resolveCrossCheckAgents(opts, sizeStr)
 		if ccErr != nil {
@@ -1028,10 +1017,44 @@ func resolveAutoPhase(
 			UseGrouped:   true,
 		}, nil
 	default: // medium
-		// Medium: arch (1) + diff (mediumDiffReviewers). Never calls buildAgents.
+		if diff == "" {
+			return autoPhaseResult{
+				PhaseStr:        "medium",
+				MediumDiffCount: mediumDiffReviewers,
+			}, nil
+		}
+		fileCount := len(git.ParseDiffSections(diff))
+		effectiveGroups := mediumDiffReviewers
+		if effectiveGroups > fileCount {
+			effectiveGroups = fileCount
+		}
+		if effectiveGroups < 2 {
+			return autoPhaseResult{
+				PhaseStr:        "medium",
+				MediumDiffCount: mediumDiffReviewers,
+				FallbackReason: fmt.Sprintf(
+					"only %d non-empty diff group(s) possible (file_count=%d, medium_diff_reviewers=%d)",
+					effectiveGroups, fileCount, mediumDiffReviewers),
+			}, nil
+		}
+		archAgent, diffAgents, agentsErr := buildAgents()
+		if agentsErr != nil {
+			return autoPhaseResult{}, agentsErr
+		}
+		medSpecs, medErr := buildMediumDiffSpecs(diff, guidance, diffPrecomputed, archAgent, diffAgents, mediumDiffReviewers)
+		if medErr != nil {
+			return autoPhaseResult{}, medErr
+		}
+		if medSpecs == nil {
+			return autoPhaseResult{
+				PhaseStr:        "medium",
+				MediumDiffCount: mediumDiffReviewers,
+				FallbackReason:  "diff split not viable after grouping",
+			}, nil
+		}
 		return autoPhaseResult{
-			PhaseStr:        "medium",
-			MediumDiffCount: mediumDiffReviewers,
+			GroupedSpecs: medSpecs,
+			UseGrouped:   true,
 		}, nil
 	}
 }
@@ -1227,6 +1250,67 @@ func buildGroupedDiffSpecs(
 			// Empty group diff after splitting precomputed diff is unexpected.
 			// Skip (budget adjusts accordingly).
 			continue
+		}
+		var targetFiles []string
+		for _, s := range group.Sections {
+			targetFiles = append(targetFiles, s.FilePath)
+		}
+		reviewerID := len(specs) + 1
+		diffReviewerIdx++
+		diffAgent := agent.AgentForReviewer(diffAgents, diffReviewerIdx)
+		specs = append(specs, runner.ReviewerSpec{
+			ReviewerID:      reviewerID,
+			Agent:           diffAgent,
+			Phase:           "diff",
+			GroupKey:        group.Key,
+			Guidance:        guidance,
+			Diff:            groupDiff,
+			DiffPrecomputed: true,
+			TargetFiles:     targetFiles,
+		})
+	}
+
+	return specs, nil
+}
+
+func buildMediumDiffSpecs(
+	fullDiff, guidance string,
+	diffPrecomputed bool,
+	archAgent agent.Agent,
+	diffAgents []agent.Agent,
+	mediumDiffReviewers int,
+) ([]runner.ReviewerSpec, error) {
+	if mediumDiffReviewers < 2 {
+		return nil, nil
+	}
+	sections := git.ParseDiffSections(fullDiff)
+	if len(sections) < 2 {
+		return nil, nil
+	}
+
+	maxFilesPerGroup := (len(sections) + mediumDiffReviewers - 1) / mediumDiffReviewers
+	groups := git.GroupDiffSections(sections, maxFilesPerGroup, 0, mediumDiffReviewers)
+	if len(groups) < 2 {
+		return nil, nil
+	}
+
+	specs := make([]runner.ReviewerSpec, 0, 1+len(groups))
+
+	specs = append(specs, runner.ReviewerSpec{
+		ReviewerID:      1,
+		Agent:           archAgent,
+		Phase:           "arch",
+		GroupKey:        "arch",
+		Guidance:        guidance,
+		Diff:            fullDiff,
+		DiffPrecomputed: diffPrecomputed,
+	})
+
+	diffReviewerIdx := 0
+	for _, group := range groups {
+		groupDiff := git.JoinDiffSections(group.Sections)
+		if groupDiff == "" {
+			return nil, fmt.Errorf("medium diff split: group %q produced empty diff from %d section(s)", group.Key, len(group.Sections))
 		}
 		var targetFiles []string
 		for _, s := range group.Sections {
