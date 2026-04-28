@@ -514,12 +514,13 @@ func loadAndResolveConfig(cmd *cobra.Command, wt worktreeResult, logger *termina
 	// somewhere). Done as a separate pass so YAML-only Validate() does not
 	// false-positive on configs that defer the model to env/CLI.
 	//
-	// Cross-check runs exclusively on the auto-phase grouped (large) path.
-	// When auto-phase is disabled or an explicit --phase overrides it,
-	// cross-check can never execute, so skip validation to avoid rejecting
-	// valid flat/arch,diff workflows that omit cross_check.model.
+	// Cross-check runs on the auto-phase grouped (large) path AND the explicit
+	// --phase large path. Skip validation only for paths where
+	// cross-check can never execute (--phase small/medium, --no-auto-phase
+	// without --phase large) to avoid rejecting valid workflows that omit
+	// cross_check.model.
 	phaseFlag, _ := cmd.Flags().GetString("phase")
-	if resolved.AutoPhase && phaseFlag == "" {
+	if shouldRunRuntimeValidation(resolved.AutoPhase, phaseFlag) {
 		if runtimeErrs := resolved.ValidateRuntime(); len(runtimeErrs) > 0 {
 			for _, e := range runtimeErrs {
 				logger.Logf(terminal.StyleError, "%s", e)

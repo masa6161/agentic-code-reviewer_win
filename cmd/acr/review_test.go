@@ -836,6 +836,44 @@ func TestExecuteReview_NoAutoPhase_UsesFlatPath(t *testing.T) {
 	}
 }
 
+// --- shouldRunRuntimeValidation tests ---
+
+func TestShouldRunRuntimeValidation_AutoPhase_NoExplicitPhase(t *testing.T) {
+	if !shouldRunRuntimeValidation(true, "") {
+		t.Error("expected true: auto-phase active, no explicit --phase → cross-check may fire on large diff")
+	}
+}
+
+func TestShouldRunRuntimeValidation_AutoPhase_PhaseLarge(t *testing.T) {
+	if !shouldRunRuntimeValidation(true, "large") {
+		t.Error("expected true: --phase large can trigger cross-check via grouped review")
+	}
+}
+
+func TestShouldRunRuntimeValidation_NoAutoPhase_PhaseLarge(t *testing.T) {
+	if !shouldRunRuntimeValidation(false, "large") {
+		t.Error("expected true: --no-auto-phase --phase large still triggers cross-check")
+	}
+}
+
+func TestShouldRunRuntimeValidation_AutoPhase_PhaseSmall(t *testing.T) {
+	if shouldRunRuntimeValidation(true, "small") {
+		t.Error("expected false: --phase small cannot trigger cross-check")
+	}
+}
+
+func TestShouldRunRuntimeValidation_AutoPhase_PhaseMedium(t *testing.T) {
+	if shouldRunRuntimeValidation(true, "medium") {
+		t.Error("expected false: --phase medium cannot trigger cross-check")
+	}
+}
+
+func TestShouldRunRuntimeValidation_NoAutoPhase_NoPhase(t *testing.T) {
+	if shouldRunRuntimeValidation(false, "") {
+		t.Error("expected false: --no-auto-phase with no explicit phase → flat path, no cross-check")
+	}
+}
+
 // --- applyVerdictExitPolicy tests (Part C exit-code policy) ---
 
 func TestReview_ExitCode_VerdictOk_ExitsZero(t *testing.T) {
