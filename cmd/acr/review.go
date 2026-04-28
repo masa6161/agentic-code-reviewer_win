@@ -162,16 +162,18 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 
 	// Cross-check agent resolution and CLI availability checks are BOTH deferred
 	// to the grouped path below (see `if useGroupedSpecs && opts.CrossCheckEnabled`).
-	// Round-14 F#1: cross-check is invoked only when useGroupedSpecs=true, which
-	// resolveAutoPhase only returns under DiffSizeLarge. Eager resolution here
-	// would force users on small/medium diffs (or `--phase`/`--no-auto-phase`/
-	// medium fallback paths) to satisfy cross_check.model purely to start the
-	// run — even though cross-check would never execute. Deferring resolve until
-	// the gate also implicitly tightens validate↔runtime symmetry: at the gate,
-	// sizeStr is guaranteed to be "large", matching `canResolveCrossCheckModelForAgent`'s
-	// sizes["large"] cascade in internal/config. Contract integrity (agent name
-	// validity, model 1:1 pairing) is still enforced at validate time by
-	// ResolvedConfig.ValidateRuntime.
+	// Cross-check fires only when useGroupedSpecs=true && sizeStr=="large", which
+	// is reachable via auto-phase (DiffSizeLarge) or explicit --phase large.
+	// Eager resolution here would force users on small/medium diffs (or
+	// --phase small/medium / --no-auto-phase without --phase large / medium
+	// fallback paths) to satisfy cross_check.model purely to start the run —
+	// even though cross-check would never execute on those paths. Deferring
+	// resolve until the gate tightens validate↔runtime symmetry: at the gate,
+	// sizeStr is guaranteed to be "large", matching
+	// `canResolveCrossCheckModelForAgent`'s sizes["large"] cascade in
+	// internal/config. Cross-check model resolution and agent/model count
+	// pairing are enforced at startup by shouldRunRuntimeValidation →
+	// ResolvedConfig.ValidateRuntime for both auto-phase and --phase large.
 
 	// Verbose: log the effective model/effort matrix for all roles once, up-front.
 	// fp_filter and pr_feedback specs are resolved later in the flow, so we
@@ -758,6 +760,15 @@ func shouldUseAutoPhase(opts ReviewOpts) bool {
 	return opts.AutoPhase && opts.Phase == ""
 }
 
+// shouldRunRuntimeValidation returns true when ValidateRuntime() should be
+// called at startup. Cross-check can fire on two paths: (1) auto-phase when
+// the diff is classified as large, and (2) explicit --phase large. All other
+// paths (--phase small/medium, --no-auto-phase without --phase large) cannot
+// trigger cross-check, so validation is safely skipped.
+func shouldRunRuntimeValidation(autoPhase bool, phaseFlag string) bool {
+	return (autoPhase && phaseFlag == "") || phaseFlag == "large"
+}
+
 // collectAllCLINames returns CLI names that may be invoked during an auto-phase
 // review run. The returned slice may contain duplicates; deduplication is handled
 // by CheckCLIAvailability. Fallback defaults for optional fields are resolved here
@@ -845,13 +856,13 @@ func parsePhases(phaseStr string, totalReviewers int) ([]runner.PhaseConfig, err
 //
 // Round-14 F#1 contract: this function is invoked exclusively from the
 // grouped-path gate in executeReview, where sizeStr is guaranteed to be
-// "large" (useGroupedSpecs=true is exclusive to DiffSizeLarge in
-// resolveAutoPhase). The defense-in-depth log helper logCrossCheckModelMatrix
-// also calls this with the same sizeStr just before the gate, so the size
-// argument is consistent across both call sites. Non-grouped review paths
-// (small / medium / `--phase` / `--no-auto-phase` / medium fallback) skip
-// cross-check entirely and never invoke this function — that is the entire
-// point of Round-14 F#1's resolve deferral.
+// "large" (useGroupedSpecs=true is reachable via auto-phase DiffSizeLarge
+// or explicit --phase large). The defense-in-depth log helper
+// logCrossCheckModelMatrix also calls this with the same sizeStr just
+// before the gate, so the size argument is consistent across both call
+// sites. Non-grouped review paths (small / medium / --phase small|medium /
+// --no-auto-phase without --phase large / medium fallback) skip cross-check
+// entirely and never invoke this function.
 //
 // Returns (nil, nil, nil) when cross-check is disabled.
 //
