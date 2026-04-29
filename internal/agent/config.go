@@ -47,4 +47,9 @@ type ReviewConfig struct {
 	// TargetFiles restricts the review to specific files (for grouped diff).
 	// If empty, the full diff is reviewed.
 	TargetFiles []string
+
+	// RolePrompts enables role-specific prompts for auto-phase mode.
+	// When true and Phase is set, uses AutoPhaseDiffPrompt/AutoPhaseArchPrompt
+	// instead of agent-specific prompts.
+	RolePrompts bool
 }

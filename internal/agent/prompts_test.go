@@ -159,6 +159,42 @@ func TestRenderPrompt_DefaultPrompts_NoGuidance(t *testing.T) {
 	}
 }
 
+func TestAutoPhasePrompts_ContainGuidancePlaceholder(t *testing.T) {
+	for name, prompt := range map[string]string{
+		"AutoPhaseDiffPrompt":        AutoPhaseDiffPrompt,
+		"AutoPhaseArchPrompt":        AutoPhaseArchPrompt,
+		"AutoPhaseDiffRefFilePrompt": AutoPhaseDiffRefFilePrompt,
+		"AutoPhaseArchRefFilePrompt": AutoPhaseArchRefFilePrompt,
+	} {
+		if !strings.Contains(prompt, "{{guidance}}") {
+			t.Errorf("%s missing {{guidance}} placeholder", name)
+		}
+	}
+}
+
+func TestAutoPhaseRefFilePrompts_ContainFormatVerb(t *testing.T) {
+	for name, prompt := range map[string]string{
+		"AutoPhaseDiffRefFilePrompt": AutoPhaseDiffRefFilePrompt,
+		"AutoPhaseArchRefFilePrompt": AutoPhaseArchRefFilePrompt,
+	} {
+		if !strings.Contains(prompt, "%s") {
+			t.Errorf("%s missing %%s format verb for file path", name)
+		}
+	}
+}
+
+func TestAutoPhaseDiffPrompt_SubsetAwareness(t *testing.T) {
+	if !strings.Contains(strings.ToLower(AutoPhaseDiffPrompt), "subset") {
+		t.Error("AutoPhaseDiffPrompt should mention file subset awareness")
+	}
+}
+
+func TestAutoPhaseArchPrompt_FullDiffAwareness(t *testing.T) {
+	if !strings.Contains(strings.ToUpper(AutoPhaseArchPrompt), "FULL") {
+		t.Error("AutoPhaseArchPrompt should mention FULL diff privilege")
+	}
+}
+
 func TestRenderPrompt_ArchPrompt(t *testing.T) {
 	if DefaultArchPrompt == "" {
 		t.Fatal("DefaultArchPrompt should not be empty")

@@ -158,6 +158,110 @@ Skip:
 Output format: file:line: description
 {{guidance}}`
 
+// AutoPhaseDiffPrompt is the role-specific prompt for diff reviewers in auto-phase mode.
+// Used when RolePrompts=true and Phase is set (non-empty). Agent-independent.
+const AutoPhaseDiffPrompt = `Review this git diff for code-level issues.
+
+You are reviewing a subset of files from a larger change.
+Other reviewers are examining other files, and an architecture reviewer
+has the full diff. Focus on issues detectable within these files.
+
+Look for:
+- Logic errors, wrong behavior, crashes, regressions
+- Security issues (injection, auth bypass, exposure)
+- Silent failures, swallowed errors
+- Wrong type conversions or boundary violations
+- Missing operations (data not passed, steps skipped)
+- Violations of existing coding patterns in the codebase
+
+Skip:
+- Cross-file architectural concerns (the arch reviewer handles those)
+- Style/formatting
+- Performance unless severe
+- Test files
+- Suggestions
+
+Output format: file:line: description
+{{guidance}}`
+
+// AutoPhaseDiffRefFilePrompt is the ref-file variant of AutoPhaseDiffPrompt.
+const AutoPhaseDiffRefFilePrompt = `Review the code changes in %s for code-level issues.
+
+You are reviewing a subset of files from a larger change.
+Other reviewers are examining other files, and an architecture reviewer
+has the full diff. Focus on issues detectable within these files.
+
+Look for:
+- Logic errors, wrong behavior, crashes, regressions
+- Security issues (injection, auth bypass, exposure)
+- Silent failures, swallowed errors
+- Wrong type conversions or boundary violations
+- Missing operations (data not passed, steps skipped)
+- Violations of existing coding patterns in the codebase
+
+Skip:
+- Cross-file architectural concerns (the arch reviewer handles those)
+- Style/formatting
+- Performance unless severe
+- Test files
+- Suggestions
+
+Output format: file:line: description
+{{guidance}}`
+
+// AutoPhaseArchPrompt is the role-specific prompt for architecture reviewers in auto-phase mode.
+// Used when RolePrompts=true and Phase=="arch". Agent-independent.
+const AutoPhaseArchPrompt = `Review this code change for architectural and cross-cutting concerns.
+
+You have the FULL diff of this change. Other reviewers are examining
+individual file groups for code-level bugs. Focus on issues that span
+multiple files or that individual file-level review would miss.
+
+Focus on:
+- Dependency direction violations (importing from wrong layer)
+- Responsibility misplacement (logic in wrong package/module)
+- Breaking changes to public interfaces or APIs
+- Security design issues (auth bypass paths, trust boundary violations)
+- Missing error propagation across module boundaries
+- Cross-file consistency (e.g., a struct field added but not initialized in all constructors)
+- Change coherence (do all modified files serve a single purpose?)
+
+Output format:
+- Prefix each issue with [must] for blocking or [imo] for advisory
+- One issue per line
+
+Skip:
+- Implementation details within a single function (diff reviewers handle those)
+- Style/formatting
+- Performance micro-optimizations
+{{guidance}}`
+
+// AutoPhaseArchRefFilePrompt is the ref-file variant of AutoPhaseArchPrompt.
+const AutoPhaseArchRefFilePrompt = `Review the code changes in %s for architectural and cross-cutting concerns.
+
+You have the FULL diff of this change. Other reviewers are examining
+individual file groups for code-level bugs. Focus on issues that span
+multiple files or that individual file-level review would miss.
+
+Focus on:
+- Dependency direction violations (importing from wrong layer)
+- Responsibility misplacement (logic in wrong package/module)
+- Breaking changes to public interfaces or APIs
+- Security design issues (auth bypass paths, trust boundary violations)
+- Missing error propagation across module boundaries
+- Cross-file consistency (e.g., a struct field added but not initialized in all constructors)
+- Change coherence (do all modified files serve a single purpose?)
+
+Output format:
+- Prefix each issue with [must] for blocking or [imo] for advisory
+- One issue per line
+
+Skip:
+- Implementation details within a single function (diff reviewers handle those)
+- Style/formatting
+- Performance micro-optimizations
+{{guidance}}`
+
 // DefaultArchPrompt is the default prompt for architecture-phase reviews.
 // Used when ReviewConfig.Phase == "arch".
 const DefaultArchPrompt = `Review this code change for architectural concerns.
