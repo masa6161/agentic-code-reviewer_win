@@ -361,6 +361,7 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 		UseRefFile:      opts.UseRefFile,
 		Diff:            diff,
 		DiffPrecomputed: diffPrecomputed,
+		RolePrompts:     opts.RolePrompts,
 	}
 
 	var r *runner.Runner

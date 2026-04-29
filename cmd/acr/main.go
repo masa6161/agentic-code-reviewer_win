@@ -83,6 +83,8 @@ var (
 	autoPhase           bool
 	noAutoPhase         bool
 	strict              bool
+	rolePrompts         bool
+	noRolePrompts       bool
 )
 
 func main() {
@@ -194,6 +196,10 @@ Exit codes:
 		"Disable auto-phase selection and use flat diff review (env: ACR_AUTO_PHASE=false)")
 	rootCmd.Flags().BoolVar(&strict, "strict", false,
 		"Exit 1 on any advisory verdict (default: false, env: ACR_STRICT)")
+	rootCmd.Flags().BoolVar(&rolePrompts, "role-prompts", false,
+		"Use role-specific prompts for auto-phase diff/arch reviewers (default: false, env: ACR_ROLE_PROMPTS)")
+	rootCmd.Flags().BoolVar(&noRolePrompts, "no-role-prompts", false,
+		"Disable role-specific prompts (env: ACR_ROLE_PROMPTS=false)")
 
 	rootCmd.AddCommand(newConfigCmd())
 
@@ -435,6 +441,7 @@ func loadAndResolveConfig(cmd *cobra.Command, wt worktreeResult, logger *termina
 		CrossCheckTimeoutSet:   cmd.Flags().Changed("cross-check-timeout"),
 		AutoPhaseSet:           autoPhaseAnySet,
 		StrictSet:              cmd.Flags().Changed("strict"),
+		RolePromptsSet:         cmd.Flags().Changed("role-prompts") || cmd.Flags().Changed("no-role-prompts"),
 	}
 
 	// Load env var state
@@ -485,6 +492,7 @@ func loadAndResolveConfig(cmd *cobra.Command, wt worktreeResult, logger *termina
 		CrossCheckTimeout:   crossCheckTimeout,
 		AutoPhase:           autoPhaseValue,
 		Strict:              strict,
+		RolePrompts:         rolePrompts && !noRolePrompts,
 	}
 
 	// Resolve final configuration (precedence: flags > env vars > config file > defaults)
