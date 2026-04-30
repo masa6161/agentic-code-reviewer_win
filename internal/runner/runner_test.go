@@ -576,3 +576,82 @@ func TestBuildStats_PerPhaseCount_PartialFailure(t *testing.T) {
 		t.Errorf("SuccessfulDiffReviewers = %d, want 2", stats.SuccessfulDiffReviewers)
 	}
 }
+
+// mockRolePromptsAgent captures the RolePrompts and HasArchReviewer values passed to ExecuteReview.
+type mockRolePromptsAgent struct {
+	capturedRolePrompts     bool
+	capturedHasArchReviewer bool
+}
+
+func (m *mockRolePromptsAgent) Name() string       { return "claude" }
+func (m *mockRolePromptsAgent) IsAvailable() error { return nil }
+func (m *mockRolePromptsAgent) ExecuteReview(_ context.Context, c *agent.ReviewConfig) (*agent.ExecutionResult, error) {
+	m.capturedRolePrompts = c.RolePrompts
+	m.capturedHasArchReviewer = c.HasArchReviewer
+	reader := &stringReadCloser{strings.NewReader("")}
+	return agent.NewExecutionResult(reader, func() int { return 0 }, func() string { return "" }), nil
+}
+func (m *mockRolePromptsAgent) ExecuteSummary(_ context.Context, _ string, _ []byte) (*agent.ExecutionResult, error) {
+	return nil, nil
+}
+func (m *mockRolePromptsAgent) Options() agent.AgentOptions { return agent.AgentOptions{} }
+
+func TestRunReviewer_PropagatesRolePrompts(t *testing.T) {
+	mock := &mockRolePromptsAgent{}
+	r := &Runner{
+		config:    Config{Reviewers: 1, Timeout: 10 * time.Second, RolePrompts: true},
+		agents:    []agent.Agent{mock},
+		specs:     []ReviewerSpec{{ReviewerID: 1, Agent: mock}},
+		logger:    terminal.NewLogger(),
+		completed: new(atomic.Int32),
+	}
+	r.runReviewer(context.Background(), 1)
+	if !mock.capturedRolePrompts {
+		t.Errorf("expected RolePrompts=true to propagate to ReviewConfig, got false")
+	}
+}
+
+func TestRunReviewer_RolePromptsDefaultsFalse(t *testing.T) {
+	mock := &mockRolePromptsAgent{}
+	r := &Runner{
+		config:    Config{Reviewers: 1, Timeout: 10 * time.Second},
+		agents:    []agent.Agent{mock},
+		specs:     []ReviewerSpec{{ReviewerID: 1, Agent: mock}},
+		logger:    terminal.NewLogger(),
+		completed: new(atomic.Int32),
+	}
+	r.runReviewer(context.Background(), 1)
+	if mock.capturedRolePrompts {
+		t.Errorf("expected RolePrompts=false by default, got true")
+	}
+}
+
+func TestRunReviewer_PropagatesHasArchReviewer(t *testing.T) {
+	mock := &mockRolePromptsAgent{}
+	r := &Runner{
+		config:    Config{Reviewers: 1, Timeout: 10 * time.Second, HasArchReviewer: true},
+		agents:    []agent.Agent{mock},
+		specs:     []ReviewerSpec{{ReviewerID: 1, Agent: mock}},
+		logger:    terminal.NewLogger(),
+		completed: new(atomic.Int32),
+	}
+	r.runReviewer(context.Background(), 1)
+	if !mock.capturedHasArchReviewer {
+		t.Errorf("expected HasArchReviewer=true to propagate to ReviewConfig, got false")
+	}
+}
+
+func TestRunReviewer_HasArchReviewerDefaultsFalse(t *testing.T) {
+	mock := &mockRolePromptsAgent{}
+	r := &Runner{
+		config:    Config{Reviewers: 1, Timeout: 10 * time.Second},
+		agents:    []agent.Agent{mock},
+		specs:     []ReviewerSpec{{ReviewerID: 1, Agent: mock}},
+		logger:    terminal.NewLogger(),
+		completed: new(atomic.Int32),
+	}
+	r.runReviewer(context.Background(), 1)
+	if mock.capturedHasArchReviewer {
+		t.Errorf("expected HasArchReviewer=false by default, got true")
+	}
+}

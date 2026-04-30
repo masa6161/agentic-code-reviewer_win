@@ -49,7 +49,7 @@ reviewer_agents:
 #   If unset, falls back to reviewer_agents.
 # Use this to route unreliable backends (e.g., capacity-throttled providers)
 # away from grouped diff while keeping them in flat review.
-arch_reviewer_agent: claude
+arch_reviewer_agent: codex
 diff_reviewer_agents:
   - codex
 #   - claude
@@ -159,9 +159,9 @@ models:
       cross_check:   { model: gpt-5.5 }
     claude:
       reviewer:      { model: claude-sonnet-4-6 }
-      arch_reviewer: { model: claude-opus-4-7 }
-      summarizer:    { model: claude-opus-4-7 }
-      cross_check:   { model: claude-opus-4-7 }
+      arch_reviewer: { model: claude-opus-4-6 }
+      summarizer:    { model: claude-opus-4-6 }
+      cross_check:   { model: claude-opus-4-6 }
     gemini:
       # gemini は effort 未対応。model のみ指定
       reviewer:      { model: gemini-3.1-pro-preview }

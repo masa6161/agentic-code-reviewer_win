@@ -83,6 +83,8 @@ var (
 	autoPhase           bool
 	noAutoPhase         bool
 	strict              bool
+	rolePrompts         bool
+	noRolePrompts       bool
 )
 
 func main() {
@@ -194,6 +196,10 @@ Exit codes:
 		"Disable auto-phase selection and use flat diff review (env: ACR_AUTO_PHASE=false)")
 	rootCmd.Flags().BoolVar(&strict, "strict", false,
 		"Exit 1 on any advisory verdict (default: false, env: ACR_STRICT)")
+	rootCmd.Flags().BoolVar(&rolePrompts, "role-prompts", false,
+		"Use role-specific prompts for auto-phase diff/arch reviewers (default: false, env: ACR_ROLE_PROMPTS)")
+	rootCmd.Flags().BoolVar(&noRolePrompts, "no-role-prompts", false,
+		"Disable role-specific prompts (env: ACR_ROLE_PROMPTS=false)")
 
 	rootCmd.AddCommand(newConfigCmd())
 
@@ -405,6 +411,8 @@ func loadAndResolveConfig(cmd *cobra.Command, wt worktreeResult, logger *termina
 	// For fetch, either --fetch or --no-fetch being set counts as explicit
 	fetchFlagSet := cmd.Flags().Changed("fetch") || cmd.Flags().Changed("no-fetch")
 	autoPhaseAnySet := cmd.Flags().Changed("auto-phase") || cmd.Flags().Changed("no-auto-phase")
+	rolePromptsChanged := cmd.Flags().Changed("role-prompts")
+	noRolePromptsChanged := cmd.Flags().Changed("no-role-prompts")
 	flagState := config.FlagState{
 		ReviewersSet:           cmd.Flags().Changed("reviewers"),
 		LargeDiffReviewersSet:  cmd.Flags().Changed("large-diff-reviewers"),
@@ -435,6 +443,7 @@ func loadAndResolveConfig(cmd *cobra.Command, wt worktreeResult, logger *termina
 		CrossCheckTimeoutSet:   cmd.Flags().Changed("cross-check-timeout"),
 		AutoPhaseSet:           autoPhaseAnySet,
 		StrictSet:              cmd.Flags().Changed("strict"),
+		RolePromptsSet:         rolePromptsChanged || noRolePromptsChanged,
 	}
 
 	// Load env var state
@@ -455,6 +464,20 @@ func loadAndResolveConfig(cmd *cobra.Command, wt worktreeResult, logger *termina
 	}
 
 	autoPhaseValue := autoPhase && !noAutoPhase
+	// Normalize: --role-prompts=false and --no-role-prompts=false are no-ops for precedence.
+	rolePromptsChanged = rolePromptsChanged && rolePrompts
+	noRolePromptsChanged = noRolePromptsChanged && noRolePrompts
+	// Determine RolePrompts value based on which flag was explicitly set to true.
+	// --no-role-prompts (explicit disable) takes precedence over --role-prompts.
+	var rolePromptsValue bool
+	switch {
+	case noRolePromptsChanged:
+		rolePromptsValue = false
+	case rolePromptsChanged:
+		rolePromptsValue = true
+	default:
+		rolePromptsValue = false // unused: RolePromptsSet is false, so Resolve falls back to env/yaml
+	}
 	flagValues := config.ResolvedConfig{
 		Reviewers:           reviewers,
 		LargeDiffReviewers:  largeDiffReviewers,
@@ -485,6 +508,7 @@ func loadAndResolveConfig(cmd *cobra.Command, wt worktreeResult, logger *termina
 		CrossCheckTimeout:   crossCheckTimeout,
 		AutoPhase:           autoPhaseValue,
 		Strict:              strict,
+		RolePrompts:         rolePromptsValue,
 	}
 
 	// Resolve final configuration (precedence: flags > env vars > config file > defaults)

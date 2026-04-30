@@ -361,6 +361,7 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 		UseRefFile:      opts.UseRefFile,
 		Diff:            diff,
 		DiffPrecomputed: diffPrecomputed,
+		RolePrompts:     opts.RolePrompts,
 	}
 
 	var r *runner.Runner
@@ -375,6 +376,7 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 		}
 		actualReviewers = len(groupedSpecs)
 		distributionStr = runner.FormatDistributionFromSpecs(groupedSpecs)
+		runnerConfig.HasArchReviewer = specsHaveArch(groupedSpecs)
 		r, err = runner.NewWithSpecs(runnerConfig, groupedSpecs, logger)
 	} else if phaseStr != "" {
 		totalForParse := opts.Reviewers
@@ -406,11 +408,13 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 		}
 		actualReviewers = len(specs)
 		distributionStr = runner.FormatDistributionFromSpecs(specs)
+		runnerConfig.HasArchReviewer = specsHaveArch(specs)
 		r, err = runner.NewWithSpecs(runnerConfig, specs, logger)
 	} else {
 		if len(reviewAgents) > 1 {
 			distributionStr = agent.FormatDistribution(reviewAgents, opts.Reviewers)
 		}
+		// Flat path: no arch reviewer, HasArchReviewer stays false (default).
 		r, err = runner.New(runnerConfig, reviewAgents, logger)
 	}
 
@@ -758,6 +762,16 @@ func applyVerdictExitPolicy(verdict string, strict bool, findingsCode domain.Exi
 // --phase override was provided. Explicit --phase always takes precedence.
 func shouldUseAutoPhase(opts ReviewOpts) bool {
 	return opts.AutoPhase && opts.Phase == ""
+}
+
+// specsHaveArch returns true if any spec in the slice has Phase "arch".
+func specsHaveArch(specs []runner.ReviewerSpec) bool {
+	for _, s := range specs {
+		if s.Phase == "arch" {
+			return true
+		}
+	}
+	return false
 }
 
 // shouldRunRuntimeValidation returns true when ValidateRuntime() should be

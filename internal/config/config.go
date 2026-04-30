@@ -119,6 +119,7 @@ type Config struct {
 	Models                 ModelsConfig     `yaml:"models"`
 	MinLargeDiffReviewers  *int             `yaml:"min_large_diff_reviewers"`
 	MinMediumDiffReviewers *int             `yaml:"min_medium_diff_reviewers"`
+	RolePrompts            *bool            `yaml:"role_prompts"`
 }
 
 // CrossCheckConfig holds cross-check verification settings.
@@ -226,7 +227,7 @@ func (c *Config) validatePatterns() error {
 	return nil
 }
 
-var knownTopLevelKeys = []string{"reviewers", "large_diff_reviewers", "medium_diff_reviewers", "small_diff_reviewers", "concurrency", "base", "timeout", "retries", "fetch", "reviewer_agent", "reviewer_agents", "arch_reviewer_agent", "diff_reviewer_agents", "summarizer_agent", "reviewer_model", "summarizer_model", "summarizer_timeout", "fp_filter_timeout", "cross_check_timeout", "guidance_file", "auto_phase", "filters", "fp_filter", "pr_feedback", "cross_check", "models", "min_large_diff_reviewers", "min_medium_diff_reviewers"}
+var knownTopLevelKeys = []string{"reviewers", "large_diff_reviewers", "medium_diff_reviewers", "small_diff_reviewers", "concurrency", "base", "timeout", "retries", "fetch", "reviewer_agent", "reviewer_agents", "arch_reviewer_agent", "diff_reviewer_agents", "summarizer_agent", "reviewer_model", "summarizer_model", "summarizer_timeout", "fp_filter_timeout", "cross_check_timeout", "guidance_file", "auto_phase", "filters", "fp_filter", "pr_feedback", "cross_check", "models", "min_large_diff_reviewers", "min_medium_diff_reviewers", "role_prompts"}
 
 var knownFPFilterKeys = []string{"enabled", "threshold"}
 
@@ -821,6 +822,7 @@ var Defaults = ResolvedConfig{
 	Strict:                 false,
 	MinLargeDiffReviewers:  2,
 	MinMediumDiffReviewers: 2,
+	RolePrompts:            false,
 }
 
 type ResolvedConfig struct {
@@ -861,6 +863,7 @@ type ResolvedConfig struct {
 	Strict                 bool // when true, advisory verdict exits 1 (default false)
 	MinLargeDiffReviewers  int
 	MinMediumDiffReviewers int
+	RolePrompts            bool
 	// ReviewerModelFromCLI is true when --reviewer-model or ACR_REVIEWER_MODEL
 	// set the ReviewerModel field, making it a CLI/env override that should win
 	// over models.agents/sizes/defaults config.
@@ -900,6 +903,7 @@ type FlagState struct {
 	CrossCheckModelSet     bool
 	AutoPhaseSet           bool
 	StrictSet              bool
+	RolePromptsSet         bool
 }
 
 type EnvState struct {
@@ -961,6 +965,8 @@ type EnvState struct {
 	AutoPhaseSet           bool
 	Strict                 bool
 	StrictSet              bool
+	RolePrompts            bool
+	RolePromptsSet         bool
 }
 
 // LoadEnvState reads environment variables and returns their state.
@@ -1193,6 +1199,19 @@ func LoadEnvState() (EnvState, []string) {
 		}
 	}
 
+	if v := os.Getenv("ACR_ROLE_PROMPTS"); v != "" {
+		switch strings.ToLower(v) {
+		case "true", "1", "yes":
+			state.RolePrompts = true
+			state.RolePromptsSet = true
+		case "false", "0", "no":
+			state.RolePrompts = false
+			state.RolePromptsSet = true
+		default:
+			warnings = append(warnings, fmt.Sprintf("ACR_ROLE_PROMPTS=%q is not a valid boolean (use true/false/1/0/yes/no), ignoring", v))
+		}
+	}
+
 	if v := os.Getenv("ACR_STRICT"); v != "" {
 		switch strings.ToLower(v) {
 		case "true", "1", "yes":
@@ -1297,6 +1316,9 @@ func Resolve(cfg *Config, envState EnvState, flagState FlagState, flagValues Res
 		if cfg.AutoPhase != nil {
 			result.AutoPhase = *cfg.AutoPhase
 		}
+		if cfg.RolePrompts != nil {
+			result.RolePrompts = *cfg.RolePrompts
+		}
 		if cfg.MinLargeDiffReviewers != nil {
 			result.MinLargeDiffReviewers = *cfg.MinLargeDiffReviewers
 		}
@@ -1386,6 +1408,9 @@ func Resolve(cfg *Config, envState EnvState, flagState FlagState, flagValues Res
 	if envState.AutoPhaseSet {
 		result.AutoPhase = envState.AutoPhase
 	}
+	if envState.RolePromptsSet {
+		result.RolePrompts = envState.RolePrompts
+	}
 	if envState.StrictSet {
 		result.Strict = envState.Strict
 	}
@@ -1467,6 +1492,9 @@ func Resolve(cfg *Config, envState EnvState, flagState FlagState, flagValues Res
 	}
 	if flagState.AutoPhaseSet {
 		result.AutoPhase = flagValues.AutoPhase
+	}
+	if flagState.RolePromptsSet {
+		result.RolePrompts = flagValues.RolePrompts
 	}
 	if flagState.StrictSet {
 		result.Strict = flagValues.Strict

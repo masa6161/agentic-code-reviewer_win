@@ -3216,3 +3216,93 @@ func TestValidateRuntime_CrossCheckModelsTreeFallback(t *testing.T) {
 		}
 	})
 }
+
+// --- RolePrompts config resolution tests ---
+
+func TestResolve_RolePromptsDefaultsFalse(t *testing.T) {
+	result := Resolve(&Config{}, EnvState{}, FlagState{}, ResolvedConfig{})
+	if result.RolePrompts {
+		t.Errorf("expected RolePrompts=false as default, got true")
+	}
+}
+
+func TestResolve_RolePromptsFromYAML(t *testing.T) {
+	cfg := &Config{RolePrompts: boolPtr(true)}
+	result := Resolve(cfg, EnvState{}, FlagState{}, ResolvedConfig{})
+	if !result.RolePrompts {
+		t.Errorf("expected RolePrompts=true from yaml, got false")
+	}
+}
+
+func TestResolve_RolePromptsFromEnv(t *testing.T) {
+	t.Setenv("ACR_ROLE_PROMPTS", "true")
+	env, warnings := LoadEnvState()
+	if len(warnings) != 0 {
+		t.Errorf("unexpected warnings: %v", warnings)
+	}
+	result := Resolve(&Config{}, env, FlagState{}, ResolvedConfig{})
+	if !result.RolePrompts {
+		t.Errorf("expected RolePrompts=true from env, got false")
+	}
+}
+
+func TestResolve_RolePromptsFlagOverridesEnv(t *testing.T) {
+	env := EnvState{RolePrompts: true, RolePromptsSet: true}
+	result := Resolve(&Config{}, env, FlagState{RolePromptsSet: true}, ResolvedConfig{RolePrompts: false})
+	if result.RolePrompts {
+		t.Errorf("expected flag --no-role-prompts to override env true, got true")
+	}
+}
+
+func TestResolve_RolePromptsFlagOverridesYAML(t *testing.T) {
+	cfg := &Config{RolePrompts: boolPtr(true)}
+	result := Resolve(cfg, EnvState{}, FlagState{RolePromptsSet: true}, ResolvedConfig{RolePrompts: false})
+	if result.RolePrompts {
+		t.Errorf("expected flag --no-role-prompts to override yaml true, got true")
+	}
+
+	cfgFalse := &Config{RolePrompts: boolPtr(false)}
+	result = Resolve(cfgFalse, EnvState{}, FlagState{RolePromptsSet: true}, ResolvedConfig{RolePrompts: true})
+	if !result.RolePrompts {
+		t.Errorf("expected flag --role-prompts to override yaml false, got false")
+	}
+}
+
+// TestResolve_RolePrompts_NeitherFlagSet_EnvTrue verifies that when neither
+// --role-prompts nor --no-role-prompts is set (RolePromptsSet=false), the env
+// var ACR_ROLE_PROMPTS=true is respected. This guards against the bug where
+// main.go collapsed both flags into a single boolean that defaulted to false,
+// causing RolePromptsSet=true + RolePrompts=false even when no flag was passed.
+func TestResolve_RolePrompts_NeitherFlagSet_EnvTrue(t *testing.T) {
+	env := EnvState{RolePrompts: true, RolePromptsSet: true}
+	// flagValues.RolePrompts=false simulates the default that main.go sets
+	// when neither --role-prompts nor --no-role-prompts is Changed.
+	flagValues := ResolvedConfig{RolePrompts: false}
+	// Neither flag is Changed → RolePromptsSet must be false.
+	flagState := FlagState{RolePromptsSet: false}
+	result := Resolve(&Config{}, env, flagState, flagValues)
+	if !result.RolePrompts {
+		t.Errorf("expected RolePrompts=true from env when no flag is set, got false")
+	}
+}
+
+func TestCheckUnknownKeys_RolePromptsIsKnown(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, ".acr.yaml")
+
+	content := "role_prompts: true\n"
+	if err := os.WriteFile(configPath, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := LoadFromPathWithWarnings(configPath)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	for _, w := range result.Warnings {
+		if strings.Contains(w, "role_prompts") {
+			t.Errorf("role_prompts should be a known key, got warning: %s", w)
+		}
+	}
+}
