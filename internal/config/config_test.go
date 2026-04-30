@@ -3268,6 +3268,24 @@ func TestResolve_RolePromptsFlagOverridesYAML(t *testing.T) {
 	}
 }
 
+// TestResolve_RolePrompts_NeitherFlagSet_EnvTrue verifies that when neither
+// --role-prompts nor --no-role-prompts is set (RolePromptsSet=false), the env
+// var ACR_ROLE_PROMPTS=true is respected. This guards against the bug where
+// main.go collapsed both flags into a single boolean that defaulted to false,
+// causing RolePromptsSet=true + RolePrompts=false even when no flag was passed.
+func TestResolve_RolePrompts_NeitherFlagSet_EnvTrue(t *testing.T) {
+	env := EnvState{RolePrompts: true, RolePromptsSet: true}
+	// flagValues.RolePrompts=false simulates the default that main.go sets
+	// when neither --role-prompts nor --no-role-prompts is Changed.
+	flagValues := ResolvedConfig{RolePrompts: false}
+	// Neither flag is Changed → RolePromptsSet must be false.
+	flagState := FlagState{RolePromptsSet: false}
+	result := Resolve(&Config{}, env, flagState, flagValues)
+	if !result.RolePrompts {
+		t.Errorf("expected RolePrompts=true from env when no flag is set, got false")
+	}
+}
+
 func TestCheckUnknownKeys_RolePromptsIsKnown(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, ".acr.yaml")
