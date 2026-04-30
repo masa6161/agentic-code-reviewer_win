@@ -3219,10 +3219,10 @@ func TestValidateRuntime_CrossCheckModelsTreeFallback(t *testing.T) {
 
 // --- RolePrompts config resolution tests ---
 
-func TestResolve_RolePromptsDefaultsFalse(t *testing.T) {
+func TestResolve_RolePromptsDefaultsTrue(t *testing.T) {
 	result := Resolve(&Config{}, EnvState{}, FlagState{}, ResolvedConfig{})
-	if result.RolePrompts {
-		t.Errorf("expected RolePrompts=false as default, got true")
+	if !result.RolePrompts {
+		t.Errorf("expected RolePrompts=true as default, got false")
 	}
 }
 
