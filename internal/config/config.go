@@ -822,7 +822,7 @@ var Defaults = ResolvedConfig{
 	Strict:                 false,
 	MinLargeDiffReviewers:  2,
 	MinMediumDiffReviewers: 2,
-	RolePrompts:            false,
+	RolePrompts:            true,
 }
 
 type ResolvedConfig struct {
