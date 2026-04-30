@@ -1,0 +1,255 @@
+{
+  "findings": [
+    {
+      "title": "CLI flag synthesis silently overrides env/YAML for role-prompts",
+      "summary": "`RolePrompts: rolePrompts \u0026\u0026 !noRolePrompts` combined with `RolePromptsSet` based on either flag being changed forces a synthesized boolean onto Resolve, defeating `ACR_ROLE_PROMPTS=true` and `.acr.yaml: role_prompts: true`. Compute the resolved value only from the flag actually changed.",
+      "messages": [
+        "cmd/acr/main.go:495 `RolePrompts: rolePrompts \u0026\u0026 !noRolePrompts` with `RolePromptsSet: cmd.Flags().Changed(\"role-prompts\") || cmd.Flags().Changed(\"no-role-prompts\")` defeats ACR_ROLE_PROMPTS=true / role_prompts: true"
+      ],
+      "reviewer_count": 1,
+      "arch_reviewer_count": 1,
+      "sources": [
+        2
+      ],
+      "group_key": "arch",
+      "severity": "blocking"
+    },
+    {
+      "title": "AutoPhaseDiffPrompt suppresses cross-file findings when no arch reviewer runs",
+      "summary": "`AutoPhaseDiffPrompt`/`AutoPhaseDiffRefFilePrompt` instruct the reviewer to skip cross-file concerns because an arch reviewer has the full diff, but in auto-phase small / `--phase small` / single-phase modes no arch reviewer exists, silently suppressing findings. Gate role prompts on arch presence or split into with-arch vs without-arch variants.",
+      "messages": [
+        "internal/agent/prompts.go:160 AutoPhaseDiffPrompt/AutoPhaseDiffRefFilePrompt claim arch reviewer exists and tell reviewers to \"Skip: Cross-file architectural concerns\" — but small/single-phase has no arch reviewer",
+        "internal/agent/diff_review.go:35 RolePrompts sends every non-`arch` phase to AutoPhaseDiffPrompt; Phase==\"diff\" is also used for --phase small/auto-phase small with no arch reviewer",
+        "internal/agent/prompts.go:165 AutoPhaseDiffPrompt tells reviewer to skip cross-file concerns because an arch reviewer has the full diff, but diff phase is also used for small reviews with no arch reviewer; same issue at line 190 (ref-file variant)"
+      ],
+      "reviewer_count": 3,
+      "arch_reviewer_count": 1,
+      "diff_reviewer_count": 2,
+      "sources": [
+        3,
+        11,
+        14
+      ],
+      "group_key": "arch,g01,g02",
+      "severity": "blocking"
+    },
+    {
+      "title": "Auto-phase ref-file prompts omit explicit \"read the diff file\" directive",
+      "summary": "`AutoPhaseDiffRefFilePrompt`/`AutoPhaseArchRefFilePrompt` say \"Review the code changes in %s …\" without the explicit \"Read the diff content from this file\" directive that existing ref-file prompts use; some reviewer CLIs treat the path as metadata rather than opening it. This is a regression from the existing ref-file contract.",
+      "messages": [
+        "internal/agent/prompts.go:188,237 AutoPhaseDiffRefFilePrompt/AutoPhaseArchRefFilePrompt say \"Review the code changes in %s …\" but omit the explicit \"Read the diff content from this file\" directive — regression from existing ref-file contract"
+      ],
+      "reviewer_count": 1,
+      "arch_reviewer_count": 1,
+      "sources": [
+        4
+      ],
+      "group_key": "arch",
+      "severity": "blocking"
+    },
+    {
+      "title": "resolvePrompts default branch silently swallows unknown Phase values",
+      "summary": "`resolvePrompts` `default:` branch coerces every unknown `Phase` value (typos, future enum additions) into `AutoPhaseDiffPrompt`. Add an explicit `case \"diff\":` and either fall back to legacy prompts or return an error for unknown phases.",
+      "messages": [
+        "internal/agent/diff_review.go:30 `resolvePrompts` `default:` branch silently coerces unknown Phase values into AutoPhaseDiffPrompt; add explicit `case \"diff\":` or error on unknown"
+      ],
+      "reviewer_count": 1,
+      "arch_reviewer_count": 1,
+      "sources": [
+        5
+      ],
+      "group_key": "arch",
+      "severity": "advisory"
+    }
+  ],
+  "info": [
+    {
+      "title": "Reviewer orientation and methodology notes",
+      "summary": "Process notes from reviewers describing read-only diff handling, verification of call chains beyond the pasted hunk, and focus on real-impact bugs in config resolution, runner propagation, and prompt selection.",
+      "messages": [
+        "対象は read-only の差分レビューとして扱います。まず実ファイル上の該当箇所を確認して、diff だけでは見えない呼び出し元や設定伝搬の抜けを照合します。",
+        "RolePrompts は config / CLI / agent まで既に存在し、今回の runner 追加はその値を reviewer 実行へ渡す変更です。",
+        "コードレビューとして扱います。差分だけで断定せず、該当ファイルの現物と周辺の設定解決コードを確認して、実害のある不具合だけに絞ります。",
+        "作業ツリーには提示差分自体は当たっていないようです。現在の周辺実装を読んで、提示パッチがそこに入った場合の挙動として検証します。",
+        "設定解決・runner への伝搬・agent 側の prompt 選択まで確認しました。主なリスクは新しい設定値が落ちるか、既存の ref-file/phase 挙動を壊す部分です。",
+        "read-only として扱い、RolePrompts が reviewer config と prompt rendering へどう伝搬するかを確認します。",
+        "ローカルツリーには周辺の RolePrompts plumbing が既に存在するため、定数だけで判断せず call chain を確認しています。"
+      ],
+      "reviewer_count": 4,
+      "diff_reviewer_count": 3,
+      "sources": [
+        0,
+        1,
+        8,
+        9,
+        10,
+        12,
+        13
+      ],
+      "group_key": "g01,g02,g03"
+    }
+  ],
+  "ok": false,
+  "verdict": "blocking",
+  "notes_for_next_review": "",
+  "skipped_files": [],
+  "cross_check": {
+    "findings": [
+      {
+        "title": "CLI flag resolution bug lacks diff-group coverage",
+        "summary": "The arch review reports a blocking configuration-resolution regression in cmd/acr/main.go, but the succeeding diff group covering cmd/acr/main.go/internal/agent/config.go did not report or address that specific issue.",
+        "type": "gap",
+        "involved_groups": [
+          "arch",
+          "g01"
+        ],
+        "severity": "blocking",
+        "related_finding_ids": [
+          2
+        ]
+      },
+      {
+        "title": "Ref-file prompt contract regression lacks diff-group coverage",
+        "summary": "The arch review reports that new ref-file prompts omit the explicit instruction to read diff content from the file, but the succeeding diff group covering internal/agent/prompts.go did not identify that contract regression.",
+        "type": "gap",
+        "involved_groups": [
+          "arch",
+          "g02"
+        ],
+        "severity": "blocking",
+        "related_finding_ids": [
+          4
+        ]
+      },
+      {
+        "title": "Unknown phase fallback concern lacks diff-group coverage",
+        "summary": "The arch review reports that unknown phases are silently coerced to the diff prompt in internal/agent/diff_review.go, but the succeeding diff group covering that file did not report the phase-validation gap.",
+        "type": "gap",
+        "involved_groups": [
+          "arch",
+          "g01"
+        ],
+        "severity": "advisory",
+        "related_finding_ids": [
+          5
+        ]
+      },
+      {
+        "title": "Layering concern spans config, runner, and agent groups",
+        "summary": "The arch review questions threading RolePrompts through config, runner, and agent layers; the relevant files are split across g01 and g03, so no single diff group covers the full cross-layer design concern.",
+        "type": "gap",
+        "involved_groups": [
+          "arch",
+          "g01",
+          "g03"
+        ],
+        "severity": "advisory",
+        "related_finding_ids": [
+          6
+        ]
+      },
+      {
+        "title": "Diff prompt suppression risk confirmed across groups",
+        "summary": "The arch review and two separate diff groups independently identify that diff prompts tell reviewers to skip cross-file concerns even when no arch reviewer exists, so the advisory diff findings should be treated as blocking in the multi-group context.",
+        "type": "escalation",
+        "involved_groups": [
+          "arch",
+          "g01",
+          "g02"
+        ],
+        "severity": "blocking",
+        "related_finding_ids": [
+          3,
+          11,
+          14
+        ]
+      },
+      {
+        "title": "AutoPhaseDiffPrompt suppresses cross-file findings when no arch reviewer runs",
+        "summary": "The arch group's blocking finding (id=3) about AutoPhaseDiffPrompt falsely advertising an arch reviewer is independently corroborated by g01 (id=11) and g02 (id=14) inspecting the diff-only call chain. Cross-group consensus elevates this from a single-reviewer concern to a confirmed coverage gap that affects every auto-phase small / single-phase diff run across all file groups, not just the prompts module.",
+        "type": "escalation",
+        "involved_groups": [
+          "arch",
+          "g01",
+          "g02"
+        ],
+        "severity": "blocking",
+        "related_finding_ids": [
+          3,
+          11,
+          14
+        ]
+      },
+      {
+        "title": "Runner-layer validation of RolePrompts plumbing missing",
+        "summary": "The arch group flagged the flag-precedence bug (id=2) and the layering concern of threading RolePrompts cmd→config→runner→agent (id=6), but g03 — the only group that owns runner.go and runner_test.go — produced no substantive finding on whether runner correctly forwards RolePrompts on failure paths or whether tests cover the env/YAML/flag precedence matrix. The runner is the integration seam where the synthesized boolean from main.go actually reaches reviewers; without a runner-level finding the flag-precedence bug's blast radius (does a wrong value propagate silently to all N reviewers?) is unverified.",
+        "type": "gap",
+        "involved_groups": [
+          "arch",
+          "g03"
+        ],
+        "severity": "advisory",
+        "related_finding_ids": [
+          2,
+          6
+        ]
+      },
+      {
+        "title": "Ref-file prompt regression spans prompt definitions and their diff-review consumer without diff-group confirmation",
+        "summary": "Arch finding id=4 identifies that AutoPhaseDiffRefFilePrompt / AutoPhaseArchRefFilePrompt drop the explicit \"read the diff content from this file\" directive. The ref-file prompts live in g02's files (prompts.go) but are consumed via diff_review.go in g01; neither diff group surfaced the missing directive, leaving the regression unconfirmed at the consumer site where reviewer CLIs actually receive the path. Cross-file contract drift between prompt template (g02) and dispatch logic (g01) is exactly the kind of issue group splits hide.",
+        "type": "gap",
+        "involved_groups": [
+          "arch",
+          "g01",
+          "g02"
+        ],
+        "severity": "blocking",
+        "related_finding_ids": [
+          4
+        ]
+      },
+      {
+        "title": "Unreported CLI Flag Override Bug",
+        "summary": "The architecture review identified a blocking bug in cmd/acr/main.go where explicit CLI flags silently override environment and YAML configuration values. The diff group reviewing this file missed the bug entirely.",
+        "type": "gap",
+        "involved_groups": [
+          "arch",
+          "g01"
+        ],
+        "severity": "blocking",
+        "related_finding_ids": [
+          2
+        ]
+      },
+      {
+        "title": "Unreported Ref-File Prompt Regression",
+        "summary": "The architecture review identified a blocking regression in internal/agent/prompts.go where ref-file prompts omit the explicit directive to read diff content, potentially breaking reviewer CLIs. The diff group reviewing prompts.go missed this regression.",
+        "type": "gap",
+        "involved_groups": [
+          "arch",
+          "g02"
+        ],
+        "severity": "blocking",
+        "related_finding_ids": [
+          4
+        ]
+      },
+      {
+        "title": "Systemic Auto-Phase Prompt Routing Bug",
+        "summary": "The bug where diff reviewers are incorrectly instructed to skip cross-file concerns during small reviews spans multiple domains. It was identified in the prompt string definitions (g02) and in the routing logic (g01), validating the architectural concern. Treating this holistically as a cross-boundary issue is critical for fixing both the prompt generation and the phase routing logic.",
+        "type": "escalation",
+        "involved_groups": [
+          "arch",
+          "g01",
+          "g02"
+        ],
+        "severity": "blocking",
+        "related_finding_ids": [
+          3,
+          11,
+          14
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,207 @@
+{
+  "findings": [
+    {
+      "title": "small phase + role_prompts silently drops cross-file bugs",
+      "summary": "AutoPhaseDiffPrompt tells diff reviewers to skip cross-file concerns because an arch reviewer covers them, but the small phase creates only diff reviewers. Enabling role_prompts in that phase silently suppresses cross-file findings; resolvePrompts' default branch also blindly falls back to AutoPhaseDiffPrompt for any non-\"arch\" Phase.",
+      "messages": [
+        "internal/agent/prompts.go:178: AutoPhaseDiffPrompt tells diff reviewers to skip cross-file concerns because an arch reviewer handles them, but `small` phase creates only diff reviewers; enabling role_prompts there can silently drop cross-file bugs.",
+        "resolvePrompts default branch applies AutoPhaseDiffPrompt to any non-\"arch\" Phase; future Phase values like \"small\" combined with RolePrompts=true would feed semantically inconsistent premises (\"You are reviewing a subset of files from a larger change\") to the model."
+      ],
+      "reviewer_count": 2,
+      "arch_reviewer_count": 1,
+      "diff_reviewer_count": 1,
+      "sources": [
+        1,
+        9
+      ],
+      "group_key": "arch,g02",
+      "severity": "advisory"
+    },
+    {
+      "title": "ref-file mode + role_prompts: agent never told to read the diff file",
+      "summary": "The new AutoPhase ref-file role prompts (diff at prompts.go:188 and arch at prompts.go:240) drop the instruction that `%s` is a diff file the agent must read, so large role-prompt reviews in ref-file mode can run without examining the diff. Compounded by a pre-existing gap where the legacy (RolePrompts=false) arch path also never overrides RefFilePrompt, leaving ref-file × arch using the agent's default (non-arch) RefFilePrompt.",
+      "messages": [
+        "internal/agent/prompts.go:188: In ref-file mode the diff is not embedded, but this prompt no longer tells the agent that `%s` is a diff file it must read, so large role-prompt diff reviews can run without actually examining the diff.",
+        "internal/agent/prompts.go:240: Same ref-file regression for arch reviews: the only diff content is in `%s`, but the role-specific prompt does not explicitly instruct the agent to read that diff file.",
+        "Legacy (RolePrompts=false) arch path does not override RefFilePrompt, so ref-file × arch still uses the agent's default (non-arch) RefFilePrompt; TestResolvePrompts_RolePromptsDisabled_ArchPhase locks in this pre-existing inconsistency."
+      ],
+      "reviewer_count": 2,
+      "arch_reviewer_count": 1,
+      "diff_reviewer_count": 1,
+      "sources": [
+        3,
+        9
+      ],
+      "group_key": "arch,g02",
+      "severity": "advisory"
+    },
+    {
+      "title": "--no-role-prompts=false silently overrides truthy env/config role_prompts",
+      "summary": "cmd/acr/main.go:495 marks RolePromptsSet=true even when --no-role-prompts is explicitly false, then derives RolePrompts from the default-false `rolePrompts` variable. This silently overrides ACR_ROLE_PROMPTS=true or `role_prompts: true` to false instead of leaving env/config to take effect; the simultaneous use of --role-prompts and --no-role-prompts also resolves to false silently with no warning.",
+      "messages": [
+        "cmd/acr/main.go:495: `--no-role-prompts=false` still marks `RolePromptsSet` true, but this computes `RolePrompts` from the default-false `rolePrompts` variable, so it silently overrides `ACR_ROLE_PROMPTS=true` or `role_prompts: true` to false instead of leaving/enabling role prompts.",
+        "`RolePrompts: rolePrompts \u0026\u0026 !noRolePrompts` becomes silently false when both flags are specified; no warning is emitted on the conflict."
+      ],
+      "reviewer_count": 2,
+      "arch_reviewer_count": 1,
+      "diff_reviewer_count": 1,
+      "sources": [
+        2,
+        14
+      ],
+      "group_key": "arch,g01",
+      "severity": "advisory"
+    },
+    {
+      "title": "Codex agent path bypasses --role-prompts (resolvePrompts wired only to Claude/Gemini)",
+      "summary": "resolvePrompts is invoked only from executeDiffBasedReview (Claude/Gemini), so Codex reviewers used in the auto-phase arch/diff path never receive role-specific prompts. The flag is resolved into ResolvedConfig but its propagation into ReviewOpts/reviewer execution is not visible in the diff, so role_prompts is silently a no-op for Codex.",
+      "messages": [
+        "[imo] Codex 経由のレビュアーには `--role-prompts` が反映されない: `resolvePrompts` は `executeDiffBasedReview`（Claude / Gemini 用）からしか呼ばれないため、Codex を arch/diff reviewer として使う auto-phase 経路ではロール別プロンプトが silently no-op になる。",
+        "CLI flag は `ResolvedConfig` に入っていますが、`ReviewOpts` へ渡す箇所が差分に含まれていないように見えます。実際にその経路と env/config 読み込みを確認して、指摘できる行を確定します。",
+        "実 repo では CLI 側から `RolePrompts` を詰める経路も存在するかを確認しています。これが無い場合は「設定は解決されるが reviewer に届かない」系のバグになります。"
+      ],
+      "reviewer_count": 3,
+      "arch_reviewer_count": 1,
+      "diff_reviewer_count": 2,
+      "sources": [
+        0,
+        6,
+        12
+      ],
+      "group_key": "arch,g01,g03",
+      "severity": "advisory"
+    }
+  ],
+  "info": [
+    {
+      "title": "Reviewer orientation / process notes (no findings)",
+      "summary": "Several reviewer turns were orientation passes — confirming code-review skill scope, planning to read surrounding files, and reporting that the implementation path appears to compile — without producing concrete findings.",
+      "messages": [
+        "`oh-my-codex:code-review` 相当の差分レビューとして扱います。まず実ファイル側の周辺コードを確認して、提示 diff だけでは判断できない伝播経路や初期化前提を照合します。",
+        "差分だけでは `resolvePrompts` の呼び出し側と設定伝播の抜けが判断できないので、まず ACR_win の既存契約と該当ファイルを確認します。Read-only review として進めます。",
+        "`RolePrompts` 自体は既に複数箇所へ伝播済みの作業ツリーに見えます。いまは差分中の変更点が既存の auto-phase / phase / ref-file 経路と矛盾しないか、呼び出し側の実装を行番号付きで確認しています。",
+        "`code-review` スキルの対象なので、まずその手順を確認しつつ、ACR_win の過去文脈を軽く引いてから実ファイルを読んで差分のバグだけを返します。",
+        "差分だけではなく現在の `ReviewConfig` 生成・設定解決・プロンプト選択の周辺を確認します。特に flag/env/config の precedence と Phase 条件が壊れていないかを見ます。",
+        "実装経路はコンパイル上は通りそうです。次に、差分にない既存の `ReviewOpts` 埋め込みや config 解決の実体と照合して、ユーザー指定のカテゴリに当たる欠陥があるかだけに絞ります。"
+      ],
+      "reviewer_count": 3,
+      "diff_reviewer_count": 3,
+      "sources": [
+        5,
+        7,
+        8,
+        10,
+        11,
+        13
+      ],
+      "group_key": "g01,g02,g03"
+    }
+  ],
+  "ok": false,
+  "verdict": "blocking",
+  "notes_for_next_review": "",
+  "skipped_files": [],
+  "cross_check": {
+    "findings": [
+      {
+        "title": "Small phase role prompts can suppress cross-file review coverage",
+        "summary": "The arch review flags non-arch phases receiving the subset-only diff prompt, and g02 independently confirms that small phase has only diff reviewers while the prompt tells them to skip cross-file concerns because an arch reviewer exists. In combination this is a coverage loss, not just a prompt wording issue.",
+        "type": "escalation",
+        "involved_groups": [
+          "arch",
+          "g02"
+        ],
+        "severity": "blocking",
+        "related_finding_ids": [
+          1,
+          9
+        ]
+      },
+      {
+        "title": "Codex role-prompt propagation remains unverified across execution boundaries",
+        "summary": "The arch review reports that Codex reviewer paths do not receive resolved role prompts, while the diff groups only cover partial propagation/config/prompt behavior and do not provide a succeeding diff finding that closes the Codex-specific execution-path gap.",
+        "type": "gap",
+        "involved_groups": [
+          "arch",
+          "g01",
+          "g03"
+        ],
+        "severity": "advisory",
+        "related_finding_ids": [
+          0,
+          6,
+          12
+        ]
+      },
+      {
+        "title": "Phase=\"small\" + role_prompts silently drops cross-file bugs",
+        "summary": "Arch group warned that resolvePrompts default branch applies AutoPhaseDiffPrompt to any non-arch Phase (finding 1). g02 confirmed concretely that AutoPhaseDiffPrompt tells diff reviewers to skip cross-file concerns because an arch reviewer handles them, while `small` phase creates only diff reviewers (finding 9). Combined, this is not a hypothetical future risk but an active bug whenever role_prompts is enabled with phase=small: cross-file findings are systematically suppressed with no compensating arch reviewer. Severity should escalate from advisory to blocking.",
+        "type": "escalation",
+        "involved_groups": [
+          "arch",
+          "g02"
+        ],
+        "severity": "blocking",
+        "related_finding_ids": [
+          1,
+          9
+        ]
+      },
+      {
+        "title": "--no-role-prompts=false silently overrides env/config truthy values",
+        "summary": "Arch finding 2 noted only the symmetric `--role-prompts` + `--no-role-prompts` conflict case. g01 finding 14 surfaced a distinct, more impactful defect at cmd/acr/main.go:495: `--no-role-prompts=false` still marks RolePromptsSet=true and forces RolePrompts=false, silently overriding ACR_ROLE_PROMPTS=true or role_prompts:true in YAML. Considered together, the role-prompts CLI flag handling has multiple precedence defects and should be treated as blocking, not advisory.",
+        "type": "escalation",
+        "involved_groups": [
+          "arch",
+          "g01"
+        ],
+        "severity": "blocking",
+        "related_finding_ids": [
+          2,
+          14
+        ]
+      },
+      {
+        "title": "Codex execution path bypass not verified at diff level",
+        "summary": "Arch finding 0 raised that resolvePrompts is only invoked from executeDiffBasedReview, so Codex-backed reviewers silently no-op on --role-prompts. g01 reviewed cmd/acr/main.go, cmd/acr/review.go, internal/agent/config.go, and internal/agent/diff_review.go but produced no diff-level confirmation or counter-evidence about whether Codex routes through executeDiffBasedReview or a separate path. The arch claim therefore stands unverified by the file-owning group — a coverage gap that should be closed before merge.",
+        "type": "gap",
+        "involved_groups": [
+          "arch",
+          "g01"
+        ],
+        "severity": "advisory",
+        "related_finding_ids": [
+          0
+        ]
+      },
+      {
+        "title": "ref-file mode interaction with role_prompts is broken across two axes",
+        "summary": "Arch finding 3 noted that legacy (RolePrompts=false) arch + ref-file leaves RefFilePrompt unset, so arch reviewers in ref-file mode get an agent default not aligned with arch semantics. g02 finding 9 separately reported that the new role-prompt ref-file template at prompts.go:188 no longer tells the agent that %s is a diff file it must read, so role-prompt ref-file diff reviews may run without examining the diff at all. Together these expose ref-file mode as broken in both legacy and role-prompt branches — a cross-group issue neither finding fully captures alone.",
+        "type": "gap",
+        "involved_groups": [
+          "arch",
+          "g02"
+        ],
+        "severity": "blocking",
+        "related_finding_ids": [
+          3,
+          9
+        ]
+      },
+      {
+        "title": "Role prompts in 'small' phase ignore cross-file issues",
+        "summary": "The arch review identified a semantic inconsistency where `AutoPhaseDiffPrompt` is applied to non-arch phases like 'small'. Group g02 escalated this to a critical functional bug: because the 'small' phase only uses diff reviewers, and `AutoPhaseDiffPrompt` explicitly instructs agents to skip cross-file concerns (assuming an arch reviewer will handle them), enabling role prompts for a 'small' phase will cause all cross-file bugs to be silently dropped.",
+        "type": "escalation",
+        "involved_groups": [
+          "arch",
+          "g02"
+        ],
+        "severity": "blocking",
+        "related_finding_ids": [
+          1,
+          9
+        ]
+      }
+    ]
+  }
+}

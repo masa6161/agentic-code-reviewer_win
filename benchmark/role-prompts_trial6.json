@@ -1,0 +1,262 @@
+{
+  "findings": [
+    {
+      "title": "--no-role-prompts=false silently overrides ACR_ROLE_PROMPTS / yaml role_prompts",
+      "summary": "cmd/acr/main.go:495 collapses --role-prompts/--no-role-prompts into a single boolean before precedence resolution, so an explicit --no-role-prompts=false (or --role-prompts=false) is marked 'set' yet resolves to false, overriding env/yaml. Needs tri-state or separate set/value tracking.",
+      "messages": [
+        "[must] cmd/acr/main.go:495 collapses --role-prompts/--no-role-prompts into a single boolean (rolePrompts \u0026\u0026 !noRolePrompts) before the precedence layer; --no-role-prompts=false silently overrides ACR_ROLE_PROMPTS=true / yaml role_prompts: true",
+        "cmd/acr/main.go:495: --no-role-prompts=false still marks RolePromptsSet true, then computes RolePrompts as false and overrides ACR_ROLE_PROMPTS=true / role_prompts: true."
+      ],
+      "reviewer_count": 2,
+      "arch_reviewer_count": 1,
+      "diff_reviewer_count": 1,
+      "sources": [
+        4,
+        14
+      ],
+      "group_key": "arch,g01",
+      "severity": "blocking"
+    },
+    {
+      "title": "AutoPhaseDiffPrompt suppresses cross-file findings in single-phase runs",
+      "summary": "internal/agent/prompts.go AutoPhaseDiffPrompt asserts an arch reviewer holds the full diff and tells reviewers to skip cross-file concerns, but resolvePrompts activates it for any non-arch Phase including single-phase small/medium runs where no arch reviewer exists, regressing coverage when RolePrompts=true outside grouped mode.",
+      "messages": [
+        "[must] AutoPhaseDiffPrompt asserts 'an architecture reviewer has the full diff' and tells reviewers to skip cross-file concerns, but resolvePrompts activates it for any non-arch Phase including single-phase small/medium runs where no arch reviewer exists",
+        "internal/agent/diff_review.go:30: RolePrompts applies to any non-empty phase, including small/manual diff-only runs, so reviewers can receive the subset prompt that tells them to skip cross-file issues even when no arch reviewer is running."
+      ],
+      "reviewer_count": 2,
+      "arch_reviewer_count": 1,
+      "diff_reviewer_count": 1,
+      "sources": [
+        5,
+        14
+      ],
+      "group_key": "arch,g01",
+      "severity": "blocking"
+    },
+    {
+      "title": "AutoPhase RefFile prompts drop 'Read the diff content from %s' directive",
+      "summary": "AutoPhaseDiffRefFilePrompt / AutoPhaseArchRefFilePrompt omit the explicit 'Read the diff content from the file at %s' directive present in every other *RefFilePrompt constant, leaving only 'Review the code changes in %s' which lets the LLM skip reading the reference file. Contract regression across the ref-file prompt family.",
+      "messages": [
+        "[must] AutoPhaseDiffRefFilePrompt / AutoPhaseArchRefFilePrompt drop the explicit 'Read the diff content from the file at %s' directive present in every other *RefFilePrompt constant — only 'Review the code changes in %s' remains"
+      ],
+      "reviewer_count": 1,
+      "arch_reviewer_count": 1,
+      "sources": [
+        7
+      ],
+      "group_key": "arch",
+      "severity": "blocking"
+    }
+  ],
+  "info": [
+    {
+      "title": "Reviewer 4 reported no code-level issues in the requested subset",
+      "summary": "Reviewer 4 narrowed scope to the user-specified production diff (only internal/runner/runner.go propagating the resolved flag into agent.ReviewConfig) and concluded no code-level issues found.",
+      "messages": [
+        "Using the code-review workflow surface for this turn; verify the diff against the actual files and keep the final output to concrete findings only.",
+        "Narrowing to the user-specified subset and code-level findings; reading the actual files around the changed code so line references are grounded.",
+        "Only production-code change in this subset is internal/runner/runner.go passing the resolved flag into agent.ReviewConfig; checking the prompt resolver path to confirm propagation cannot alter legacy non-phase behavior.",
+        "No code-level issues found in the reviewed production diff."
+      ],
+      "reviewer_count": 1,
+      "diff_reviewer_count": 1,
+      "sources": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "group_key": "g03"
+    },
+    {
+      "title": "Reviewer 2 process notes (orientation only)",
+      "summary": "Reviewer 2 stated they would use oh-my-codex:code-review, verify implementation against actual files, and confirm config-resolution flow before reporting.",
+      "messages": [
+        "oh-my-codex:code-review を使います。差分だけで断定せず、該当ファイルの実コードと設定解決の流れを確認してから、該当行に絞って返します。",
+        "差分の中心は RolePrompts の設定解決と、diff/ref-file prompt の分岐です。env/config/flag からどう入るかを既存の config schema と照合中。"
+      ],
+      "reviewer_count": 1,
+      "diff_reviewer_count": 1,
+      "sources": [
+        12,
+        13
+      ],
+      "group_key": "g01"
+    },
+    {
+      "title": "Reviewer 3 process notes (orientation only)",
+      "summary": "Reviewer 3 noted they would only read existing implementation, not modify files, and confirmed RolePrompts is wired through CLI/config/runner/agent with Phase normalized to arch/diff before running tests.",
+      "messages": [
+        "対象はレビューのみなので、まず既存実装の該当箇所を読んで、diff だけでは見えない呼び出し契約と設定解決の優先順位を確認します。",
+        "RolePrompts は CLI、config、runner、agent まで既に配線されている状態です。実装行を開いて subset だけで成立する不具合があるかを確認します。",
+        "一部の範囲表示コマンドが PowerShell の Select-Object -Index で失敗したため、同じ対象を行番号付きで読み直します。",
+        "RolePrompts は runner から agent へ渡され、Phase は arch / diff に正規化されていました。該当パッケージのテストを軽く回して見落としやコンパイル不整合がないか確認します。"
+      ],
+      "reviewer_count": 1,
+      "diff_reviewer_count": 1,
+      "sources": [
+        15,
+        16,
+        17,
+        18
+      ],
+      "group_key": "g02"
+    }
+  ],
+  "ok": false,
+  "verdict": "blocking",
+  "notes_for_next_review": "",
+  "skipped_files": [],
+  "cross_check": {
+    "findings": [
+      {
+        "title": "Diff subset missed blocking prompt-parser contract regression",
+        "summary": "The arch review flagged that the new arch prompt output format no longer matches downstream parsers, but the diff group owning internal/agent/prompts.go did not report it; this leaves a full-diff blocking concern uncovered by the file-level review.",
+        "type": "gap",
+        "involved_groups": [
+          "arch",
+          "g02"
+        ],
+        "severity": "blocking",
+        "related_finding_ids": [
+          6
+        ]
+      },
+      {
+        "title": "Diff subset missed ref-file prompt contract regression",
+        "summary": "The arch review flagged that the new auto-phase ref-file prompts dropped the explicit instruction to read the referenced diff file, but the diff group owning internal/agent/prompts.go did not report it; this is a blind spot in the subset review for that file family.",
+        "type": "gap",
+        "involved_groups": [
+          "arch",
+          "g02"
+        ],
+        "severity": "blocking",
+        "related_finding_ids": [
+          7
+        ]
+      },
+      {
+        "title": "G01 findings should inherit arch-level blocking severity",
+        "summary": "G01 independently confirms the flag precedence bug and the diff-only role prompt coverage regression that the arch review marked blocking, but G01 recorded them only as advisory; cross-group agreement raises these to blocking.",
+        "type": "escalation",
+        "involved_groups": [
+          "arch",
+          "g01"
+        ],
+        "severity": "blocking",
+        "related_finding_ids": [
+          4,
+          5,
+          14
+        ]
+      },
+      {
+        "title": "Parser compatibility with arch prompt's new output format unverified across groups",
+        "summary": "Arch finding 6 flags that AutoPhaseArchPrompt mandates `[must]`/`[imo]` prefixes while AutoPhaseDiffPrompt mandates `file:line:`, but the per-agent review parsers in internal/agent/*_review_parser.go were not in any diff group's target_files. No diff group (g01/g02/g03) verified that codex/claude/gemini parsers can ingest both formats, so the downstream impact of the prompt divergence is unconfirmed by code-level review.",
+        "type": "gap",
+        "involved_groups": [
+          "arch",
+          "g01",
+          "g02",
+          "g03"
+        ],
+        "severity": "blocking",
+        "related_finding_ids": [
+          6
+        ]
+      },
+      {
+        "title": "Compound failure mode: flag-synthesis bug + single-phase prompt suppression",
+        "summary": "Finding 4 (cmd/acr/main.go flag synthesis cannot distinguish 'set' from 'value') and finding 5 (AutoPhaseDiffPrompt suppresses cross-file findings in single-phase runs) interact. When the synthesis bug coerces RolePrompts to true in a small/medium single-phase run with no arch reviewer, the diff reviewer is told to defer cross-file concerns to a non-existent arch reviewer. Each finding is reported independently in arch, and finding 14 in g01 echoes both, but the compound silent-coverage-loss path crosses cmd/main.go (g01) and internal/agent/prompts.go (g02) without either diff group escalating the joint severity.",
+        "type": "escalation",
+        "involved_groups": [
+          "arch",
+          "g01",
+          "g02"
+        ],
+        "severity": "blocking",
+        "related_finding_ids": [
+          4,
+          5,
+          14
+        ]
+      },
+      {
+        "title": "g02 owns prompts.go but produced no concrete findings on the new prompt constants",
+        "summary": "g02's target_files include internal/agent/prompts.go and prompts_test.go where the four new AutoPhase* constants live. Arch produced three blocking prompt-level findings (5, 6, 7) and one advisory (10) all rooted in prompts.go, yet g02's own findings (15–18) are entirely procedural meta-notes with no code-level issues. The deeper file-local review that g02 was supposed to provide for prompts.go did not materialize — coverage of the prompt body changes rests solely on the arch pass.",
+        "type": "gap",
+        "involved_groups": [
+          "arch",
+          "g02"
+        ],
+        "severity": "advisory",
+        "related_finding_ids": [
+          5,
+          6,
+          7,
+          10
+        ]
+      },
+      {
+        "title": "g03 declares 'no code-level issues' for runner.go path that propagates the buggy flag",
+        "summary": "g03 finding 3 reports no production-code issues, observing only that runner.go threads RolePrompts into agent.ReviewConfig. However, runner.go is the propagation path for the flag-synthesis bug (finding 4) and the layering concern (finding 8). g03 did not flag that the propagated boolean cannot represent the tri-state needed at the CLI layer, nor connect to the arch finding that this knob should be resolved earlier. Not a contradiction with arch, but a missed escalation at the boundary g03 was responsible for.",
+        "type": "gap",
+        "involved_groups": [
+          "arch",
+          "g03"
+        ],
+        "severity": "advisory",
+        "related_finding_ids": [
+          3,
+          4,
+          8
+        ]
+      },
+      {
+        "title": "Unaddressed blocking regressions in prompts.go",
+        "summary": "The arch review identified critical regressions in internal/agent/prompts.go, including output format mismatches that break parsers and dropped file read directives. Group g02, which was assigned this file, only output tool-usage meta-commentary and completely missed these blocking issues.",
+        "type": "gap",
+        "involved_groups": [
+          "arch",
+          "g02"
+        ],
+        "severity": "blocking",
+        "related_finding_ids": [
+          6,
+          7
+        ]
+      },
+      {
+        "title": "Cross-group dependency for role prompt fallback bug",
+        "summary": "The arch review flagged a cross-file bug where internal/agent/prompts.go (assigned to g02) assumes an arch reviewer exists, but internal/agent/diff_review.go (assigned to g01) activates this prompt even on single-phase runs. While g01 correctly identified the issue in its local scope, fully resolving it requires coordinated changes across the boundaries of both g01 and g02.",
+        "type": "escalation",
+        "involved_groups": [
+          "arch",
+          "g01",
+          "g02"
+        ],
+        "severity": "blocking",
+        "related_finding_ids": [
+          5,
+          14
+        ]
+      },
+      {
+        "title": "Unaddressed architectural layering and design concerns",
+        "summary": "The arch review identified advisory issues regarding CLI logic leaking into internal/agent/config.go, overly broad fallback logic in internal/agent/diff_review.go, and unrelated changes in AGENTS.md. Group g01 reviewed these files but did not address these structural concerns.",
+        "type": "gap",
+        "involved_groups": [
+          "arch",
+          "g01"
+        ],
+        "severity": "advisory",
+        "related_finding_ids": [
+          8,
+          9,
+          11
+        ]
+      }
+    ]
+  }
+}

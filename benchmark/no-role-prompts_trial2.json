@@ -1,0 +1,274 @@
+{
+  "findings": [
+    {
+      "title": "--no-role-prompts=false silently overrides ACR_ROLE_PROMPTS / config true",
+      "summary": "The pair-of-flags resolution at cmd/acr/main.go:495 marks RolePromptsSet=true even when the user passes `--no-role-prompts=false` (or `--role-prompts=false`), forcing the resolved value to false and overriding env/config truth without distinguishing explicit-disable from explicit-no-op.",
+      "messages": [
+        "cmd/acr/main.go:495 — `RolePrompts: rolePrompts \u0026\u0026 !noRolePrompts` combined with `RolePromptsSet: ...Changed(\"role-prompts\") || ...Changed(\"no-role-prompts\")` causes `--no-role-prompts=false` to mark the flag set with value false, silently overriding `ACR_ROLE_PROMPTS=true` from env.",
+        "cmd/acr/main.go:495: `--no-role-prompts=false` marks `RolePromptsSet` true but computes `RolePrompts` from the default-false `rolePrompts`, silently overriding `ACR_ROLE_PROMPTS=true` or `role_prompts: true` to false."
+      ],
+      "reviewer_count": 2,
+      "arch_reviewer_count": 1,
+      "diff_reviewer_count": 1,
+      "sources": [
+        3,
+        14
+      ],
+      "group_key": "arch,g01",
+      "severity": "blocking"
+    },
+    {
+      "title": "AutoPhaseDiffPrompt suppresses cross-file findings in single-phase / small runs",
+      "summary": "AutoPhaseDiffPrompt is applied to any non-arch Phase via the default branch and instructs reviewers to skip cross-file architectural concerns; in single-phase small/flat runs no arch reviewer exists, so cross-file bugs are silently dropped — a coverage regression.",
+      "messages": [
+        "internal/agent/prompts.go:160-185 — `AutoPhaseDiffPrompt` is selected for *any* non-arch Phase (the `default:` branch), yet its body asserts \"you are reviewing a subset of files\" and instructs reviewers to \"Skip cross-file architectural concerns (the arch reviewer handles those)\".",
+        "When auto-phase emits a single-phase small/flat review (no arch reviewer present), this suppresses cross-file findings that no other reviewer will catch — a coverage regression.",
+        "internal/agent/diff_review.go:30: `RolePrompts` is applied to any non-empty phase, so `small`/diff-only runs get the diff-role prompt that assumes an architecture reviewer exists and can silently skip cross-file bugs when no arch reviewer is running."
+      ],
+      "reviewer_count": 2,
+      "arch_reviewer_count": 1,
+      "diff_reviewer_count": 1,
+      "sources": [
+        4,
+        14
+      ],
+      "group_key": "arch,g01",
+      "severity": "blocking"
+    },
+    {
+      "title": "Ref-file role-prompt templates drop explicit \"read this diff file\" directive",
+      "summary": "AutoPhaseDiffRefFilePrompt / AutoPhaseArchRefFilePrompt embed the diff path with \"Review the code changes in %s\" but omit the explicit instruction to read the file present in existing ref-file prompts; large-diff ref-file reviews may proceed without actually loading the diff contents.",
+      "messages": [
+        "internal/agent/prompts.go:185-208 — `AutoPhaseDiffRefFilePrompt`/`AutoPhaseArchRefFilePrompt` say \"Review the code changes in %s\" but drop the explicit \"read this file\" instruction present in existing ref-file prompts.",
+        "internal/agent/prompts.go:188: ref-file reviews can silently run without examining the actual diff because the prompt never tells the agent that this is a diff file to read.",
+        "internal/agent/prompts.go:240: `AutoPhaseArchRefFilePrompt` has the same ref-file bug; large/full-diff ref-file mode can produce an architecture review from prompt text alone instead of the temp diff contents.",
+        "internal/agent/diff_review.go:37: ref-file role-prompt mode switches to `AutoPhaseDiffRefFilePrompt`, whose current template only says \"Review the code changes in %s\" and drops the explicit instruction to read the diff file."
+      ],
+      "reviewer_count": 2,
+      "arch_reviewer_count": 1,
+      "diff_reviewer_count": 2,
+      "sources": [
+        6,
+        11,
+        14
+      ],
+      "group_key": "arch,g01,g02",
+      "severity": "advisory"
+    }
+  ],
+  "info": [
+    {
+      "title": "Reviewer methodology / orientation notes",
+      "summary": "Reviewers noted they would verify changed production files against the actual repo and confirm config-resolution and phase-prompt selection paths before issuing findings, rather than relying solely on the diff.",
+      "messages": [
+        "まず差分だけで断定せず、実ファイル側の設定解決と reviewer 実行契約を確認します。",
+        "差分が触っている production path は `internal/runner.Config` から `agent.ReviewConfig` への 1 フィールド伝播だけです。CLI/config から runner へ入る経路と agent 側での使われ方を確認中。",
+        "Using the code-review skill because this is a bug-focused diff review. I’ll verify the changed production files against the actual repo before making any finding.",
+        "The relevant memory note is just the project’s review expectation: claims should be grounded in current files and line numbers. Checking prompt/config paths, especially how `RolePrompts` flows into `ReviewConfig`.",
+        "差分だけで断定せず、該当ファイルの現行内容と設定解決の流れを確認してから、実バグだけを `file:line` 形式で返します。",
+        "現行ツリーにはこの差分周辺のテストやベンチ出力も残っているが、レビュー対象は提示差分の本体に絞る。設定 precedence と phase prompt 選択の実コード行を確認中。"
+      ],
+      "reviewer_count": 4,
+      "diff_reviewer_count": 3,
+      "sources": [
+        0,
+        1,
+        9,
+        10,
+        12,
+        13
+      ],
+      "group_key": "g01,g02,g03"
+    }
+  ],
+  "ok": false,
+  "verdict": "blocking",
+  "notes_for_next_review": "",
+  "skipped_files": [],
+  "cross_check": {
+    "findings": [
+      {
+        "title": "Codex role-prompts path lacks diff-group confirmation",
+        "summary": "The arch review reports that Codex reviewers bypass role prompt resolution, but the only diff group covering internal/agent/diff_review.go does not clearly surface this Codex-specific execution-path issue in the available finding text. This leaves a coverage gap for mixed-agent behavior.",
+        "type": "gap",
+        "involved_groups": [
+          "arch",
+          "g01"
+        ],
+        "severity": "blocking",
+        "related_finding_ids": [
+          2
+        ]
+      },
+      {
+        "title": "Unknown phase fallback lacks diff-group confirmation",
+        "summary": "The arch review reports that unknown phase strings are silently coerced into diff-role behavior in internal/agent/diff_review.go. The diff group covering that file does not clearly confirm this boundary-contract issue in the available finding text, so the public phase handling risk is not independently covered.",
+        "type": "gap",
+        "involved_groups": [
+          "arch",
+          "g01"
+        ],
+        "severity": "blocking",
+        "related_finding_ids": [
+          5
+        ]
+      },
+      {
+        "title": "Config boilerplate smell spans multiple diff groups",
+        "summary": "The arch review identifies config flag addition as requiring coordinated edits across CLI/config/resolution layers. The relevant files are split between g01 and g02, so no single diff group has full coverage of the structural config-layer risk.",
+        "type": "gap",
+        "involved_groups": [
+          "arch",
+          "g01",
+          "g02"
+        ],
+        "severity": "advisory",
+        "related_finding_ids": [
+          7
+        ]
+      },
+      {
+        "title": "Prompt selection ownership spans runner and agent boundaries",
+        "summary": "The arch review questions placing prompt-template selection on agent.ReviewConfig, while the affected ownership boundary crosses internal/agent and internal/runner files reviewed by different diff groups. This makes the design concern cross-group rather than fully covered by one diff review slice.",
+        "type": "gap",
+        "involved_groups": [
+          "arch",
+          "g01",
+          "g03"
+        ],
+        "severity": "advisory",
+        "related_finding_ids": [
+          8
+        ]
+      },
+      {
+        "title": "Codex agent path bypasses RolePrompts plumbing",
+        "summary": "Architectural review (arch #2 / id=2) flags that Codex's review path never invokes resolvePrompts, while g01/g02 reviewed cmd/acr/main.go, internal/agent/diff_review.go, and prompts.go but produced no corroboration or rebuttal. The Codex execution path is not covered by any diff group, leaving this blocking claim cross-group unverified.",
+        "type": "gap",
+        "involved_groups": [
+          "arch",
+          "g01"
+        ],
+        "severity": "blocking",
+        "related_finding_ids": [
+          2
+        ]
+      },
+      {
+        "title": "AutoPhaseDiffPrompt suppresses cross-file findings in single-phase small runs",
+        "summary": "Independently observed by arch (#4 / id=4) and g01 (id=14): the diff-role prompt instructs reviewers to skip cross-file concerns assuming an arch reviewer exists, but auto-phase small/flat mode runs without an arch reviewer. Two independent groups confirm the same coverage regression, escalating confidence and impact.",
+        "type": "escalation",
+        "involved_groups": [
+          "arch",
+          "g01"
+        ],
+        "severity": "blocking",
+        "related_finding_ids": [
+          4,
+          14
+        ]
+      },
+      {
+        "title": "--no-role-prompts=false silently overrides env/config true",
+        "summary": "arch (#3 / id=3) and g01 (id=14) independently identify the same precedence bug at cmd/acr/main.go:495 where the pair-of-flags pattern marks RolePromptsSet true with value false, overriding ACR_ROLE_PROMPTS=true. Multi-group confirmation across the architectural and CLI-owning diff group elevates this from a single observation to a verified blocking defect.",
+        "type": "escalation",
+        "involved_groups": [
+          "arch",
+          "g01"
+        ],
+        "severity": "blocking",
+        "related_finding_ids": [
+          3,
+          14
+        ]
+      },
+      {
+        "title": "Ref-file prompts drop explicit diff-file read instruction",
+        "summary": "arch (#6 / id=6, advisory) and g02 (id=11, advisory) both flag prompts.go:188/240 ref-file prompts as no longer instructing the agent to read the diff file. Two independent groups concur on a regression in the ref-file path for both diff and arch role prompts, justifying escalation from advisory to blocking since reviews could silently run without examining the actual diff.",
+        "type": "escalation",
+        "involved_groups": [
+          "arch",
+          "g02"
+        ],
+        "severity": "blocking",
+        "related_finding_ids": [
+          6,
+          11
+        ]
+      },
+      {
+        "title": "Unknown Phase string silently coerced to diff role",
+        "summary": "arch (#5 / id=5) flags that internal/agent/diff_review.go:30-36 falls through the default arm for unknown Phase values, treating them as diff and dropping cross-file coverage. g01 owns diff_review.go but provided no corroboration or rebuttal of this defensive-coding/contract concern, leaving the boundary-validation claim unverified across groups.",
+        "type": "gap",
+        "involved_groups": [
+          "arch",
+          "g01"
+        ],
+        "severity": "blocking",
+        "related_finding_ids": [
+          5
+        ]
+      },
+      {
+        "title": "RolePrompts field reaching runner not verified by runner-owning group",
+        "summary": "g03 owns internal/runner/runner.go and runner_test.go but produced only process meta-commentary (id=0, id=1) with zero substantive findings on whether RolePrompts is actually propagated from runner.Config into agent.ReviewConfig. arch finding #8 (id=8) about ReviewConfig coupling and the broader plumbing concern remain unverified at the runner layer.",
+        "type": "gap",
+        "involved_groups": [
+          "arch",
+          "g03"
+        ],
+        "severity": "advisory",
+        "related_finding_ids": [
+          1,
+          8
+        ]
+      },
+      {
+        "title": "Cross-group dependency for single-phase review bug",
+        "summary": "The blocking bug where single-phase reviews silently skip cross-file concerns is split across group boundaries. It requires coordinated fixes in both `internal/agent/diff_review.go` (g01), which improperly routes the phase, and `internal/agent/prompts.go` (g02), which contains the flawed prompt text.",
+        "type": "gap",
+        "involved_groups": [
+          "arch",
+          "g01",
+          "g02"
+        ],
+        "severity": "blocking",
+        "related_finding_ids": [
+          4,
+          5,
+          14
+        ]
+      },
+      {
+        "title": "Configuration layer boilerplate spans all diff groups",
+        "summary": "The structural smell of adding a single boolean flag requiring coordinated edits spans across CLI/agent config (g01), core config (g02), and runner (g03). Viewing this across groups elevates it from a local file change to a system-wide boilerplate pattern.",
+        "type": "escalation",
+        "involved_groups": [
+          "arch",
+          "g01",
+          "g02",
+          "g03"
+        ],
+        "severity": "advisory",
+        "related_finding_ids": [
+          1,
+          7
+        ]
+      },
+      {
+        "title": "Prompt resolution coupling across agent and runner layers",
+        "summary": "The architectural suggestion to decouple prompt resolution from the review request payload requires cross-file changes between `internal/agent/config.go` (g01) and `internal/runner/runner.go` (g03).",
+        "type": "gap",
+        "involved_groups": [
+          "arch",
+          "g01",
+          "g03"
+        ],
+        "severity": "advisory",
+        "related_finding_ids": [
+          8
+        ]
+      }
+    ]
+  }
+}

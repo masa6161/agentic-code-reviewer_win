@@ -1,0 +1,282 @@
+{
+  "findings": [
+    {
+      "title": "--role-prompts フラグ precedence の設計破綻",
+      "summary": "`--role-prompts` と `--no-role-prompts` の値を `rolePrompts \u0026\u0026 !noRolePrompts` で先に合成するため、`ACR_ROLE_PROMPTS=true` 下で `--no-role-prompts=false` を渡すと `RolePromptsSet=true / RolePrompts=false` が合成されて env を誤って上書きする。フラグペアは独立 state として保持し、`Changed` を個別検査して合成を禁止すべき。",
+      "messages": [
+        "cmd/acr/main.go:444,495 — `RolePromptsSet` は `--role-prompts` か `--no-role-prompts` のどちらかが変わるだけで true になるが、値は `rolePrompts \u0026\u0026 !noRolePrompts` で先に合成されてしまう",
+        "`ACR_ROLE_PROMPTS=true` 環境下でユーザーが `--no-role-prompts=false`（無効化を打ち消す意図）を渡すと、`RolePromptsSet=true / RolePrompts=false` が合成され env を上書きして無効化される",
+        "フラグペアを独立した state として持つか、`Changed` を個別に検査して合成を禁止する必要がある"
+      ],
+      "reviewer_count": 1,
+      "arch_reviewer_count": 1,
+      "sources": [
+        12
+      ],
+      "group_key": "arch",
+      "severity": "blocking"
+    },
+    {
+      "title": "auto-phase small で AutoPhaseDiffPrompt が cross-file 所見を抑制",
+      "summary": "`parsePhases(\"small\", N)` は arch reviewer を含まない単相 (`Phase:\"diff\"`) を生成するのに、`AutoPhaseDiffPrompt` は「architecture reviewer has the full diff」と断言し、cross-file 所見を arch にゆだねるよう LLM に誤誘導する。`resolvePrompts` で単相/複相を区別するか、`RolePrompts` を複相時のみ有効化するゲートが必要。`Phase != \"\"` だけで RolePrompts を選択する diff_review.go:30 のロジックも同根。",
+      "messages": [
+        "cmd/acr/review.go:825-828 と internal/agent/prompts.go の `AutoPhaseDiffPrompt` の整合性が取れていない — `parsePhases(\"small\", N)` は arch reviewer を含まない単相 (`Phase:\"diff\"` 1件) を生成する",
+        "`AutoPhaseDiffPrompt` は「You are reviewing a subset of files ... an architecture reviewer has the full diff」と LLM に断言しており、`--role-prompts` + auto-phase=small で全ファイル走査しているのにクロスファイル所見を「arch がやる」と誤誘導してサイレントに抑制する",
+        "internal/agent/diff_review.go:30: `RolePrompts` is selected for any non-empty `Phase`, including auto-phase small and medium/large fallback runs that still review the full diff without an architecture reviewer",
+        "`resolvePrompts` で単相/複相を区別する、もしくは `RolePrompts` を複相モード時のみ有効化するゲートが必要"
+      ],
+      "reviewer_count": 2,
+      "arch_reviewer_count": 1,
+      "diff_reviewer_count": 1,
+      "sources": [
+        10,
+        13
+      ],
+      "group_key": "arch,g01",
+      "severity": "blocking"
+    },
+    {
+      "title": "AutoPhase ref-file 系プロンプトが diff ファイル読込指示を欠落",
+      "summary": "`AutoPhaseDiffRefFilePrompt` (prompts.go:188) と `AutoPhaseArchRefFilePrompt` (prompts.go:240) は ref-file モードで diff を temp file に書き出した後に渡されるにも関わらず、`%s` が diff ファイルパスであることや読み込めという指示を欠いており、ref-file mode で空/不正なレビューや未読のまま arch 判定が走る恐れがある。",
+      "messages": [
+        "internal/agent/prompts.go:188: AutoPhaseDiffRefFilePrompt is used when the diff is written to a temp file, but unlike the existing ref-file prompts it never tells the reviewer that `%s` is the diff file or to read it",
+        "ref-file mode can therefore run with only a path in the prompt and produce empty/incorrect reviews",
+        "internal/agent/prompts.go:240: AutoPhaseArchRefFilePrompt has the same ref-file regression: executeDiffBasedReview only passes this prompt after writing the diff to disk, but the prompt does not instruct the agent to read the file"
+      ],
+      "reviewer_count": 1,
+      "diff_reviewer_count": 1,
+      "sources": [
+        3
+      ],
+      "group_key": "g02",
+      "severity": "advisory"
+    },
+    {
+      "title": "arch + RolePrompts=false 経路で RefFilePrompt が diff 用のまま残る非対称",
+      "summary": "`resolvePrompts` の `Phase==\"arch\" \u0026\u0026 RolePrompts==false` 分岐は `DefaultPrompt` のみ `DefaultArchPrompt` に差し替え、`RefFilePrompt` はエージェント別の diff 用テンプレートのまま放置する。`TestResolvePrompts_RolePromptsDisabled_ArchPhase` がこの非対称を固定しているが、`--arch-reviewer-agent` を ref-file モードで動かすと `--no-role-prompts` 指定時に arch reviewer が diff 用 ref-file プロンプトを受け取り、本機能が塞ぎたかったカバレッジ穴と同型のギャップが残る。",
+      "messages": [
+        "internal/agent/diff_review.go の `resolvePrompts` 既存パス — `Phase==\"arch\" \u0026\u0026 RolePrompts==false` のとき `DefaultPrompt` だけが `DefaultArchPrompt` に差し替えられ、`RefFilePrompt` はエージェント別の diff 用テンプレート（例: `DefaultClaudeRefFilePrompt`）のまま",
+        "`TestResolvePrompts_RolePromptsDisabled_ArchPhase` がこの非対称を「正」と固定している",
+        "`--arch-reviewer-agent` を ref-file モードで動かす経路では `--no-role-prompts` 指定時に arch reviewer が diff 用 ref-file プロンプトを受け取り、本フィーチャーが塞ぎたかったカバレッジ穴と同型のギャップが残る"
+      ],
+      "reviewer_count": 1,
+      "arch_reviewer_count": 1,
+      "sources": [
+        15
+      ],
+      "group_key": "arch",
+      "severity": "advisory"
+    }
+  ],
+  "info": [
+    {
+      "title": "レビュー方針・スコープ確認のメタコメント",
+      "summary": "各レビュアーが本レビュー前に表明した方針宣言（read-only、line-grounded 確認、テスト追加分は対象外、最小周辺コードのみ確認等）。レビュー本体ではなく進め方の宣言。",
+      "messages": [
+        "I'll do this as a read-only code review and verify the touched implementation context before making any line-specific claims",
+        "The prompt constants and config resolver are present in the working tree. I'm checking the call sites now",
+        "The main concrete risk I see is in the ref-file variants, so I'm pulling exact line numbers against the current file before finalizing the finding",
+        "code-review 相当のレビューとして、提示 diff の範囲に絞りつつ、実ファイル側の周辺コードを読んで line-grounded に確認します",
+        "`RolePrompts` は既に複数ファイルへ広がっているので、今回の追加行だけでなく既存の config 解決順・runner の失敗経路・agent 側の使用条件を確認しています",
+        "提示範囲では `runner.go` の実装差分が実質レビュー対象です。テスト追加分は依頼どおり findings 対象から外し",
+        "レビュー前に、指定差分が既存の設定解決フローと噛み合っているかだけ確認します",
+        "関連メモは ACR_win のレビュー方針程度で、差分内容そのものは現在の checkout で確認します",
+        "以下、`--role-prompts` 機能のアーキテクチャ／クロスカット観点レビューです（出力形式: `[must]`/`[imo]` 1行1件）"
+      ],
+      "reviewer_count": 4,
+      "arch_reviewer_count": 1,
+      "diff_reviewer_count": 3,
+      "sources": [
+        0,
+        1,
+        2,
+        4,
+        5,
+        6,
+        7,
+        8,
+        11
+      ],
+      "group_key": "arch,g01,g02,g03"
+    }
+  ],
+  "ok": false,
+  "verdict": "blocking",
+  "notes_for_next_review": "",
+  "skipped_files": [],
+  "cross_check": {
+    "findings": [
+      {
+        "title": "Single-phase auto-phase prompt suppression is under-severed in diff review",
+        "summary": "g01 reports that RolePrompts is selected for any non-empty Phase and can suppress cross-file findings, while arch independently confirms the same small-auto-phase path lacks an architecture reviewer and marks it blocking. The diff finding should be escalated because the multi-group context shows this is a silent coverage loss, not just prompt wording risk.",
+        "type": "escalation",
+        "involved_groups": [
+          "arch",
+          "g01"
+        ],
+        "severity": "blocking",
+        "related_finding_ids": [
+          10,
+          13
+        ]
+      },
+      {
+        "title": "Role-prompts flag precedence bug was missed by the owning diff group",
+        "summary": "arch reports a blocking precedence bug in cmd/acr/main.go, which is inside g01's target set. g01 reviewed the same config wiring area but only concluded the flag/env/yaml precedence followed existing patterns, leaving the arch concern unaddressed by the succeeding diff group.",
+        "type": "gap",
+        "involved_groups": [
+          "arch",
+          "g01"
+        ],
+        "severity": "blocking",
+        "related_finding_ids": [
+          9,
+          12
+        ]
+      },
+      {
+        "title": "Ref-file prompt regressions span arch and diff prompt modes",
+        "summary": "g02 reports that the new auto-phase ref-file prompts omit instructions to read the diff file, while arch separately reports an existing arch-phase ref-file prompt asymmetry when role prompts are disabled. Together these indicate a cross-mode ref-file coverage gap rather than an isolated prompt typo.",
+        "type": "escalation",
+        "involved_groups": [
+          "arch",
+          "g02"
+        ],
+        "severity": "blocking",
+        "related_finding_ids": [
+          3,
+          15
+        ]
+      },
+      {
+        "title": "AutoPhaseDiffPrompt single-phase coverage gap independently confirmed by arch and diff reviewers",
+        "summary": "Arch (full-diff) review and g01 (cmd/acr/review.go + diff_review.go scope) independently identified that RolePrompts activates whenever Phase != \"\", including auto-phase=small single-phase runs that have no architecture reviewer. The diff prompt still tells the LLM \"an architecture reviewer has the full diff,\" silently suppressing cross-file findings on the only reviewer present. Two independent confirmations from different scopes raise this from a single concern to a confirmed regression.",
+        "type": "escalation",
+        "involved_groups": [
+          "arch",
+          "g01"
+        ],
+        "severity": "blocking",
+        "related_finding_ids": [
+          10,
+          13
+        ]
+      },
+      {
+        "title": "CLI flag precedence bug missed by file-scoped diff group",
+        "summary": "Arch finding 12 identifies that `RolePromptsSet = rolePrompts \u0026\u0026 !noRolePrompts` corrupts precedence (e.g., `ACR_ROLE_PROMPTS=true` + `--no-role-prompts=false` silently disables). g01 reviewed cmd/acr/main.go directly but did not catch this multi-line invariant. Indicates a blind spot in the diff-split policy: precedence/composition bugs that span flag declaration + synthesis line are likely to escape per-file diff review.",
+        "type": "gap",
+        "involved_groups": [
+          "arch",
+          "g01"
+        ],
+        "severity": "blocking",
+        "related_finding_ids": [
+          12
+        ]
+      },
+      {
+        "title": "Layering violation spans all three diff groups but caught by no diff group",
+        "summary": "Arch finding 14 flags that `RolePrompts` threads through cmd→config→runner→agent (every diff group's territory) yet none of g01/g02/g03 raised the cross-cutting placement issue, because each group only saw its slice. This is a textbook cross-file concern split across group boundaries; per-group reviewers cannot see the full propagation chain.",
+        "type": "gap",
+        "involved_groups": [
+          "arch",
+          "g01",
+          "g02",
+          "g03"
+        ],
+        "severity": "blocking",
+        "related_finding_ids": [
+          14
+        ]
+      },
+      {
+        "title": "Pre-existing ref-file asymmetry on arch+RolePrompts=false path not surfaced by diff groups",
+        "summary": "Arch finding 15 notes that when `Phase==\"arch\" \u0026\u0026 RolePrompts==false`, only DefaultPrompt is swapped to DefaultArchPrompt while RefFilePrompt remains the diff-style template — leaving an arch reviewer in ref-file mode receiving a diff prompt. g01 reviewed diff_review.go and g02 reviewed the prompts/tests but neither flagged this asymmetry; the test (`TestResolvePrompts_RolePromptsDisabled_ArchPhase`) actively pins the asymmetric behavior, which is exactly the coverage gap this feature was meant to close.",
+        "type": "gap",
+        "involved_groups": [
+          "arch",
+          "g01",
+          "g02"
+        ],
+        "severity": "advisory",
+        "related_finding_ids": [
+          15
+        ]
+      },
+      {
+        "title": "Unknown Phase silent fallback to diff prompt missed by diff_review.go reviewer",
+        "summary": "Arch finding 17 highlights that `resolvePrompts`' `default:` branch silently treats unknown Phase values as diff. g01 owned diff_review.go and surfaced an adjacent concern (RolePrompts gates on any non-empty Phase) but did not call out the silent default fallback, which is a defensive-programming gap on the same function.",
+        "type": "gap",
+        "involved_groups": [
+          "arch",
+          "g01"
+        ],
+        "severity": "advisory",
+        "related_finding_ids": [
+          17
+        ]
+      },
+      {
+        "title": "AutoPhase ref-file prompt regression compounds single-phase coverage suppression",
+        "summary": "g02 finding 3 shows AutoPhaseDiffRefFilePrompt / AutoPhaseArchRefFilePrompt drop the explicit \"read this file\" directive that existing ref-file prompts carry. Combined with arch/g01 finding (13/10) that these same AutoPhase prompts are also misapplied in single-phase runs, the new prompt set has two independent structural defects that compound: ref-file mode + single-phase + RolePrompts can produce empty/incorrect reviews with the only reviewer present. Multi-group view promotes severity.",
+        "type": "escalation",
+        "involved_groups": [
+          "arch",
+          "g01",
+          "g02"
+        ],
+        "severity": "blocking",
+        "related_finding_ids": [
+          3,
+          10,
+          13
+        ]
+      },
+      {
+        "title": "Contradictory assessment of --role-prompts flag precedence logic",
+        "summary": "Group arch (finding 12) identifies a critical logic bug in cmd/acr/main.go where boolean flag composition breaks precedence for --no-role-prompts overrides. Group g01 (finding 9) contradicts this, stating the flag/env precedence logic correctly follows existing patterns and has no issues.",
+        "type": "contradiction",
+        "involved_groups": [
+          "arch",
+          "g01"
+        ],
+        "severity": "blocking",
+        "related_finding_ids": [
+          9,
+          12
+        ]
+      },
+      {
+        "title": "Cross-group gap for single-phase prompt mismatch resolution",
+        "summary": "Both arch (finding 13) and g01 (finding 10) identify that in single-phase runs (like auto-phase small), diff reviewers receive a prompt falsely assuming an architecture reviewer is present. Fixing this requires coordinated changes across cmd/acr/review.go and internal/agent/diff_review.go (in g01) and internal/agent/prompts.go (in g02) to correctly handle prompt selection.",
+        "type": "gap",
+        "involved_groups": [
+          "arch",
+          "g01",
+          "g02"
+        ],
+        "severity": "blocking",
+        "related_finding_ids": [
+          10,
+          13
+        ]
+      },
+      {
+        "title": "Configuration layering violation spans across all diff groups",
+        "summary": "Arch finding 14 notes that RolePrompts is passed unmodified through many layers (ResolvedConfig, ReviewOpts, runner.Config, ReviewerSpec, ReviewConfig) instead of being resolved early. Because these layers are split across g01 (agent/config), g02 (config/config), and g03 (runner/runner), no individual diff group could assess or correct this system-wide structural issue.",
+        "type": "gap",
+        "involved_groups": [
+          "arch",
+          "g01",
+          "g02",
+          "g03"
+        ],
+        "severity": "advisory",
+        "related_finding_ids": [
+          14
+        ]
+      }
+    ]
+  }
+}
