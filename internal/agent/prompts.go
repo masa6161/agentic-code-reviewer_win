@@ -185,7 +185,7 @@ Output format: file:line: description
 {{guidance}}`
 
 // AutoPhaseDiffRefFilePrompt is the ref-file variant of AutoPhaseDiffPrompt.
-const AutoPhaseDiffRefFilePrompt = `Review the code changes in %s for code-level issues.
+const AutoPhaseDiffRefFilePrompt = `Read the diff content from the file at %s and review it for code-level issues.
 
 You are reviewing a subset of files from a larger change.
 Other reviewers are examining other files, and an architecture reviewer
@@ -237,7 +237,7 @@ Skip:
 {{guidance}}`
 
 // AutoPhaseArchRefFilePrompt is the ref-file variant of AutoPhaseArchPrompt.
-const AutoPhaseArchRefFilePrompt = `Review the code changes in %s for architectural and cross-cutting concerns.
+const AutoPhaseArchRefFilePrompt = `Read the diff content from the file at %s and review it for architectural and cross-cutting concerns.
 
 You have the FULL diff of this change. Other reviewers are examining
 individual file groups for code-level bugs. Focus on issues that span
