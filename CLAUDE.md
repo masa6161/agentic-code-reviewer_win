@@ -34,45 +34,100 @@ go install ./cmd/acr  # Install locally
 ## Architecture
 
 ```
-cmd/acr/main.go          # CLI entry point, flag parsing, orchestration
+cmd/acr/                   # CLI entry point and subcommands
+  main.go                  # CLI entry point, flag parsing, cobra root command
+  review.go                # Core review orchestration (executeReview)
+  review_opts.go           # ReviewOpts struct bundling resolved config + CLI flags
+  pr_submit.go             # PR submission flow (post comments, approve)
+  config_cmd.go            # `acr config` subcommand (init/show .acr.yaml)
+  help.go                  # Custom help formatting (flag groups)
+  helpers.go               # CLI helper functions (finding filtering, etc.)
+  version.go               # Version info (injected via ldflags)
+  signals_unix.go          # Unix signal handling (build-tagged)
+  signals_windows.go       # Windows signal handling (build-tagged)
+  *_test.go                # Tests for review, helpers, config_cmd, pr_submit, help
+
 internal/
-  agent/                 # LLM agent abstraction layer
-    agent.go             # Agent interface (ExecuteReview, ExecuteSummary)
-    codex.go             # Codex CLI agent implementation
-    claude.go            # Claude CLI agent implementation
-    gemini.go            # Gemini CLI agent implementation
-    factory.go           # Agent and parser factory functions
-    parser.go            # ReviewParser and SummaryParser interfaces
-    *_review_parser.go   # Agent-specific review output parsers
-    *_summary_parser.go  # Agent-specific summary output parsers
-    prompts.go           # Default review prompts per agent
-  config/                # Configuration file support
-    config.go            # Load/parse .acr.yaml, resolve precedence (flags > env > config > defaults)
-  domain/                # Core types: Finding, AggregatedFinding, GroupedFindings
-    finding.go           # Finding types and aggregation logic
-    result.go            # ReviewerResult and ReviewStats
-    exitcode.go          # Exit code constants
-  filter/                # Finding filtering
-    filter.go            # Exclude findings by regex pattern matching
-  fpfilter/              # False positive filtering
-    fpfilter.go          # LLM-based false positive detection and removal
-  feedback/              # PR feedback summarization
-    fetch.go             # Fetch PR description and comments via gh CLI
-    summarizer.go        # LLM-based summarization of prior PR discussion
-  runner/                # Review execution engine
-    runner.go            # Parallel reviewer orchestration
-    report.go            # Report rendering (terminal + markdown)
-  summarizer/            # LLM-based finding summarization
-    summarizer.go        # Orchestrates agent execution and output parsing
-  github/                # GitHub PR operations via gh CLI
-    pr.go                # Post comments, approve PRs, check CI status
-  git/                   # Git operations
-    worktree.go          # Temporary worktree management
-  terminal/              # Terminal UI
-    spinner.go           # Progress spinner
-    logger.go            # Styled logging
-    colors.go            # ANSI color codes
-    format.go            # Text formatting utilities
+  agent/                   # LLM agent abstraction layer
+    doc.go                 # Package documentation
+    agent.go               # Agent interface (ExecuteReview, ExecuteSummary)
+    codex.go               # Codex CLI agent implementation
+    claude.go              # Claude CLI agent implementation
+    gemini.go              # Gemini CLI agent implementation
+    factory.go             # Agent and parser factory functions (registry)
+    cohort.go              # Multi-agent name parsing, availability checks, distribution
+    config.go              # ReviewConfig and SummaryConfig structs
+    executor.go            # Subprocess execution with stderr capture
+    cmd_reader.go          # io.Reader wrapper with process lifecycle management
+    result.go              # ExecutionResult (io.ReadCloser + exit code + stderr)
+    auth.go                # Authentication failure detection (exit codes, stderr patterns)
+    diff.go                # Git diff/fetch delegations (backward-compat aliases)
+    diff_review.go         # Diff-based review execution (shared by Claude/Gemini)
+    parser.go              # ReviewParser and SummaryParser interfaces
+    claude_review_parser.go    # Claude review output parser
+    codex_review_parser.go     # Codex review output parser (JSONL)
+    gemini_review_parser.go    # Gemini review output parser
+    claude_summary_parser.go   # Claude summary output parser
+    codex_summary_parser.go    # Codex summary output parser
+    gemini_summary_parser.go   # Gemini summary output parser
+    prompts.go             # Default review/summary prompts per agent
+    nonfinding.go          # "No issues found" response detection
+    reffile.go             # Temp file management for large diffs
+    severity.go            # Severity extraction from finding text
+    process_unix.go        # Unix process group handling (build-tagged)
+    process_windows.go     # Windows process group handling (build-tagged)
+    *_test.go              # Extensive test suite
+
+  config/                  # Configuration file support
+    config.go              # Load/parse .acr.yaml, LoadEnvState(), Resolve() precedence
+
+  domain/                  # Core types: Finding, AggregatedFinding, GroupedFindings
+    finding.go             # Finding types, aggregation logic, disposition tracking
+    result.go              # ReviewerResult and ReviewStats
+    exitcode.go            # Exit code constants (0=clean, 1=findings, 2=error, 130=interrupted)
+    phase.go               # Phase constants (PhaseArch, PhaseDiff)
+
+  filter/                  # Finding filtering
+    filter.go              # Exclude findings by regex pattern matching
+
+  fpfilter/                # False positive filtering
+    filter.go              # LLM-based false positive detection and removal
+    prompt.go              # FP filter prompt templates (including prior feedback)
+
+  feedback/                # PR feedback summarization
+    fetch.go               # Fetch PR description and comments via gh CLI
+    summarizer.go          # LLM-based summarization of prior PR discussion
+    prompt.go              # Feedback summarization prompt template
+
+  runner/                  # Review execution engine
+    runner.go              # Parallel reviewer orchestration
+    report.go              # Report rendering (terminal + markdown)
+    phase.go               # PhaseConfig and multi-phase review planning
+    spec.go                # ReviewerSpec and distribution formatting
+
+  summarizer/              # LLM-based finding summarization
+    summarizer.go          # Orchestrates agent execution and output parsing
+    crosscheck.go          # Cross-check validation of summarizer output
+
+  github/                  # GitHub PR operations via gh CLI
+    pr.go                  # Post comments, approve PRs, check CI status
+    fork.go                # Fork reference resolution
+
+  git/                     # Git operations
+    worktree.go            # Temporary worktree management
+    diff.go                # Diff generation, branch update, diff size classification
+    diffsplit.go           # Split unified diffs into per-file sections
+    remote.go              # Remote management (add, fetch, URL operations)
+
+  terminal/                # Terminal UI
+    spinner.go             # Progress spinner
+    logger.go              # Styled logging
+    colors.go              # ANSI color codes
+    format.go              # Text formatting utilities
+    selector.go            # Interactive TUI selector (bubbletea-based)
+
+  modelconfig/             # Model configuration resolution
+    resolver.go            # Resolve model + effort for (size, role, agent) tuples
 ```
 
 ## Key Design Decisions
@@ -106,7 +161,7 @@ internal/
 When adding features:
 
 1. **Domain types go in `internal/domain/`** - Keep them simple, no external dependencies.
-2. **New CLI flags** - Add to `cmd/acr/main.go`, follow existing pattern with env var defaults.
+2. **New CLI flags** - Add to `cmd/acr/main.go`, env var parsing in `internal/config/config.go`.
 3. **Tests required** - Add `_test.go` files alongside implementation.
 4. **Lint clean** - Run `make lint` before committing.
 
@@ -118,8 +173,15 @@ When adding features:
 // In cmd/acr/main.go, add to var block:
 var myFlag string
 
-// In run(), add flag definition:
-rootCmd.Flags().StringVarP(&myFlag, "my-flag", "m", getEnvStr("ACR_MY_FLAG", "default"), "Description")
+// In run(), add flag definition with a hardcoded default:
+rootCmd.Flags().StringVarP(&myFlag, "my-flag", "m", "default", "Description")
+
+// In internal/config/config.go, add env var parsing in LoadEnvState():
+if v := os.Getenv("ACR_MY_FLAG"); v != "" {
+    state.MyFlag = v
+}
+
+// Precedence is resolved automatically in Resolve(): flags > env > .acr.yaml > defaults
 ```
 
 ### Adding a new finding field
