@@ -509,11 +509,11 @@ func TestNewWithSpecs_DuplicateReviewerIDError(t *testing.T) {
 
 func TestBuildStats_PerPhaseCount(t *testing.T) {
 	results := []domain.ReviewerResult{
-		{ReviewerID: 1, Phase: "arch", ExitCode: 0},
-		{ReviewerID: 2, Phase: "diff", ExitCode: 0},
-		{ReviewerID: 3, Phase: "diff", ExitCode: 0},
-		{ReviewerID: 4, Phase: "diff", ExitCode: 0},
-		{ReviewerID: 5, Phase: "diff", ExitCode: 0},
+		{ReviewerID: 1, Phase: domain.PhaseArch, ExitCode: 0},
+		{ReviewerID: 2, Phase: domain.PhaseDiff, ExitCode: 0},
+		{ReviewerID: 3, Phase: domain.PhaseDiff, ExitCode: 0},
+		{ReviewerID: 4, Phase: domain.PhaseDiff, ExitCode: 0},
+		{ReviewerID: 5, Phase: domain.PhaseDiff, ExitCode: 0},
 	}
 	stats := BuildStats(results, 5, 0)
 
@@ -555,11 +555,11 @@ func TestBuildStats_PerPhaseCount_FlatReview(t *testing.T) {
 
 func TestBuildStats_PerPhaseCount_PartialFailure(t *testing.T) {
 	results := []domain.ReviewerResult{
-		{ReviewerID: 1, Phase: "arch", ExitCode: 0},
-		{ReviewerID: 2, Phase: "diff", ExitCode: 0},
-		{ReviewerID: 3, Phase: "diff", ExitCode: 0},
-		{ReviewerID: 4, Phase: "diff", ExitCode: -1, TimedOut: true},
-		{ReviewerID: 5, Phase: "diff", ExitCode: 1},
+		{ReviewerID: 1, Phase: domain.PhaseArch, ExitCode: 0},
+		{ReviewerID: 2, Phase: domain.PhaseDiff, ExitCode: 0},
+		{ReviewerID: 3, Phase: domain.PhaseDiff, ExitCode: 0},
+		{ReviewerID: 4, Phase: domain.PhaseDiff, ExitCode: -1, TimedOut: true},
+		{ReviewerID: 5, Phase: domain.PhaseDiff, ExitCode: 1},
 	}
 	stats := BuildStats(results, 5, 0)
 

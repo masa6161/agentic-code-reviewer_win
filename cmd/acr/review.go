@@ -767,7 +767,7 @@ func shouldUseAutoPhase(opts ReviewOpts) bool {
 // specsHaveArch returns true if any spec in the slice has Phase "arch".
 func specsHaveArch(specs []runner.ReviewerSpec) bool {
 	for _, s := range specs {
-		if s.Phase == "arch" {
+		if s.Phase == domain.PhaseArch {
 			return true
 		}
 	}
@@ -837,15 +837,15 @@ func parsePhases(phaseStr string, totalReviewers int) ([]runner.PhaseConfig, err
 	switch phaseStr {
 	case "small":
 		return []runner.PhaseConfig{
-			{Phase: "diff", ReviewerCount: totalReviewers},
+			{Phase: domain.PhaseDiff, ReviewerCount: totalReviewers},
 		}, nil
 	case "medium":
 		if totalReviewers < 2 {
 			return nil, fmt.Errorf("phase %q requires >= 2 reviewers (1 arch + >= 1 diff), got %d", phaseStr, totalReviewers)
 		}
 		return []runner.PhaseConfig{
-			{Phase: "arch", ReviewerCount: 1},
-			{Phase: "diff", ReviewerCount: totalReviewers - 1},
+			{Phase: domain.PhaseArch, ReviewerCount: 1},
+			{Phase: domain.PhaseDiff, ReviewerCount: totalReviewers - 1},
 		}, nil
 	default:
 		return nil, fmt.Errorf("unknown phase %q (valid: small, medium)", phaseStr)
@@ -957,7 +957,7 @@ func buildCrossCheckContext(findings []domain.AggregatedFinding, specs []runner.
 			GroupKey:    s.GroupKey,
 			Phase:       s.Phase,
 			TargetFiles: s.TargetFiles,
-			FullDiff:    s.Phase == "arch",
+			FullDiff:    s.Phase == domain.PhaseArch,
 		})
 	}
 
@@ -1209,7 +1209,7 @@ func buildPhaseAgents(opts ReviewOpts, sizeStr string) (agent.Agent, []agent.Age
 	}
 	cliRevModel, legacyRevModel := cliOrLegacy(opts.ReviewerModel, opts.ReviewerModelFromCLI)
 	archSpec := modelconfig.ResolveReviewer(
-		opts.Models, sizeStr, "arch", archAgentName,
+		opts.Models, sizeStr, domain.PhaseArch, archAgentName,
 		cliRevModel, "",
 		legacyRevModel, "",
 	)
@@ -1232,7 +1232,7 @@ func buildPhaseAgents(opts ReviewOpts, sizeStr string) (agent.Agent, []agent.Age
 	diffAgents := make([]agent.Agent, 0, len(diffAgentNames))
 	for _, name := range diffAgentNames {
 		spec := modelconfig.ResolveReviewer(
-			opts.Models, sizeStr, "diff", name,
+			opts.Models, sizeStr, domain.PhaseDiff, name,
 			cliRevModel, "",
 			legacyRevModel, "",
 		)
@@ -1272,7 +1272,7 @@ func logPerPhaseModelMatrix(logger *terminal.Logger, opts ReviewOpts, sizeStr st
 		archName = opts.ReviewerAgents[0]
 	}
 	archSpec := modelconfig.ResolveReviewer(
-		opts.Models, sizeStr, "arch", archName,
+		opts.Models, sizeStr, domain.PhaseArch, archName,
 		cliRevModelLog, "",
 		legacyRevModelLog, "",
 	)
@@ -1286,7 +1286,7 @@ func logPerPhaseModelMatrix(logger *terminal.Logger, opts ReviewOpts, sizeStr st
 	}
 	for _, name := range diffNames {
 		diffSpec := modelconfig.ResolveReviewer(
-			opts.Models, sizeStr, "diff", name,
+			opts.Models, sizeStr, domain.PhaseDiff, name,
 			cliRevModelLog, "",
 			legacyRevModelLog, "",
 		)
@@ -1363,8 +1363,8 @@ func buildGroupedDiffSpecs(
 	specs = append(specs, runner.ReviewerSpec{
 		ReviewerID:      1,
 		Agent:           archAgent,
-		Phase:           "arch",
-		GroupKey:        "arch",
+		Phase:           domain.PhaseArch,
+		GroupKey:        domain.PhaseArch,
 		Guidance:        guidance,
 		Diff:            fullDiff,
 		DiffPrecomputed: diffPrecomputed,
@@ -1393,7 +1393,7 @@ func buildGroupedDiffSpecs(
 		specs = append(specs, runner.ReviewerSpec{
 			ReviewerID:      reviewerID,
 			Agent:           diffAgent,
-			Phase:           "diff",
+			Phase:           domain.PhaseDiff,
 			GroupKey:        group.Key,
 			Guidance:        guidance,
 			Diff:            groupDiff,
@@ -1431,8 +1431,8 @@ func buildMediumDiffSpecs(
 	specs = append(specs, runner.ReviewerSpec{
 		ReviewerID:      1,
 		Agent:           archAgent,
-		Phase:           "arch",
-		GroupKey:        "arch",
+		Phase:           domain.PhaseArch,
+		GroupKey:        domain.PhaseArch,
 		Guidance:        guidance,
 		Diff:            fullDiff,
 		DiffPrecomputed: diffPrecomputed,
@@ -1454,7 +1454,7 @@ func buildMediumDiffSpecs(
 		specs = append(specs, runner.ReviewerSpec{
 			ReviewerID:      reviewerID,
 			Agent:           diffAgent,
-			Phase:           "diff",
+			Phase:           domain.PhaseDiff,
 			GroupKey:        group.Key,
 			Guidance:        guidance,
 			Diff:            groupDiff,

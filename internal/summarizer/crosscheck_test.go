@@ -54,8 +54,8 @@ func TestCrossCheckPayload_UsesAggregatedIDs(t *testing.T) {
 	ccCtx := CrossCheckContext{
 		Findings: aggregated,
 		Groups: []GroupInfo{
-			{GroupKey: "g01", Phase: "diff"},
-			{GroupKey: "g02", Phase: "diff"},
+			{GroupKey: "g01", Phase: domain.PhaseDiff},
+			{GroupKey: "g02", Phase: domain.PhaseDiff},
 		},
 		Outcomes: []GroupOutcome{
 			{GroupKey: "g01", Succeeded: true, FindingCount: 1},
@@ -83,7 +83,7 @@ func TestBuildCrossCheckPayload_TruncatesLongText(t *testing.T) {
 			{Text: longText, GroupKey: "g01", Severity: "blocking"},
 		},
 		Groups: []GroupInfo{
-			{GroupKey: "g01", Phase: "diff"},
+			{GroupKey: "g01", Phase: domain.PhaseDiff},
 		},
 		Outcomes: []GroupOutcome{
 			{GroupKey: "g01", Succeeded: true, FindingCount: 1},
@@ -105,11 +105,11 @@ func TestBuildCrossCheckPayload_TruncatesLongText(t *testing.T) {
 func TestBuildCrossCheckPayload_OutcomesMergedByKey(t *testing.T) {
 	ccCtx := CrossCheckContext{
 		Groups: []GroupInfo{
-			{GroupKey: "arch", Phase: "arch", FullDiff: true},
-			{GroupKey: "g01", Phase: "diff", TargetFiles: []string{"a.go"}},
+			{GroupKey: domain.PhaseArch, Phase: domain.PhaseArch, FullDiff: true},
+			{GroupKey: "g01", Phase: domain.PhaseDiff, TargetFiles: []string{"a.go"}},
 		},
 		Outcomes: []GroupOutcome{
-			{GroupKey: "arch", Succeeded: true, FindingCount: 3},
+			{GroupKey: domain.PhaseArch, Succeeded: true, FindingCount: 3},
 			{GroupKey: "g01", Succeeded: false, TimedOut: true},
 		},
 	}
@@ -130,7 +130,7 @@ func TestBuildCrossCheckPayload_OutcomesMergedByKey(t *testing.T) {
 
 func TestCrossCheck_SkippedForSingleGroup(t *testing.T) {
 	ccCtx := CrossCheckContext{
-		Groups: []GroupInfo{{GroupKey: "arch"}},
+		Groups: []GroupInfo{{GroupKey: domain.PhaseArch}},
 	}
 	result := CrossCheck(context.Background(), []CrossCheckAgentSpec{{Name: "codex"}}, ccCtx, false, terminal.NewLogger())
 	if !result.Skipped {
@@ -143,7 +143,7 @@ func TestCrossCheck_SkippedForSingleGroup(t *testing.T) {
 
 func TestCrossCheck_SkippedForNoAgents(t *testing.T) {
 	ccCtx := CrossCheckContext{
-		Groups: []GroupInfo{{GroupKey: "arch"}, {GroupKey: "g01"}},
+		Groups: []GroupInfo{{GroupKey: domain.PhaseArch}, {GroupKey: "g01"}},
 	}
 	result := CrossCheck(context.Background(), nil, ccCtx, false, terminal.NewLogger())
 	if !result.Skipped {
@@ -302,7 +302,7 @@ func TestBuildCrossCheckPayload_TruncatesByRunes_NotBytes(t *testing.T) {
 			{Text: longJapanese, GroupKey: "g01", Severity: "advisory"},
 		},
 		Groups: []GroupInfo{
-			{GroupKey: "g01", Phase: "diff"},
+			{GroupKey: "g01", Phase: domain.PhaseDiff},
 		},
 		Outcomes: []GroupOutcome{
 			{GroupKey: "g01", Succeeded: true, FindingCount: 1},

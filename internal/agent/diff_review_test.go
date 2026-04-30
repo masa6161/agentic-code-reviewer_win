@@ -1,9 +1,13 @@
 package agent
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/richhaase/agentic-code-reviewer/internal/domain"
+)
 
 func TestResolvePrompts_RolePromptsEnabled_ArchPhase(t *testing.T) {
-	config := &ReviewConfig{Phase: "arch", RolePrompts: true, HasArchReviewer: true}
+	config := &ReviewConfig{Phase: domain.PhaseArch, RolePrompts: true, HasArchReviewer: true}
 	dc := diffReviewConfig{
 		DefaultPrompt: DefaultClaudePrompt,
 		RefFilePrompt: DefaultClaudeRefFilePrompt,
@@ -19,7 +23,7 @@ func TestResolvePrompts_RolePromptsEnabled_ArchPhase(t *testing.T) {
 
 func TestResolvePrompts_RolePromptsEnabled_DiffPhase(t *testing.T) {
 	// arch reviewer が存在する場合のみ AutoPhaseDiffPrompt に切替
-	config := &ReviewConfig{Phase: "diff", RolePrompts: true, HasArchReviewer: true}
+	config := &ReviewConfig{Phase: domain.PhaseDiff, RolePrompts: true, HasArchReviewer: true}
 	dc := diffReviewConfig{
 		DefaultPrompt: DefaultClaudePrompt,
 		RefFilePrompt: DefaultClaudeRefFilePrompt,
@@ -35,7 +39,7 @@ func TestResolvePrompts_RolePromptsEnabled_DiffPhase(t *testing.T) {
 
 func TestResolvePrompts_RolePromptsEnabled_DiffPhase_NoArch(t *testing.T) {
 	// arch reviewer なし → RolePrompts を適用しない (レガシーのまま)
-	config := &ReviewConfig{Phase: "diff", RolePrompts: true, HasArchReviewer: false}
+	config := &ReviewConfig{Phase: domain.PhaseDiff, RolePrompts: true, HasArchReviewer: false}
 	dc := diffReviewConfig{
 		DefaultPrompt: DefaultClaudePrompt,
 		RefFilePrompt: DefaultClaudeRefFilePrompt,
@@ -65,7 +69,7 @@ func TestResolvePrompts_RolePromptsEnabled_NoPhase(t *testing.T) {
 }
 
 func TestResolvePrompts_RolePromptsDisabled_ArchPhase(t *testing.T) {
-	config := &ReviewConfig{Phase: "arch", RolePrompts: false}
+	config := &ReviewConfig{Phase: domain.PhaseArch, RolePrompts: false}
 	dc := diffReviewConfig{
 		DefaultPrompt: DefaultClaudePrompt,
 		RefFilePrompt: DefaultClaudeRefFilePrompt,
@@ -81,7 +85,7 @@ func TestResolvePrompts_RolePromptsDisabled_ArchPhase(t *testing.T) {
 }
 
 func TestResolvePrompts_RolePromptsDisabled_DiffPhase(t *testing.T) {
-	config := &ReviewConfig{Phase: "diff", RolePrompts: false}
+	config := &ReviewConfig{Phase: domain.PhaseDiff, RolePrompts: false}
 	dc := diffReviewConfig{
 		DefaultPrompt: DefaultClaudePrompt,
 		RefFilePrompt: DefaultClaudeRefFilePrompt,

@@ -196,9 +196,9 @@ func BackfillPhaseReviewerCounts(
 				}
 				for _, rid := range aggregated[srcIdx].Reviewers {
 					switch reviewerPhases[rid] {
-					case "arch":
+					case PhaseArch:
 						archSet[rid] = struct{}{}
-					case "diff":
+					case PhaseDiff:
 						diffSet[rid] = struct{}{}
 					}
 				}

@@ -386,7 +386,7 @@ func TestBackfillPhaseReviewerCounts_ArchOnly(t *testing.T) {
 			{Sources: []int{0}},
 		},
 	}
-	reviewerPhases := map[int]string{1: "arch"}
+	reviewerPhases := map[int]string{1: PhaseArch}
 
 	BackfillPhaseReviewerCounts(grouped, aggregated, reviewerPhases)
 
@@ -408,7 +408,7 @@ func TestBackfillPhaseReviewerCounts_DiffOnly(t *testing.T) {
 			{Sources: []int{0}},
 		},
 	}
-	reviewerPhases := map[int]string{2: "diff"}
+	reviewerPhases := map[int]string{2: PhaseDiff}
 
 	BackfillPhaseReviewerCounts(grouped, aggregated, reviewerPhases)
 
@@ -431,7 +431,7 @@ func TestBackfillPhaseReviewerCounts_Mixed(t *testing.T) {
 			{Sources: []int{0, 1}},
 		},
 	}
-	reviewerPhases := map[int]string{1: "arch", 2: "diff", 3: "diff"}
+	reviewerPhases := map[int]string{1: PhaseArch, 2: PhaseDiff, 3: PhaseDiff}
 
 	BackfillPhaseReviewerCounts(grouped, aggregated, reviewerPhases)
 
@@ -456,7 +456,7 @@ func TestBackfillPhaseReviewerCounts_DeduplicatesReviewerIDs(t *testing.T) {
 			{Sources: []int{0, 1}},
 		},
 	}
-	reviewerPhases := map[int]string{1: "arch"}
+	reviewerPhases := map[int]string{1: PhaseArch}
 
 	BackfillPhaseReviewerCounts(grouped, aggregated, reviewerPhases)
 
@@ -478,7 +478,7 @@ func TestBackfillPhaseReviewerCounts_EmptySources(t *testing.T) {
 			{Sources: []int{}},
 		},
 	}
-	reviewerPhases := map[int]string{1: "arch"}
+	reviewerPhases := map[int]string{1: PhaseArch}
 
 	BackfillPhaseReviewerCounts(grouped, aggregated, reviewerPhases)
 
@@ -500,7 +500,7 @@ func TestBackfillPhaseReviewerCounts_OutOfRangeIndex(t *testing.T) {
 			{Sources: []int{-1, 5, 100}},
 		},
 	}
-	reviewerPhases := map[int]string{1: "arch"}
+	reviewerPhases := map[int]string{1: PhaseArch}
 
 	// Must not panic
 	BackfillPhaseReviewerCounts(grouped, aggregated, reviewerPhases)
@@ -548,7 +548,7 @@ func TestBackfillPhaseReviewerCounts_InfoGroups(t *testing.T) {
 			{Sources: []int{1}},
 		},
 	}
-	reviewerPhases := map[int]string{1: "arch", 2: "diff"}
+	reviewerPhases := map[int]string{1: PhaseArch, 2: PhaseDiff}
 
 	BackfillPhaseReviewerCounts(grouped, aggregated, reviewerPhases)
 

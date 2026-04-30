@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/richhaase/agentic-code-reviewer/internal/agent"
+	"github.com/richhaase/agentic-code-reviewer/internal/domain"
 )
 
 // mockPhaseAgent implements agent.Agent for phase testing.
@@ -29,8 +30,8 @@ func (m *mockPhaseAgent) Options() agent.AgentOptions {
 func TestBuildReviewerSpecs_ArchAndDiff(t *testing.T) {
 	agents := []agent.Agent{&mockPhaseAgent{name: "codex"}}
 	phases := []PhaseConfig{
-		{Phase: "arch", ReviewerCount: 1},
-		{Phase: "diff", ReviewerCount: 2},
+		{Phase: domain.PhaseArch, ReviewerCount: 1},
+		{Phase: domain.PhaseDiff, ReviewerCount: 2},
 	}
 
 	specs, err := BuildReviewerSpecs(phases, agents, "global guidance", "diff content", true)
@@ -42,7 +43,7 @@ func TestBuildReviewerSpecs_ArchAndDiff(t *testing.T) {
 	}
 
 	// First spec should be arch phase
-	if specs[0].Phase != "arch" {
+	if specs[0].Phase != domain.PhaseArch {
 		t.Errorf("specs[0].Phase = %q, want %q", specs[0].Phase, "arch")
 	}
 	// Arch phase guidance should be globalGuidance (prompt selection happens in execution path)
@@ -51,10 +52,10 @@ func TestBuildReviewerSpecs_ArchAndDiff(t *testing.T) {
 	}
 
 	// Remaining specs should be diff phase
-	if specs[1].Phase != "diff" {
+	if specs[1].Phase != domain.PhaseDiff {
 		t.Errorf("specs[1].Phase = %q, want %q", specs[1].Phase, "diff")
 	}
-	if specs[2].Phase != "diff" {
+	if specs[2].Phase != domain.PhaseDiff {
 		t.Errorf("specs[2].Phase = %q, want %q", specs[2].Phase, "diff")
 	}
 
@@ -72,7 +73,7 @@ func TestBuildReviewerSpecs_ArchAndDiff(t *testing.T) {
 func TestBuildReviewerSpecs_DefaultPrompt(t *testing.T) {
 	agents := []agent.Agent{&mockPhaseAgent{name: "codex"}}
 	phases := []PhaseConfig{
-		{Phase: "arch", ReviewerCount: 1},
+		{Phase: domain.PhaseArch, ReviewerCount: 1},
 	}
 
 	specs, err := BuildReviewerSpecs(phases, agents, "fallback", "", false)
@@ -89,7 +90,7 @@ func TestBuildReviewerSpecs_DefaultPrompt(t *testing.T) {
 func TestBuildReviewerSpecs_CustomPrompt(t *testing.T) {
 	agents := []agent.Agent{&mockPhaseAgent{name: "codex"}}
 	phases := []PhaseConfig{
-		{Phase: "arch", ReviewerCount: 1, Prompt: "custom arch prompt"},
+		{Phase: domain.PhaseArch, ReviewerCount: 1, Prompt: "custom arch prompt"},
 	}
 
 	specs, err := BuildReviewerSpecs(phases, agents, "fallback", "", false)
@@ -105,7 +106,7 @@ func TestBuildReviewerSpecs_CustomPrompt(t *testing.T) {
 func TestBuildReviewerSpecs_DiffPhaseUsesGlobalGuidance(t *testing.T) {
 	agents := []agent.Agent{&mockPhaseAgent{name: "codex"}}
 	phases := []PhaseConfig{
-		{Phase: "diff", ReviewerCount: 1},
+		{Phase: domain.PhaseDiff, ReviewerCount: 1},
 	}
 
 	specs, err := BuildReviewerSpecs(phases, agents, "global guidance", "", false)
@@ -130,7 +131,7 @@ func TestBuildReviewerSpecs_EmptyPhasesError(t *testing.T) {
 func TestBuildReviewerSpecs_ZeroReviewerCount(t *testing.T) {
 	agents := []agent.Agent{&mockPhaseAgent{name: "codex"}}
 	phases := []PhaseConfig{
-		{Phase: "arch", ReviewerCount: 0},
+		{Phase: domain.PhaseArch, ReviewerCount: 0},
 	}
 	_, err := BuildReviewerSpecs(phases, agents, "", "", false)
 	if err == nil {
@@ -143,8 +144,8 @@ func TestDefaultPromptForPhase(t *testing.T) {
 		phase     string
 		wantEmpty bool
 	}{
-		{"arch", false},
-		{"diff", true},
+		{domain.PhaseArch, false},
+		{domain.PhaseDiff, true},
 		{"", true},
 		{"unknown", true},
 	}
@@ -171,7 +172,7 @@ func TestDefaultPromptForPhase(t *testing.T) {
 func TestBuildReviewerSpecs_PhaseConfigEffortPreservesBaseModel(t *testing.T) {
 	base := &mockPhaseAgent{name: "codex", model: "gpt-5", effort: ""}
 	phases := []PhaseConfig{
-		{Phase: "diff", ReviewerCount: 1, Effort: "high"},
+		{Phase: domain.PhaseDiff, ReviewerCount: 1, Effort: "high"},
 	}
 
 	specs, err := BuildReviewerSpecs(phases, []agent.Agent{base}, "", "", false)

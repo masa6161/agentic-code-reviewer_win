@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/richhaase/agentic-code-reviewer/internal/config"
+	"github.com/richhaase/agentic-code-reviewer/internal/domain"
 )
 
 func ms(model, effort string) *config.ModelSpec {
@@ -217,7 +218,7 @@ func TestResolveReviewer(t *testing.T) {
 						ArchReviewer: ms("arch-m", "high"),
 					},
 				},
-				phase:     "arch",
+				phase:     domain.PhaseArch,
 				agentName: "codex",
 			},
 			want: Spec{Model: "arch-m", Effort: "high"},
@@ -230,7 +231,7 @@ func TestResolveReviewer(t *testing.T) {
 						Reviewer: ms("gen", "med"),
 					},
 				},
-				phase:     "arch",
+				phase:     domain.PhaseArch,
 				agentName: "codex",
 			},
 			want: Spec{Model: "gen", Effort: "med"},
@@ -244,7 +245,7 @@ func TestResolveReviewer(t *testing.T) {
 						DiffReviewer: ms("diff-m", "low"),
 					},
 				},
-				phase:     "diff",
+				phase:     domain.PhaseDiff,
 				agentName: "codex",
 			},
 			want: Spec{Model: "diff-m", Effort: "low"},
@@ -258,7 +259,7 @@ func TestResolveReviewer(t *testing.T) {
 						ArchReviewer: ms("arch-m", ""),
 					},
 				},
-				phase:     "arch",
+				phase:     domain.PhaseArch,
 				agentName: "codex",
 			},
 			want: Spec{Model: "arch-m", Effort: "med"},
@@ -274,7 +275,7 @@ func TestResolveReviewer(t *testing.T) {
 						"codex": {Reviewer: ms("codex-gen", "med")},
 					},
 				},
-				phase:     "arch",
+				phase:     domain.PhaseArch,
 				agentName: "codex",
 			},
 			want: Spec{Model: "codex-gen", Effort: "med"},
@@ -290,7 +291,7 @@ func TestResolveReviewer(t *testing.T) {
 						},
 					},
 				},
-				phase:     "arch",
+				phase:     domain.PhaseArch,
 				agentName: "codex",
 			},
 			want: Spec{Model: "codex-arch", Effort: "high"},
@@ -307,7 +308,7 @@ func TestResolveReviewer(t *testing.T) {
 					},
 				},
 				size:      "large",
-				phase:     "diff",
+				phase:     domain.PhaseDiff,
 				agentName: "codex",
 			},
 			want: Spec{Model: "large-diff", Effort: "high"},
@@ -316,7 +317,7 @@ func TestResolveReviewer(t *testing.T) {
 			name: "legacy fields fall back for generic reviewer only (no phase match)",
 			args: args{
 				cfgModels:    config.ModelsConfig{},
-				phase:        "arch",
+				phase:        domain.PhaseArch,
 				agentName:    "codex",
 				legacyModel:  "legacy-m",
 				legacyEffort: "legacy-e",
@@ -331,7 +332,7 @@ func TestResolveReviewer(t *testing.T) {
 						ArchReviewer: ms("arch-m", "high"),
 					},
 				},
-				phase:     "arch",
+				phase:     domain.PhaseArch,
 				agentName: "codex",
 				cliModel:  "cli-m",
 				cliEffort: "cli-e",
@@ -352,7 +353,7 @@ func TestResolveReviewer(t *testing.T) {
 						},
 					},
 				},
-				phase:     "arch",
+				phase:     domain.PhaseArch,
 				agentName: "codex",
 			},
 			want: Spec{Model: "codex-arch", Effort: "codex-effort"},
