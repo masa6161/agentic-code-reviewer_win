@@ -598,3 +598,38 @@ func TestFindingGroup_JSON_IncludesNonZeroPhaseReviewerCounts(t *testing.T) {
 		t.Errorf("expected diff_reviewer_count:2 in JSON; got %s", s)
 	}
 }
+
+func TestAggregateFindings_PerPhaseReviewers(t *testing.T) {
+	findings := []Finding{
+		{Text: "bug", ReviewerID: 1, Phase: PhaseArch},
+		{Text: "bug", ReviewerID: 2, Phase: PhaseDiff},
+		{Text: "bug", ReviewerID: 3, Phase: PhaseDiff},
+	}
+	agg := AggregateFindings(findings)
+	if len(agg) != 1 {
+		t.Fatalf("got %d findings, want 1", len(agg))
+	}
+	if len(agg[0].ArchReviewers) != 1 || agg[0].ArchReviewers[0] != 1 {
+		t.Errorf("ArchReviewers = %v, want [1]", agg[0].ArchReviewers)
+	}
+	if len(agg[0].DiffReviewers) != 2 {
+		t.Errorf("DiffReviewers = %v, want [2, 3]", agg[0].DiffReviewers)
+	}
+}
+
+func TestAggregateFindings_PerPhaseReviewers_FlatReview(t *testing.T) {
+	findings := []Finding{
+		{Text: "bug", ReviewerID: 1, Phase: ""},
+		{Text: "bug", ReviewerID: 2, Phase: ""},
+	}
+	agg := AggregateFindings(findings)
+	if len(agg) != 1 {
+		t.Fatalf("got %d findings, want 1", len(agg))
+	}
+	if len(agg[0].ArchReviewers) != 0 {
+		t.Errorf("ArchReviewers = %v, want empty", agg[0].ArchReviewers)
+	}
+	if len(agg[0].DiffReviewers) != 2 {
+		t.Errorf("DiffReviewers = %v, want [1, 2]", agg[0].DiffReviewers)
+	}
+}

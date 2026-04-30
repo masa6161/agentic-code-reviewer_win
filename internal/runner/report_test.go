@@ -114,6 +114,36 @@ func TestFormatRawFindings_TrimsTrailingWhitespace(t *testing.T) {
 	}
 }
 
+func TestFormatRawFindings_PerPhaseDisplay(t *testing.T) {
+	aggregated := []domain.AggregatedFinding{
+		{Text: "bug in auth", Reviewers: []int{1, 2}, ArchReviewers: []int{1}, DiffReviewers: []int{2}},
+	}
+	stats := domain.ReviewStats{TotalReviewers: 3, ArchReviewers: 1, DiffReviewers: 2}
+	result := formatRawFindings(aggregated, []int{0}, stats)
+
+	if !strings.Contains(result, "arch: 1/1") {
+		t.Errorf("expected per-phase arch count, got:\n%s", result)
+	}
+	if !strings.Contains(result, "diff: 1/2") {
+		t.Errorf("expected per-phase diff count, got:\n%s", result)
+	}
+}
+
+func TestFormatRawFindings_FlatDisplayForSinglePhase(t *testing.T) {
+	aggregated := []domain.AggregatedFinding{
+		{Text: "bug", Reviewers: []int{1, 2}},
+	}
+	stats := domain.ReviewStats{TotalReviewers: 3}
+	result := formatRawFindings(aggregated, []int{0}, stats)
+
+	if !strings.Contains(result, "2/3 reviewers") {
+		t.Errorf("expected flat reviewer count, got:\n%s", result)
+	}
+	if strings.Contains(result, "arch:") || strings.Contains(result, "diff:") {
+		t.Errorf("unexpected per-phase display in single-phase mode:\n%s", result)
+	}
+}
+
 func TestRenderLGTMMarkdown_BasicFormat(t *testing.T) {
 	result := RenderLGTMMarkdown(domain.ReviewStats{TotalReviewers: 5, SuccessfulReviewers: 5}, nil, "dev")
 

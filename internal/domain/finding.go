@@ -18,10 +18,12 @@ type Finding struct {
 
 // AggregatedFinding represents a finding with the list of reviewers who found it.
 type AggregatedFinding struct {
-	Text      string
-	Reviewers []int
-	Severity  string // first-seen severity from grouped findings
-	GroupKey  string // group key(s), comma-separated if from multiple groups
+	Text          string
+	Reviewers     []int
+	ArchReviewers []int  `json:"arch_reviewers,omitempty"`
+	DiffReviewers []int  `json:"diff_reviewers,omitempty"`
+	Severity      string // first-seen severity from grouped findings
+	GroupKey      string // group key(s), comma-separated if from multiple groups
 }
 
 // FindingGroup represents a grouped/clustered finding from the summarizer.
@@ -226,6 +228,8 @@ func AggregateFindings(findings []Finding) []AggregatedFinding {
 	seen := make(map[string][]int)
 	severities := make(map[string]string)
 	groupKeyTokens := make(map[string]map[string]struct{})
+	archRevs := make(map[string][]int)
+	diffRevs := make(map[string][]int)
 	order := make([]string, 0)
 
 	for _, f := range findings {
@@ -257,6 +261,14 @@ func AggregateFindings(findings []Finding) []AggregatedFinding {
 		}
 		if !found {
 			seen[normalized] = append(reviewers, f.ReviewerID)
+			switch f.Phase {
+			case PhaseArch:
+				archRevs[normalized] = append(archRevs[normalized], f.ReviewerID)
+			case PhaseDiff:
+				diffRevs[normalized] = append(diffRevs[normalized], f.ReviewerID)
+			default:
+				diffRevs[normalized] = append(diffRevs[normalized], f.ReviewerID)
+			}
 		}
 	}
 
@@ -270,11 +282,17 @@ func AggregateFindings(findings []Finding) []AggregatedFinding {
 			tokens = append(tokens, tok)
 		}
 		slices.Sort(tokens)
+		sortedArch := slices.Clone(archRevs[text])
+		slices.Sort(sortedArch)
+		sortedDiff := slices.Clone(diffRevs[text])
+		slices.Sort(sortedDiff)
 		result = append(result, AggregatedFinding{
-			Text:      text,
-			Reviewers: sortedReviewers,
-			Severity:  severities[text],
-			GroupKey:  strings.Join(tokens, ","),
+			Text:          text,
+			Reviewers:     sortedReviewers,
+			ArchReviewers: sortedArch,
+			DiffReviewers: sortedDiff,
+			Severity:      severities[text],
+			GroupKey:       strings.Join(tokens, ","),
 		})
 	}
 
