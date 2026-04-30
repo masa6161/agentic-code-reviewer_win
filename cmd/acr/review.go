@@ -1337,29 +1337,20 @@ func logCrossCheckModelMatrix(logger *terminal.Logger, opts ReviewOpts, sizeStr 
 // dedicated `large_diff_reviewers` knob, capped at the actual file count so that
 // every group has at least 1 file.
 //
-// archAgent and diffAgents are independent so per-phase reviewer overrides
-// (arch_reviewer_agent / diff_reviewer_agents) can route phases to different
-// agent backends.
-func buildGroupedDiffSpecs(
+// buildDiffSpecsCore builds ReviewerSpecs from pre-grouped diff sections.
+// It creates one arch spec (full diff) followed by one diff spec per group.
+// When skipEmptyGroups is true, groups whose joined diff is empty are silently
+// skipped; otherwise an error is returned.
+func buildDiffSpecsCore(
+	groups []git.DiffGroup,
 	fullDiff, guidance string,
 	diffPrecomputed bool,
 	archAgent agent.Agent,
 	diffAgents []agent.Agent,
-	maxDiffGroups int,
+	skipEmptyGroups bool,
 ) ([]runner.ReviewerSpec, error) {
-	sections := git.ParseDiffSections(fullDiff)
-	if len(sections) == 0 {
-		return nil, fmt.Errorf("no diff sections found in precomputed diff")
-	}
-
-	groups := git.GroupDiffSections(sections, 0, 0, maxDiffGroups)
-	if len(groups) == 0 {
-		return nil, fmt.Errorf("grouping produced no groups")
-	}
-
 	specs := make([]runner.ReviewerSpec, 0, 1+len(groups))
 
-	// 1. Arch reviewer: full diff (ReviewerID=1)
 	specs = append(specs, runner.ReviewerSpec{
 		ReviewerID:      1,
 		Agent:           archAgent,
@@ -1370,18 +1361,14 @@ func buildGroupedDiffSpecs(
 		DiffPrecomputed: diffPrecomputed,
 	})
 
-	// 2. Per-group diff reviewers (ReviewerID=2, 3, ...)
-	// Compute ReviewerID once per non-skipped group so spec ordering and the
-	// diff-phase agent round-robin stay in lockstep (empty groups skip both
-	// counters together). diffReviewerIdx is 1-based per AgentForReviewer's
-	// contract; the 1st surviving diff group always uses diffAgents[0].
 	diffReviewerIdx := 0
 	for _, group := range groups {
 		groupDiff := git.JoinDiffSections(group.Sections)
 		if groupDiff == "" {
-			// Empty group diff after splitting precomputed diff is unexpected.
-			// Skip (budget adjusts accordingly).
-			continue
+			if skipEmptyGroups {
+				continue
+			}
+			return nil, fmt.Errorf("diff split: group %q produced empty diff from %d section(s)", group.Key, len(group.Sections))
 		}
 		var targetFiles []string
 		for _, s := range group.Sections {
@@ -1405,6 +1392,27 @@ func buildGroupedDiffSpecs(
 	return specs, nil
 }
 
+// archAgent and diffAgents are independent so per-phase reviewer overrides
+// (arch_reviewer_agent / diff_reviewer_agents) can route phases to different
+// agent backends.
+func buildGroupedDiffSpecs(
+	fullDiff, guidance string,
+	diffPrecomputed bool,
+	archAgent agent.Agent,
+	diffAgents []agent.Agent,
+	maxDiffGroups int,
+) ([]runner.ReviewerSpec, error) {
+	sections := git.ParseDiffSections(fullDiff)
+	if len(sections) == 0 {
+		return nil, fmt.Errorf("no diff sections found in precomputed diff")
+	}
+	groups := git.GroupDiffSections(sections, 0, 0, maxDiffGroups)
+	if len(groups) == 0 {
+		return nil, fmt.Errorf("grouping produced no groups")
+	}
+	return buildDiffSpecsCore(groups, fullDiff, guidance, diffPrecomputed, archAgent, diffAgents, true)
+}
+
 func buildMediumDiffSpecs(
 	fullDiff, guidance string,
 	diffPrecomputed bool,
@@ -1419,51 +1427,12 @@ func buildMediumDiffSpecs(
 	if len(sections) < 2 {
 		return nil, nil
 	}
-
 	maxFilesPerGroup := (len(sections) + mediumDiffReviewers - 1) / mediumDiffReviewers
 	groups := git.GroupDiffSections(sections, maxFilesPerGroup, 0, mediumDiffReviewers)
 	if len(groups) < 2 {
 		return nil, nil
 	}
-
-	specs := make([]runner.ReviewerSpec, 0, 1+len(groups))
-
-	specs = append(specs, runner.ReviewerSpec{
-		ReviewerID:      1,
-		Agent:           archAgent,
-		Phase:           domain.PhaseArch,
-		GroupKey:        domain.PhaseArch,
-		Guidance:        guidance,
-		Diff:            fullDiff,
-		DiffPrecomputed: diffPrecomputed,
-	})
-
-	diffReviewerIdx := 0
-	for _, group := range groups {
-		groupDiff := git.JoinDiffSections(group.Sections)
-		if groupDiff == "" {
-			return nil, fmt.Errorf("medium diff split: group %q produced empty diff from %d section(s)", group.Key, len(group.Sections))
-		}
-		var targetFiles []string
-		for _, s := range group.Sections {
-			targetFiles = append(targetFiles, s.FilePath)
-		}
-		reviewerID := len(specs) + 1
-		diffReviewerIdx++
-		diffAgent := agent.AgentForReviewer(diffAgents, diffReviewerIdx)
-		specs = append(specs, runner.ReviewerSpec{
-			ReviewerID:      reviewerID,
-			Agent:           diffAgent,
-			Phase:           domain.PhaseDiff,
-			GroupKey:        group.Key,
-			Guidance:        guidance,
-			Diff:            groupDiff,
-			DiffPrecomputed: true,
-			TargetFiles:     targetFiles,
-		})
-	}
-
-	return specs, nil
+	return buildDiffSpecsCore(groups, fullDiff, guidance, diffPrecomputed, archAgent, diffAgents, false)
 }
 
 // diffFindingGroups returns groups present in before but not in after.
