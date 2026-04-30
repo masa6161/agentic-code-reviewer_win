@@ -169,19 +169,37 @@ When adding features:
 
 ### Adding a new CLI flag
 
-```go
-// In cmd/acr/main.go, add to var block:
-var myFlag string
+A new flag touches 4 locations across 2 files:
 
-// In run(), add flag definition with a hardcoded default:
+```go
+// 1. cmd/acr/main.go — declare var and register cobra flag
+var myFlag string
 rootCmd.Flags().StringVarP(&myFlag, "my-flag", "m", "default", "Description")
 
-// In internal/config/config.go, add env var parsing in LoadEnvState():
-if v := os.Getenv("ACR_MY_FLAG"); v != "" {
-    state.MyFlag = v
+// 2. cmd/acr/main.go — wire into FlagState + flagValues (in run())
+flagState := config.FlagState{
+    // ...
+    MyFlagSet: cmd.Flags().Changed("my-flag"),
+}
+flagValues := config.ResolvedConfig{
+    // ...
+    MyFlag: myFlag,
 }
 
-// Precedence is resolved automatically in Resolve(): flags > env > .acr.yaml > defaults
+// 3. internal/config/config.go — add to ResolvedConfig, FlagState, EnvState structs
+//    and add env var parsing in LoadEnvState():
+if v := os.Getenv("ACR_MY_FLAG"); v != "" {
+    state.MyFlag = v
+    state.MyFlagSet = true
+}
+
+// 4. internal/config/config.go — add precedence logic in Resolve():
+if flagState.MyFlagSet {
+    result.MyFlag = flagValues.MyFlag
+} else if envState.MyFlagSet {
+    result.MyFlag = envState.MyFlag
+}
+// config file and Defaults provide the base value
 ```
 
 ### Adding a new finding field

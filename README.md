@@ -180,7 +180,7 @@ The verdict field (`ok` / `advisory` / `blocking`) and exit-code policy apply on
 | `--large-diff-reviewers`|   | 4       | Number of diff reviewers in auto-phase grouped path (large diff) |
 | `--medium-diff-reviewers`|  | 2       | Number of diff reviewers for auto-phase medium and --phase medium |
 | `--small-diff-reviewers`|   | 1       | Number of reviewers for auto-phase small and --phase small |
-| `--role-prompts`/`--no-role-prompts`| | true | Use role-specific prompts for auto-phase diff/arch reviewers |
+| `--role-prompts`/`--no-role-prompts`| | true | Use role-specific prompts for auto-phase diff/arch reviewers (note: `--help` shows `false` as the cobra default, but the effective default is `true` via config resolution) |
 | `--summarizer-timeout`|     | 5m      | Timeout for summarizer phase              |
 | `--fp-filter-timeout`|      | 5m      | Timeout for false positive filter phase   |
 | `--no-cross-check`  |       | false   | Disable cross-group consistency verification |

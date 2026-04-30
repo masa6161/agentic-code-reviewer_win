@@ -633,3 +633,12 @@ func TestAggregateFindings_PerPhaseReviewers_FlatReview(t *testing.T) {
 		t.Errorf("DiffReviewers = %v, want [1, 2]", agg[0].DiffReviewers)
 	}
 }
+
+func TestPhaseConstants_WireContract(t *testing.T) {
+	if PhaseArch != "arch" {
+		t.Errorf("PhaseArch = %q, wire contract requires %q", PhaseArch, "arch")
+	}
+	if PhaseDiff != "diff" {
+		t.Errorf("PhaseDiff = %q, wire contract requires %q", PhaseDiff, "diff")
+	}
+}
