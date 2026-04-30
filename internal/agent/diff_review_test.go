@@ -3,7 +3,7 @@ package agent
 import "testing"
 
 func TestResolvePrompts_RolePromptsEnabled_ArchPhase(t *testing.T) {
-	config := &ReviewConfig{Phase: "arch", RolePrompts: true}
+	config := &ReviewConfig{Phase: "arch", RolePrompts: true, HasArchReviewer: true}
 	dc := diffReviewConfig{
 		DefaultPrompt: DefaultClaudePrompt,
 		RefFilePrompt: DefaultClaudeRefFilePrompt,
@@ -18,7 +18,8 @@ func TestResolvePrompts_RolePromptsEnabled_ArchPhase(t *testing.T) {
 }
 
 func TestResolvePrompts_RolePromptsEnabled_DiffPhase(t *testing.T) {
-	config := &ReviewConfig{Phase: "diff", RolePrompts: true}
+	// arch reviewer が存在する場合のみ AutoPhaseDiffPrompt に切替
+	config := &ReviewConfig{Phase: "diff", RolePrompts: true, HasArchReviewer: true}
 	dc := diffReviewConfig{
 		DefaultPrompt: DefaultClaudePrompt,
 		RefFilePrompt: DefaultClaudeRefFilePrompt,
@@ -29,6 +30,22 @@ func TestResolvePrompts_RolePromptsEnabled_DiffPhase(t *testing.T) {
 	}
 	if dc.RefFilePrompt != AutoPhaseDiffRefFilePrompt {
 		t.Errorf("RefFilePrompt = %q, want AutoPhaseDiffRefFilePrompt", dc.RefFilePrompt)
+	}
+}
+
+func TestResolvePrompts_RolePromptsEnabled_DiffPhase_NoArch(t *testing.T) {
+	// arch reviewer なし → RolePrompts を適用しない (レガシーのまま)
+	config := &ReviewConfig{Phase: "diff", RolePrompts: true, HasArchReviewer: false}
+	dc := diffReviewConfig{
+		DefaultPrompt: DefaultClaudePrompt,
+		RefFilePrompt: DefaultClaudeRefFilePrompt,
+	}
+	resolvePrompts(config, &dc)
+	if dc.DefaultPrompt != DefaultClaudePrompt {
+		t.Errorf("DefaultPrompt should be unchanged when no arch reviewer: %q", dc.DefaultPrompt)
+	}
+	if dc.RefFilePrompt != DefaultClaudeRefFilePrompt {
+		t.Errorf("RefFilePrompt should be unchanged when no arch reviewer: %q", dc.RefFilePrompt)
 	}
 }
 

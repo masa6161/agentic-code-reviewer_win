@@ -23,11 +23,12 @@ type diffReviewConfig struct {
 // executeDiffBasedReview is the shared review implementation for agents that receive
 // a git diff (Claude, Gemini). It handles diff retrieval (using pre-computed or fetching),
 // ref-file branching, prompt rendering, and command execution.
-// resolvePrompts selects the appropriate prompt based on Phase and RolePrompts settings.
-// When RolePrompts is true and Phase is set, role-specific prompts are used.
-// When RolePrompts is false, legacy behavior is preserved (arch prompt override only).
+// resolvePrompts selects the appropriate prompt based on Phase, RolePrompts, and HasArchReviewer.
+// When RolePrompts is true, Phase is set, and an arch reviewer exists, role-specific prompts are used.
+// When HasArchReviewer is false, RolePrompts is not applied so that diff reviewers do not
+// suppress cross-file findings. Legacy behavior (arch prompt override only) is preserved otherwise.
 func resolvePrompts(config *ReviewConfig, dc *diffReviewConfig) {
-	if config.Phase != "" && config.RolePrompts {
+	if config.Phase != "" && config.RolePrompts && config.HasArchReviewer {
 		switch config.Phase {
 		case "arch":
 			dc.DefaultPrompt = AutoPhaseArchPrompt

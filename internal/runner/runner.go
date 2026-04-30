@@ -36,6 +36,7 @@ type Config struct {
 	DiffPrecomputed bool          // Whether Diff was pre-computed (true even if Diff is empty)
 	Phases          []PhaseConfig // Phase-typed review configuration (empty = legacy mode)
 	RolePrompts     bool          // Enable role-specific prompts for auto-phase mode
+	HasArchReviewer bool          // Arch-phase reviewer exists in this run
 }
 
 // Runner executes parallel code reviews.
@@ -297,6 +298,7 @@ func (r *Runner) runReviewer(ctx context.Context, reviewerID int) domain.Reviewe
 		Phase:           spec.Phase,
 		TargetFiles:     spec.TargetFiles,
 		RolePrompts:     r.config.RolePrompts,
+		HasArchReviewer: r.config.HasArchReviewer,
 	}
 
 	// Stamp phase early so that failed/timed-out reviewers are counted
