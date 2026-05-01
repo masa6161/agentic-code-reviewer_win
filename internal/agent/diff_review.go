@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/richhaase/agentic-code-reviewer/internal/domain"
 	"github.com/richhaase/agentic-code-reviewer/internal/git"
 )
 
@@ -30,14 +31,14 @@ type diffReviewConfig struct {
 func resolvePrompts(config *ReviewConfig, dc *diffReviewConfig) {
 	if config.Phase != "" && config.RolePrompts && config.HasArchReviewer {
 		switch config.Phase {
-		case "arch":
+		case domain.PhaseArch:
 			dc.DefaultPrompt = AutoPhaseArchPrompt
 			dc.RefFilePrompt = AutoPhaseArchRefFilePrompt
 		default:
 			dc.DefaultPrompt = AutoPhaseDiffPrompt
 			dc.RefFilePrompt = AutoPhaseDiffRefFilePrompt
 		}
-	} else if config.Phase == "arch" {
+	} else if config.Phase == domain.PhaseArch {
 		dc.DefaultPrompt = DefaultArchPrompt
 	}
 }

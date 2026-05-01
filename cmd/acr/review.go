@@ -764,7 +764,7 @@ func shouldUseAutoPhase(opts ReviewOpts) bool {
 	return opts.AutoPhase && opts.Phase == ""
 }
 
-// specsHaveArch returns true if any spec in the slice has Phase "arch".
+// specsHaveArch returns true if any spec in the slice has Phase domain.PhaseArch.
 func specsHaveArch(specs []runner.ReviewerSpec) bool {
 	for _, s := range specs {
 		if s.Phase == domain.PhaseArch {

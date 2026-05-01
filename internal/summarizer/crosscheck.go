@@ -275,10 +275,10 @@ func buildCrossCheckPayload(ccCtx CrossCheckContext) crossCheckPayload {
 		text := truncateByRunes(f.Text, maxFindingTextLen)
 		// AggregatedFinding has no Phase field; derive it from GroupKey.
 		// "arch" group key → arch phase; anything else is a diff phase.
-		phase := "diff"
+		phase := domain.PhaseDiff
 		for _, tok := range strings.Split(f.GroupKey, ",") {
-			if strings.TrimSpace(tok) == "arch" {
-				phase = "arch"
+			if strings.TrimSpace(tok) == domain.PhaseArch {
+				phase = domain.PhaseArch
 				break
 			}
 		}
