@@ -132,6 +132,8 @@ type CrossCheckConfig struct {
 type FPFilterConfig struct {
 	Enabled   *bool `yaml:"enabled"`
 	Threshold *int  `yaml:"threshold"`
+	Triage    *bool `yaml:"triage"`
+	ShowNoise *bool `yaml:"show_noise"`
 }
 
 // PRFeedbackConfig holds PR feedback summarization settings.
@@ -229,7 +231,7 @@ func (c *Config) validatePatterns() error {
 
 var knownTopLevelKeys = []string{"reviewers", "large_diff_reviewers", "medium_diff_reviewers", "small_diff_reviewers", "concurrency", "base", "timeout", "retries", "fetch", "reviewer_agent", "reviewer_agents", "arch_reviewer_agent", "diff_reviewer_agents", "summarizer_agent", "reviewer_model", "summarizer_model", "summarizer_timeout", "fp_filter_timeout", "cross_check_timeout", "guidance_file", "auto_phase", "filters", "fp_filter", "pr_feedback", "cross_check", "models", "min_large_diff_reviewers", "min_medium_diff_reviewers", "role_prompts"}
 
-var knownFPFilterKeys = []string{"enabled", "threshold"}
+var knownFPFilterKeys = []string{"enabled", "threshold", "triage", "show_noise"}
 
 var knownModelsKeys = []string{"defaults", "sizes", "agents"}
 
@@ -823,6 +825,8 @@ var Defaults = ResolvedConfig{
 	MinLargeDiffReviewers:  2,
 	MinMediumDiffReviewers: 2,
 	RolePrompts:            true,
+	TriageEnabled:          true,
+	ShowNoise:              false,
 }
 
 type ResolvedConfig struct {
@@ -864,6 +868,8 @@ type ResolvedConfig struct {
 	MinLargeDiffReviewers  int
 	MinMediumDiffReviewers int
 	RolePrompts            bool
+	TriageEnabled          bool
+	ShowNoise              bool
 	// ReviewerModelFromCLI is true when --reviewer-model or ACR_REVIEWER_MODEL
 	// set the ReviewerModel field, making it a CLI/env override that should win
 	// over models.agents/sizes/defaults config.
@@ -904,6 +910,8 @@ type FlagState struct {
 	AutoPhaseSet           bool
 	StrictSet              bool
 	RolePromptsSet         bool
+	ShowNoiseSet           bool
+	NoTriageSet            bool
 }
 
 type EnvState struct {
@@ -967,6 +975,10 @@ type EnvState struct {
 	StrictSet              bool
 	RolePrompts            bool
 	RolePromptsSet         bool
+	TriageEnabled          bool
+	TriageEnabledSet       bool
+	ShowNoise              bool
+	ShowNoiseSet           bool
 }
 
 // LoadEnvState reads environment variables and returns their state.
@@ -1212,6 +1224,32 @@ func LoadEnvState() (EnvState, []string) {
 		}
 	}
 
+	if v := os.Getenv("ACR_TRIAGE"); v != "" {
+		switch strings.ToLower(v) {
+		case "true", "1", "yes":
+			state.TriageEnabled = true
+			state.TriageEnabledSet = true
+		case "false", "0", "no":
+			state.TriageEnabled = false
+			state.TriageEnabledSet = true
+		default:
+			warnings = append(warnings, fmt.Sprintf("ACR_TRIAGE=%q is not a valid boolean (use true/false/1/0/yes/no), ignoring", v))
+		}
+	}
+
+	if v := os.Getenv("ACR_SHOW_NOISE"); v != "" {
+		switch strings.ToLower(v) {
+		case "true", "1", "yes":
+			state.ShowNoise = true
+			state.ShowNoiseSet = true
+		case "false", "0", "no":
+			state.ShowNoise = false
+			state.ShowNoiseSet = true
+		default:
+			warnings = append(warnings, fmt.Sprintf("ACR_SHOW_NOISE=%q is not a valid boolean (use true/false/1/0/yes/no), ignoring", v))
+		}
+	}
+
 	if v := os.Getenv("ACR_STRICT"); v != "" {
 		switch strings.ToLower(v) {
 		case "true", "1", "yes":
@@ -1292,8 +1330,17 @@ func Resolve(cfg *Config, envState EnvState, flagState FlagState, flagValues Res
 		if cfg.FPFilter.Enabled != nil {
 			result.FPFilterEnabled = *cfg.FPFilter.Enabled
 		}
+		if cfg.FPFilter.Enabled != nil && !*cfg.FPFilter.Enabled {
+			result.TriageEnabled = false
+		}
 		if cfg.FPFilter.Threshold != nil {
 			result.FPThreshold = *cfg.FPFilter.Threshold
+		}
+		if cfg.FPFilter.Triage != nil {
+			result.TriageEnabled = *cfg.FPFilter.Triage
+		}
+		if cfg.FPFilter.ShowNoise != nil {
+			result.ShowNoise = *cfg.FPFilter.ShowNoise
 		}
 		if cfg.PRFeedback.Enabled != nil {
 			result.PRFeedbackEnabled = *cfg.PRFeedback.Enabled
@@ -1384,6 +1431,9 @@ func Resolve(cfg *Config, envState EnvState, flagState FlagState, flagValues Res
 	if envState.FPFilterSet {
 		result.FPFilterEnabled = envState.FPFilterEnabled
 	}
+	if envState.FPFilterSet && !envState.FPFilterEnabled {
+		result.TriageEnabled = false
+	}
 	if envState.FPThresholdSet {
 		result.FPThreshold = envState.FPThreshold
 	}
@@ -1410,6 +1460,12 @@ func Resolve(cfg *Config, envState EnvState, flagState FlagState, flagValues Res
 	}
 	if envState.RolePromptsSet {
 		result.RolePrompts = envState.RolePrompts
+	}
+	if envState.TriageEnabledSet {
+		result.TriageEnabled = envState.TriageEnabled
+	}
+	if envState.ShowNoiseSet {
+		result.ShowNoise = envState.ShowNoise
 	}
 	if envState.StrictSet {
 		result.Strict = envState.Strict
@@ -1469,6 +1525,9 @@ func Resolve(cfg *Config, envState EnvState, flagState FlagState, flagValues Res
 	if flagState.NoFPFilterSet {
 		result.FPFilterEnabled = flagValues.FPFilterEnabled
 	}
+	if flagState.NoFPFilterSet && !flagValues.FPFilterEnabled {
+		result.TriageEnabled = false
+	}
 	if flagState.FPThresholdSet {
 		result.FPThreshold = flagValues.FPThreshold
 	}
@@ -1495,6 +1554,12 @@ func Resolve(cfg *Config, envState EnvState, flagState FlagState, flagValues Res
 	}
 	if flagState.RolePromptsSet {
 		result.RolePrompts = flagValues.RolePrompts
+	}
+	if flagState.NoTriageSet {
+		result.TriageEnabled = flagValues.TriageEnabled
+	}
+	if flagState.ShowNoiseSet {
+		result.ShowNoise = flagValues.ShowNoise
 	}
 	if flagState.StrictSet {
 		result.Strict = flagValues.Strict

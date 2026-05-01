@@ -3306,3 +3306,58 @@ func TestCheckUnknownKeys_RolePromptsIsKnown(t *testing.T) {
 		}
 	}
 }
+
+func TestResolve_TriageEnabled_Default(t *testing.T) {
+	resolved := Resolve(nil, EnvState{}, FlagState{}, Defaults)
+	if !resolved.TriageEnabled {
+		t.Error("TriageEnabled should default to true")
+	}
+	if resolved.ShowNoise {
+		t.Error("ShowNoise should default to false")
+	}
+}
+
+func TestResolve_TriageEnabled_ThreeTierPrecedence(t *testing.T) {
+	// Config sets true
+	trueVal := true
+	cfg := &Config{FPFilter: FPFilterConfig{Triage: &trueVal}}
+	// Env overrides to false
+	env := EnvState{TriageEnabled: false, TriageEnabledSet: true}
+	resolved := Resolve(cfg, env, FlagState{}, Defaults)
+	if resolved.TriageEnabled {
+		t.Error("env ACR_TRIAGE=false should override config triage=true")
+	}
+	// Flag overrides env
+	flag := FlagState{NoTriageSet: true}
+	flagVals := Defaults
+	flagVals.TriageEnabled = true
+	resolved = Resolve(cfg, env, flag, flagVals)
+	if !resolved.TriageEnabled {
+		t.Error("flag --triage should override env ACR_TRIAGE=false")
+	}
+}
+
+func TestResolve_ShowNoise_ThreeTierPrecedence(t *testing.T) {
+	trueVal := true
+	cfg := &Config{FPFilter: FPFilterConfig{ShowNoise: &trueVal}}
+	resolved := Resolve(cfg, EnvState{}, FlagState{}, Defaults)
+	if !resolved.ShowNoise {
+		t.Error("config show_noise=true should be applied")
+	}
+	// Env overrides
+	env := EnvState{ShowNoise: false, ShowNoiseSet: true}
+	resolved = Resolve(cfg, env, FlagState{}, Defaults)
+	if resolved.ShowNoise {
+		t.Error("env ACR_SHOW_NOISE=false should override config")
+	}
+}
+
+func TestResolve_NoFPFilter_DisablesTriage(t *testing.T) {
+	flag := FlagState{NoFPFilterSet: true}
+	flagVals := Defaults
+	flagVals.FPFilterEnabled = false
+	resolved := Resolve(nil, EnvState{}, flag, flagVals)
+	if resolved.TriageEnabled {
+		t.Error("--no-fp-filter should disable triage")
+	}
+}

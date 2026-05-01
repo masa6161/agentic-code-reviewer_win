@@ -31,7 +31,8 @@ var flagGroups = []flagGroup{
 	},
 	{
 		title: "Filtering",
-		flags: []string{"exclude-pattern", "no-fp-filter", "fp-threshold"},
+		flags: []string{"exclude-pattern", "no-fp-filter", "fp-threshold",
+			"show-noise", "no-triage"},
 	},
 	{
 		title: "Guidance",

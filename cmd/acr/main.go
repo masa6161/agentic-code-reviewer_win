@@ -85,6 +85,8 @@ var (
 	strict              bool
 	rolePrompts         bool
 	noRolePrompts       bool
+	showNoise           bool
+	noTriage            bool
 )
 
 func main() {
@@ -200,6 +202,10 @@ Exit codes:
 		"Use role-specific prompts for auto-phase diff/arch reviewers (default: true, env: ACR_ROLE_PROMPTS)")
 	rootCmd.Flags().BoolVar(&noRolePrompts, "no-role-prompts", false,
 		"Disable role-specific prompts (env: ACR_ROLE_PROMPTS=false)")
+	rootCmd.Flags().BoolVar(&showNoise, "show-noise", false,
+		"Show noise-level findings that are normally hidden (env: ACR_SHOW_NOISE)")
+	rootCmd.Flags().BoolVar(&noTriage, "no-triage", false,
+		"Disable severity triage (FP-only mode, env: ACR_TRIAGE=false)")
 
 	rootCmd.AddCommand(newConfigCmd())
 
@@ -444,6 +450,8 @@ func loadAndResolveConfig(cmd *cobra.Command, wt worktreeResult, logger *termina
 		AutoPhaseSet:           autoPhaseAnySet,
 		StrictSet:              cmd.Flags().Changed("strict"),
 		RolePromptsSet:         rolePromptsChanged || noRolePromptsChanged,
+		ShowNoiseSet:           cmd.Flags().Changed("show-noise"),
+		NoTriageSet:            cmd.Flags().Changed("no-triage"),
 	}
 
 	// Load env var state
@@ -509,6 +517,8 @@ func loadAndResolveConfig(cmd *cobra.Command, wt worktreeResult, logger *termina
 		AutoPhase:           autoPhaseValue,
 		Strict:              strict,
 		RolePrompts:         rolePromptsValue,
+		ShowNoise:           showNoise,
+		TriageEnabled:       !noTriage,
 	}
 
 	// Resolve final configuration (precedence: flags > env vars > config file > defaults)
