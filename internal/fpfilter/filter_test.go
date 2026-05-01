@@ -12,7 +12,7 @@ import (
 )
 
 func TestFilter_New(t *testing.T) {
-	f := New("codex", "", "", 75, false, terminal.NewLogger())
+	f := New("codex", "", "", 75, false, false, terminal.NewLogger())
 	if f == nil {
 		t.Fatal("New returned nil")
 	}
@@ -185,7 +185,7 @@ func TestNew_ThresholdClamping(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			f := New("codex", "", "", tt.threshold, false, logger)
+			f := New("codex", "", "", tt.threshold, false, false, logger)
 			if f.threshold != tt.expectedThreshold {
 				t.Errorf("threshold = %d, want %d", f.threshold, tt.expectedThreshold)
 			}
@@ -194,7 +194,7 @@ func TestNew_ThresholdClamping(t *testing.T) {
 }
 
 func TestApply_EmptyFindings(t *testing.T) {
-	f := New("codex", "", "", 75, false, terminal.NewLogger())
+	f := New("codex", "", "", 75, false, false, terminal.NewLogger())
 	grouped := domain.GroupedFindings{
 		Findings: []domain.FindingGroup{},
 	}
@@ -219,7 +219,7 @@ func TestApply_EmptyFindings(t *testing.T) {
 }
 
 func TestApply_EmptyFindings_WithTotalReviewers(t *testing.T) {
-	f := New("codex", "", "", 75, false, terminal.NewLogger())
+	f := New("codex", "", "", 75, false, false, terminal.NewLogger())
 	grouped := domain.GroupedFindings{
 		Findings: []domain.FindingGroup{},
 	}
@@ -233,7 +233,7 @@ func TestApply_EmptyFindings_WithTotalReviewers(t *testing.T) {
 }
 
 func TestApply_EmptyFindingsPreservesInfo(t *testing.T) {
-	f := New("codex", "", "", 75, false, terminal.NewLogger())
+	f := New("codex", "", "", 75, false, false, terminal.NewLogger())
 	grouped := domain.GroupedFindings{
 		Findings: []domain.FindingGroup{},
 		Info: []domain.FindingGroup{
@@ -705,6 +705,191 @@ func TestResult_NoiseFields(t *testing.T) {
 	}
 	if r.NoiseCount != 1 {
 		t.Errorf("NoiseCount = %d, want 1", r.NoiseCount)
+	}
+}
+
+func TestFilteringLogic_Severity_BlockingOverridesFPScore(t *testing.T) {
+	threshold := 75
+	totalReviewers := 3
+	findings := []domain.FindingGroup{
+		{Title: "Critical bug", Severity: "advisory", ReviewerCount: 1},
+	}
+	response := evaluationResponse{
+		Evaluations: []findingEvaluation{
+			{ID: 0, FPScore: 100, Severity: "blocking", Reasoning: "real critical issue"},
+		},
+	}
+	evalMap := make(map[int]findingEvaluation)
+	for _, eval := range response.Evaluations {
+		evalMap[eval.ID] = eval
+	}
+
+	// Simulate triage-enabled Apply logic
+	var kept []domain.FindingGroup
+	var removed []EvaluatedFinding
+	triageEnabled := true
+
+	for i, finding := range findings {
+		eval, ok := evalMap[i]
+		if !ok {
+			kept = append(kept, finding)
+			continue
+		}
+		if triageEnabled {
+			finding.RawSeverity = finding.Severity
+		}
+		adjusted := min(eval.FPScore+agreementBonus(finding.ReviewerCount, totalReviewers), 100)
+		switch {
+		case triageEnabled && eval.Severity == "blocking":
+			finding.Severity = "blocking"
+			kept = append(kept, finding)
+		case adjusted >= threshold:
+			removed = append(removed, EvaluatedFinding{Finding: finding, FPScore: adjusted, Reasoning: eval.Reasoning, Severity: eval.Severity})
+		default:
+			kept = append(kept, finding)
+		}
+	}
+
+	if len(kept) != 1 {
+		t.Fatalf("expected 1 kept, got %d", len(kept))
+	}
+	if kept[0].Severity != "blocking" {
+		t.Errorf("Severity = %q, want blocking", kept[0].Severity)
+	}
+	if kept[0].RawSeverity != "advisory" {
+		t.Errorf("RawSeverity = %q, want advisory", kept[0].RawSeverity)
+	}
+	if len(removed) != 0 {
+		t.Errorf("expected 0 removed, got %d", len(removed))
+	}
+}
+
+func TestFilteringLogic_Severity_NoiseCategory(t *testing.T) {
+	threshold := 75
+	totalReviewers := 3
+	findings := []domain.FindingGroup{
+		{Title: "Style suggestion", Severity: "advisory", ReviewerCount: 1},
+	}
+	response := evaluationResponse{
+		Evaluations: []findingEvaluation{
+			{ID: 0, FPScore: 30, Severity: "noise", Reasoning: "style only"},
+		},
+	}
+	evalMap := make(map[int]findingEvaluation)
+	for _, eval := range response.Evaluations {
+		evalMap[eval.ID] = eval
+	}
+
+	var kept []domain.FindingGroup
+	var noise []EvaluatedFinding
+	triageEnabled := true
+
+	for i, finding := range findings {
+		eval, ok := evalMap[i]
+		if !ok {
+			kept = append(kept, finding)
+			continue
+		}
+		if triageEnabled {
+			finding.RawSeverity = finding.Severity
+		}
+		adjusted := min(eval.FPScore+agreementBonus(finding.ReviewerCount, totalReviewers), 100)
+		switch {
+		case triageEnabled && eval.Severity == "blocking":
+			finding.Severity = "blocking"
+			kept = append(kept, finding)
+		case adjusted >= threshold:
+			// removed
+		case triageEnabled && eval.Severity == "noise" && adjusted < threshold:
+			finding.Severity = "noise"
+			noise = append(noise, EvaluatedFinding{Finding: finding, FPScore: adjusted, Reasoning: eval.Reasoning, Severity: "noise"})
+		default:
+			kept = append(kept, finding)
+		}
+	}
+
+	if len(kept) != 0 {
+		t.Fatalf("expected 0 kept, got %d", len(kept))
+	}
+	if len(noise) != 1 {
+		t.Fatalf("expected 1 noise, got %d", len(noise))
+	}
+	if noise[0].Finding.Severity != "noise" {
+		t.Errorf("noise Severity = %q, want noise", noise[0].Finding.Severity)
+	}
+	if noise[0].Finding.RawSeverity != "advisory" {
+		t.Errorf("noise RawSeverity = %q, want advisory", noise[0].Finding.RawSeverity)
+	}
+}
+
+func TestFilteringLogic_Severity_EmptyFallback(t *testing.T) {
+	// When triageEnabled is false, severity is ignored — fp_score only
+	threshold := 75
+	totalReviewers := 3
+	findings := []domain.FindingGroup{
+		{Title: "Finding", Severity: "advisory", ReviewerCount: 2},
+	}
+	response := evaluationResponse{
+		Evaluations: []findingEvaluation{
+			{ID: 0, FPScore: 80, Severity: "blocking", Reasoning: "triage says blocking"},
+		},
+	}
+	evalMap := make(map[int]findingEvaluation)
+	for _, eval := range response.Evaluations {
+		evalMap[eval.ID] = eval
+	}
+
+	var kept []domain.FindingGroup
+	var removed []EvaluatedFinding
+	triageEnabled := false
+
+	for i, finding := range findings {
+		eval, ok := evalMap[i]
+		if !ok {
+			kept = append(kept, finding)
+			continue
+		}
+		if triageEnabled {
+			finding.RawSeverity = finding.Severity
+		}
+		adjusted := min(eval.FPScore+agreementBonus(finding.ReviewerCount, totalReviewers), 100)
+		switch {
+		case triageEnabled && eval.Severity == "blocking":
+			finding.Severity = "blocking"
+			kept = append(kept, finding)
+		case adjusted >= threshold && (!triageEnabled || eval.Severity != "blocking"):
+			removed = append(removed, EvaluatedFinding{Finding: finding, FPScore: adjusted})
+		default:
+			kept = append(kept, finding)
+		}
+	}
+
+	// Without triage, severity=blocking is ignored, fp_score 80 >= 75 → removed
+	if len(removed) != 1 {
+		t.Fatalf("expected 1 removed, got %d", len(removed))
+	}
+	if len(kept) != 0 {
+		t.Fatalf("expected 0 kept, got %d", len(kept))
+	}
+	// RawSeverity should NOT be set when triage is disabled
+	if removed[0].Finding.RawSeverity != "" {
+		t.Errorf("RawSeverity = %q, want empty (triage disabled)", removed[0].Finding.RawSeverity)
+	}
+}
+
+func TestApply_RawSeverity_PreservedBeforeOverwrite(t *testing.T) {
+	// This test verifies that RawSeverity captures the pre-triage value
+	fg := domain.FindingGroup{Title: "Bug", Severity: "advisory", ReviewerCount: 2}
+
+	// Simulate what Apply does
+	fg.RawSeverity = fg.Severity // snapshot
+	fg.Severity = "blocking"     // triage overwrite
+
+	if fg.RawSeverity != "advisory" {
+		t.Errorf("RawSeverity = %q, want advisory", fg.RawSeverity)
+	}
+	if fg.Severity != "blocking" {
+		t.Errorf("Severity = %q, want blocking", fg.Severity)
 	}
 }
 

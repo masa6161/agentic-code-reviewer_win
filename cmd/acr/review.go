@@ -651,7 +651,7 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 			cliSumModelFP, "",
 			legacySumModelFP, "",
 		)
-		fpFilter := fpfilter.New(opts.SummarizerAgent, fpSpec.Model, fpSpec.Effort, opts.FPThreshold, opts.Verbose, logger)
+		fpFilter := fpfilter.New(opts.SummarizerAgent, fpSpec.Model, fpSpec.Effort, opts.FPThreshold, opts.TriageEnabled, opts.Verbose, logger)
 		fpResult := fpFilter.Apply(fpCtx, summaryResult.Grouped, priorFeedback, stats.SuccessfulReviewers)
 		fpSpinnerCancel()
 		<-fpSpinnerDone

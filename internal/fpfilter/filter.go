@@ -38,29 +38,33 @@ type Result struct {
 }
 
 type Filter struct {
-	agentName string
-	model     string
-	effort    string
-	threshold int
-	verbose   bool
-	logger    *terminal.Logger
+	agentName    string
+	model        string
+	effort       string
+	threshold    int
+	triageEnabled bool
+	verbose      bool
+	logger       *terminal.Logger
 }
 
 // New creates a new false positive filter.
 // The model parameter overrides the agent's default model (empty = default).
 // The effort parameter overrides the agent's default reasoning effort (empty = default).
+// When triageEnabled is true, severity-based classification (blocking/advisory/noise)
+// is applied in addition to fp_score filtering.
 // If verbose is true, non-fatal errors (like Close failures) are logged.
-func New(agentName, model, effort string, threshold int, verbose bool, logger *terminal.Logger) *Filter {
+func New(agentName, model, effort string, threshold int, triageEnabled, verbose bool, logger *terminal.Logger) *Filter {
 	if threshold < 1 || threshold > 100 {
 		threshold = DefaultThreshold
 	}
 	return &Filter{
-		agentName: agentName,
-		model:     model,
-		effort:    effort,
-		threshold: threshold,
-		logger:    logger,
-		verbose:   verbose,
+		agentName:    agentName,
+		model:        model,
+		effort:       effort,
+		threshold:    threshold,
+		triageEnabled: triageEnabled,
+		logger:       logger,
+		verbose:      verbose,
 	}
 }
 
@@ -141,11 +145,12 @@ func (f *Filter) Apply(ctx context.Context, grouped domain.GroupedFindings, prio
 	}
 	for i, finding := range grouped.Findings {
 		req.Findings[i] = findingInput{
-			ID:            i,
-			Title:         finding.Title,
-			Summary:       finding.Summary,
-			Messages:      finding.Messages,
-			ReviewerCount: finding.ReviewerCount,
+			ID:               i,
+			Title:            finding.Title,
+			Summary:          finding.Summary,
+			Messages:         finding.Messages,
+			ReviewerCount:    finding.ReviewerCount,
+			ReviewerSeverity: finding.Severity,
 		}
 	}
 
@@ -204,6 +209,7 @@ func (f *Filter) Apply(ctx context.Context, grouped domain.GroupedFindings, prio
 
 	var kept []domain.FindingGroup
 	var removed []EvaluatedFinding
+	var noise []EvaluatedFinding
 	evalErrors := 0
 
 	for i, finding := range grouped.Findings {
@@ -214,15 +220,53 @@ func (f *Filter) Apply(ctx context.Context, grouped domain.GroupedFindings, prio
 			continue
 		}
 
+		// Normalize LLM-returned severity to allow-list; preserve existing
+		// finding severity when the LLM returns empty or invalid values so
+		// summarizer-derived blocking is not silently downgraded.
+		switch eval.Severity {
+		case "blocking", "advisory", "noise":
+			// valid
+		default:
+			eval.Severity = finding.Severity
+		}
+
+		// RawSeverity: snapshot before any overwrite (triage-enabled only)
+		if f.triageEnabled {
+			finding.RawSeverity = finding.Severity
+		}
+
 		adjusted := min(eval.FPScore+agreementBonus(finding.ReviewerCount, totalReviewers), 100)
 
-		if adjusted >= f.threshold {
+		switch {
+		case f.triageEnabled && eval.Severity == "blocking":
+			// Safety valve: blocking findings are never filtered regardless of fp_score
+			finding.Severity = "blocking"
+			kept = append(kept, finding)
+
+		case adjusted >= f.threshold && (!f.triageEnabled || eval.Severity != "blocking"):
+			// FP threshold exceeded → remove as false positive
 			removed = append(removed, EvaluatedFinding{
 				Finding:   finding,
 				FPScore:   adjusted,
 				Reasoning: eval.Reasoning,
+				Severity:  eval.Severity,
 			})
-		} else {
+
+		case f.triageEnabled && eval.Severity == "noise" && adjusted < f.threshold:
+			// Noise: not FP, but low-value (style/docs suggestions)
+			finding.Severity = "noise"
+			noise = append(noise, EvaluatedFinding{
+				Finding:   finding,
+				FPScore:   adjusted,
+				Reasoning: eval.Reasoning,
+				Severity:  "noise",
+			})
+
+		default:
+			// Survived: kept with triage severity applied
+			if f.triageEnabled && eval.Severity != "" {
+				finding.Severity = eval.Severity
+			}
 			kept = append(kept, finding)
 		}
 	}
@@ -234,6 +278,8 @@ func (f *Filter) Apply(ctx context.Context, grouped domain.GroupedFindings, prio
 		},
 		Removed:      removed,
 		RemovedCount: len(removed),
+		Noise:        noise,
+		NoiseCount:   len(noise),
 		Duration:     time.Since(start),
 		EvalErrors:   evalErrors,
 	}
