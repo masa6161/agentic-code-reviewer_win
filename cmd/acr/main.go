@@ -196,8 +196,8 @@ Exit codes:
 		"Disable auto-phase selection and use flat diff review (env: ACR_AUTO_PHASE=false)")
 	rootCmd.Flags().BoolVar(&strict, "strict", false,
 		"Exit 1 on any advisory verdict (default: false, env: ACR_STRICT)")
-	rootCmd.Flags().BoolVar(&rolePrompts, "role-prompts", false,
-		"Use role-specific prompts for auto-phase diff/arch reviewers (default: false, env: ACR_ROLE_PROMPTS)")
+	rootCmd.Flags().BoolVar(&rolePrompts, "role-prompts", true,
+		"Use role-specific prompts for auto-phase diff/arch reviewers (default: true, env: ACR_ROLE_PROMPTS)")
 	rootCmd.Flags().BoolVar(&noRolePrompts, "no-role-prompts", false,
 		"Disable role-specific prompts (env: ACR_ROLE_PROMPTS=false)")
 
