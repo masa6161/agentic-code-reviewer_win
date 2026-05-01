@@ -292,7 +292,7 @@ func AggregateFindings(findings []Finding) []AggregatedFinding {
 			ArchReviewers: sortedArch,
 			DiffReviewers: sortedDiff,
 			Severity:      severities[text],
-			GroupKey:       strings.Join(tokens, ","),
+			GroupKey:      strings.Join(tokens, ","),
 		})
 	}
 
