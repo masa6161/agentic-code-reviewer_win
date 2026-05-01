@@ -634,6 +634,53 @@ func TestAggregateFindings_PerPhaseReviewers_FlatReview(t *testing.T) {
 	}
 }
 
+func TestFindingGroup_RawSeverity_JSONOmitEmpty(t *testing.T) {
+	// RawSeverity empty → omitted from JSON
+	fg := FindingGroup{Severity: "blocking", RawSeverity: ""}
+	b, err := json.Marshal(fg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(b), "raw_severity") {
+		t.Errorf("expected raw_severity omitted when empty; got %s", string(b))
+	}
+
+	// RawSeverity set → included in JSON
+	fg2 := FindingGroup{Severity: "blocking", RawSeverity: "advisory"}
+	b2, err := json.Marshal(fg2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b2), `"raw_severity":"advisory"`) {
+		t.Errorf("expected raw_severity:advisory in JSON; got %s", string(b2))
+	}
+}
+
+func TestBuildDispositions_NoiseFiltered(t *testing.T) {
+	dispositions := BuildDispositions(
+		3,
+		nil,
+		nil,
+		[]FPRemovedInfo{
+			{Sources: []int{0, 2}, FPScore: 30, Reasoning: "noise level", Title: "Noise finding"},
+		},
+		nil, nil,
+	)
+
+	if d := dispositions[0]; d.Kind != DispositionFilteredNoise {
+		t.Errorf("index 0: got kind %d, want DispositionFilteredNoise", d.Kind)
+	}
+	if d := dispositions[0]; d.GroupTitle != "Noise finding" {
+		t.Errorf("index 0: got GroupTitle %q, want 'Noise finding'", d.GroupTitle)
+	}
+	if d := dispositions[2]; d.Kind != DispositionFilteredNoise {
+		t.Errorf("index 2: got kind %d, want DispositionFilteredNoise", d.Kind)
+	}
+	if d := dispositions[1]; d.Kind != DispositionUnmapped {
+		t.Errorf("index 1: got %+v, want Unmapped", d)
+	}
+}
+
 func TestPhaseConstants_WireContract(t *testing.T) {
 	if PhaseArch != "arch" {
 		t.Errorf("PhaseArch = %q, wire contract requires %q", PhaseArch, "arch")

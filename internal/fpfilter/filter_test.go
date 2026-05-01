@@ -617,6 +617,58 @@ func TestFilteringLogic_WithAgreementBonus_LargeTeam(t *testing.T) {
 	}
 }
 
+func TestEvaluationResponse_WithSeverity(t *testing.T) {
+	// severity present
+	input := `{"evaluations":[{"id":0,"fp_score":30,"severity":"blocking","reasoning":"real"}]}`
+	var resp evaluationResponse
+	if err := json.Unmarshal([]byte(input), &resp); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+	if len(resp.Evaluations) != 1 {
+		t.Fatalf("expected 1 evaluation, got %d", len(resp.Evaluations))
+	}
+	if resp.Evaluations[0].Severity != "blocking" {
+		t.Errorf("Severity = %q, want %q", resp.Evaluations[0].Severity, "blocking")
+	}
+
+	// severity absent → empty string
+	input2 := `{"evaluations":[{"id":1,"fp_score":80,"reasoning":"FP"}]}`
+	var resp2 evaluationResponse
+	if err := json.Unmarshal([]byte(input2), &resp2); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+	if resp2.Evaluations[0].Severity != "" {
+		t.Errorf("Severity = %q, want empty", resp2.Evaluations[0].Severity)
+	}
+}
+
+func TestEvaluatedFinding_HasSeverity(t *testing.T) {
+	ef := EvaluatedFinding{Severity: "noise"}
+	if ef.Severity != "noise" {
+		t.Errorf("Severity = %q, want %q", ef.Severity, "noise")
+	}
+
+	ef2 := EvaluatedFinding{}
+	if ef2.Severity != "" {
+		t.Errorf("zero-value Severity = %q, want empty", ef2.Severity)
+	}
+}
+
+func TestResult_NoiseFields(t *testing.T) {
+	r := Result{
+		Noise: []EvaluatedFinding{
+			{Severity: "noise", FPScore: 20},
+		},
+		NoiseCount: 1,
+	}
+	if len(r.Noise) != 1 {
+		t.Errorf("Noise length = %d, want 1", len(r.Noise))
+	}
+	if r.NoiseCount != 1 {
+		t.Errorf("NoiseCount = %d, want 1", r.NoiseCount)
+	}
+}
+
 func TestFilteringLogic(t *testing.T) {
 	// This test simulates the core filtering logic from Apply() without
 	// needing an external agent. We replicate the evalMap + threshold logic.

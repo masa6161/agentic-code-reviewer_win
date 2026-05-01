@@ -22,12 +22,15 @@ type EvaluatedFinding struct {
 	Finding   domain.FindingGroup
 	FPScore   int
 	Reasoning string
+	Severity  string // triage-assigned severity ("blocking" | "advisory" | "noise")
 }
 
 type Result struct {
 	Grouped      domain.GroupedFindings
 	Removed      []EvaluatedFinding
 	RemovedCount int
+	Noise        []EvaluatedFinding
+	NoiseCount   int
 	Duration     time.Duration
 	EvalErrors   int
 	Skipped      bool
@@ -91,6 +94,7 @@ type evaluationResponse struct {
 type findingEvaluation struct {
 	ID        int    `json:"id"`
 	FPScore   int    `json:"fp_score"`
+	Severity  string `json:"severity"` // "blocking" | "advisory" | "noise" (triage mode)
 	Reasoning string `json:"reasoning"`
 }
 

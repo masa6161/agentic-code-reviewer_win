@@ -697,6 +697,7 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 		len(aggregated),
 		summaryResult.Grouped.Info,
 		fpRemoved,
+		nil, // noiseRemoved: populated when triage is enabled
 		excludeFiltered,
 		summaryResult.Grouped.Findings,
 	)
