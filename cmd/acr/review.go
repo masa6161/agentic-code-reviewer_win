@@ -634,6 +634,8 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 
 	var fpFilteredCount int
 	var fpRemoved []domain.FPRemovedInfo
+	var noiseRemoved []domain.FPRemovedInfo
+	var noiseFindingsForDisplay []domain.FindingGroup
 	if opts.FPFilterEnabled && summaryResult.ExitCode == 0 && len(summaryResult.Grouped.Findings) > 0 && ctx.Err() == nil {
 		fpSpinner := terminal.NewPhaseSpinner("Filtering false positives")
 		fpSpinnerCtx, fpSpinnerCancel := context.WithCancel(ctx)
@@ -672,6 +674,17 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 					Title:     r.Finding.Title,
 				})
 			}
+
+			for _, n := range fpResult.Noise {
+				noiseRemoved = append(noiseRemoved, domain.FPRemovedInfo{
+					Sources:   n.Finding.Sources,
+					FPScore:   n.FPScore,
+					Reasoning: n.Reasoning,
+					Title:     n.Finding.Title,
+				})
+				noiseFindingsForDisplay = append(noiseFindingsForDisplay, n.Finding)
+			}
+			stats.NoiseFilteredCount = fpResult.NoiseCount
 		}
 	}
 	stats.FPFilteredCount = fpFilteredCount
@@ -697,7 +710,7 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 		len(aggregated),
 		summaryResult.Grouped.Info,
 		fpRemoved,
-		nil, // noiseRemoved: populated when triage is enabled
+		noiseRemoved,
 		excludeFiltered,
 		summaryResult.Grouped.Findings,
 	)
@@ -714,6 +727,12 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 	ccBlocking := ccResult.HasBlockingFindings()
 	ccAdvisory := ccResult != nil && !ccBlocking && (ccResult.HasAdvisoryFindings() || ccResult.IsDegraded())
 	summaryResult.Grouped.ComputeVerdict(ccBlocking, ccAdvisory)
+
+	// Inject noise findings for display AFTER verdict computation so they
+	// don't affect exit codes or PR submission decisions.
+	if opts.ShowNoise {
+		summaryResult.Grouped.Findings = append(summaryResult.Grouped.Findings, noiseFindingsForDisplay...)
+	}
 
 	// Render and print report
 	if opts.Format == "json" {
