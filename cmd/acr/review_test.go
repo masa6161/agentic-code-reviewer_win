@@ -27,21 +27,21 @@ func TestParsePhases(t *testing.T) {
 			name:      "small with 1 reviewer",
 			phaseStr:  "small",
 			reviewers: 1,
-			want:      []runner.PhaseConfig{{Phase: "diff", ReviewerCount: 1}},
+			want:      []runner.PhaseConfig{{Phase: domain.PhaseDiff, ReviewerCount: 1}},
 		},
 		{
 			name:      "small with 3 reviewers",
 			phaseStr:  "small",
 			reviewers: 3,
-			want:      []runner.PhaseConfig{{Phase: "diff", ReviewerCount: 3}},
+			want:      []runner.PhaseConfig{{Phase: domain.PhaseDiff, ReviewerCount: 3}},
 		},
 		{
 			name:      "medium with 3 reviewers",
 			phaseStr:  "medium",
 			reviewers: 3,
 			want: []runner.PhaseConfig{
-				{Phase: "arch", ReviewerCount: 1},
-				{Phase: "diff", ReviewerCount: 2},
+				{Phase: domain.PhaseArch, ReviewerCount: 1},
+				{Phase: domain.PhaseDiff, ReviewerCount: 2},
 			},
 		},
 		{
@@ -49,8 +49,8 @@ func TestParsePhases(t *testing.T) {
 			phaseStr:  "medium",
 			reviewers: 2,
 			want: []runner.PhaseConfig{
-				{Phase: "arch", ReviewerCount: 1},
-				{Phase: "diff", ReviewerCount: 1},
+				{Phase: domain.PhaseArch, ReviewerCount: 1},
+				{Phase: domain.PhaseDiff, ReviewerCount: 1},
 			},
 		},
 		{
@@ -151,10 +151,10 @@ func TestBuildGroupedDiffSpecs_BasicGroups(t *testing.T) {
 	}
 
 	// First spec is arch
-	if specs[0].Phase != "arch" {
+	if specs[0].Phase != domain.PhaseArch {
 		t.Errorf("specs[0].Phase = %q, want %q", specs[0].Phase, "arch")
 	}
-	if specs[0].GroupKey != "arch" {
+	if specs[0].GroupKey != domain.PhaseArch {
 		t.Errorf("specs[0].GroupKey = %q, want %q", specs[0].GroupKey, "arch")
 	}
 }
@@ -169,11 +169,11 @@ func TestBuildGroupedDiffSpecs_GroupKeysAssigned(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if specs[0].GroupKey != "arch" {
+	if specs[0].GroupKey != domain.PhaseArch {
 		t.Errorf("specs[0].GroupKey = %q, want %q", specs[0].GroupKey, "arch")
 	}
 	for i := 1; i < len(specs); i++ {
-		if specs[i].Phase != "diff" {
+		if specs[i].Phase != domain.PhaseDiff {
 			t.Errorf("specs[%d].Phase = %q, want %q", i, specs[i].Phase, "diff")
 		}
 		if specs[i].GroupKey == "" {
@@ -312,9 +312,9 @@ func TestAutoPhase_Large_FallbackOnError(t *testing.T) {
 
 func TestBuildCrossCheckContext_GroupTopology(t *testing.T) {
 	specs := []runner.ReviewerSpec{
-		{ReviewerID: 1, Phase: "arch", GroupKey: "arch"},
-		{ReviewerID: 2, Phase: "diff", GroupKey: "g01", TargetFiles: []string{"a.go"}},
-		{ReviewerID: 3, Phase: "diff", GroupKey: "g02", TargetFiles: []string{"b.go"}},
+		{ReviewerID: 1, Phase: domain.PhaseArch, GroupKey: domain.PhaseArch},
+		{ReviewerID: 2, Phase: domain.PhaseDiff, GroupKey: "g01", TargetFiles: []string{"a.go"}},
+		{ReviewerID: 3, Phase: domain.PhaseDiff, GroupKey: "g02", TargetFiles: []string{"b.go"}},
 	}
 	rawFindings := []domain.Finding{
 		{Text: "issue", ReviewerID: 2, GroupKey: "g01"},
@@ -331,7 +331,7 @@ func TestBuildCrossCheckContext_GroupTopology(t *testing.T) {
 	if len(ccCtx.Groups) != 3 {
 		t.Fatalf("expected 3 groups, got %d", len(ccCtx.Groups))
 	}
-	if ccCtx.Groups[0].GroupKey != "arch" || !ccCtx.Groups[0].FullDiff {
+	if ccCtx.Groups[0].GroupKey != domain.PhaseArch || !ccCtx.Groups[0].FullDiff {
 		t.Errorf("expected arch group with FullDiff=true, got %+v", ccCtx.Groups[0])
 	}
 	if ccCtx.Groups[1].GroupKey != "g01" || ccCtx.Groups[1].FullDiff {
@@ -352,8 +352,8 @@ func TestBuildCrossCheckContext_GroupTopology(t *testing.T) {
 
 func TestBuildCrossCheckContext_DedupGroupKey(t *testing.T) {
 	specs := []runner.ReviewerSpec{
-		{Phase: "arch", GroupKey: "arch"},
-		{Phase: "arch", GroupKey: "arch"}, // duplicate key
+		{Phase: domain.PhaseArch, GroupKey: domain.PhaseArch},
+		{Phase: domain.PhaseArch, GroupKey: domain.PhaseArch}, // duplicate key
 	}
 	results := []domain.ReviewerResult{
 		{ReviewerID: 1, ExitCode: 0},
@@ -382,9 +382,9 @@ func TestReviewPipeline_CrossCheckUsesAggregatedIDs(t *testing.T) {
 	}
 
 	specs := []runner.ReviewerSpec{
-		{Phase: "arch", GroupKey: "arch"},
-		{Phase: "diff", GroupKey: "g01", TargetFiles: []string{"a.go"}},
-		{Phase: "diff", GroupKey: "g02", TargetFiles: []string{"b.go"}},
+		{Phase: domain.PhaseArch, GroupKey: domain.PhaseArch},
+		{Phase: domain.PhaseDiff, GroupKey: "g01", TargetFiles: []string{"a.go"}},
+		{Phase: domain.PhaseDiff, GroupKey: "g02", TargetFiles: []string{"b.go"}},
 	}
 	results := []domain.ReviewerResult{
 		{ReviewerID: 1, ExitCode: 0, Findings: []domain.Finding{raw[0]}},
@@ -668,7 +668,7 @@ func TestLargeReview_GroupedSpecsProduceCrossCheckableTopology(t *testing.T) {
 	if !apr.UseGrouped {
 		t.Fatal("expected UseGrouped=true for large diff with large_diff_reviewers=3")
 	}
-	if apr.GroupedSpecs[0].GroupKey != "arch" {
+	if apr.GroupedSpecs[0].GroupKey != domain.PhaseArch {
 		t.Errorf("expected first spec GroupKey=arch, got %q", apr.GroupedSpecs[0].GroupKey)
 	}
 	seen := map[string]bool{}
@@ -691,12 +691,12 @@ func TestBuildCrossCheckContext_UsesSpecReviewerID(t *testing.T) {
 	// Specs in shuffled order with non-sequential explicit ReviewerIDs.
 	// ID 7 → "g02", ID 3 → "arch", ID 5 → "g01"
 	specs := []runner.ReviewerSpec{
-		{ReviewerID: 7, Phase: "diff", GroupKey: "g02", TargetFiles: []string{"b.go"}},
-		{ReviewerID: 3, Phase: "arch", GroupKey: "arch"},
-		{ReviewerID: 5, Phase: "diff", GroupKey: "g01", TargetFiles: []string{"a.go"}},
+		{ReviewerID: 7, Phase: domain.PhaseDiff, GroupKey: "g02", TargetFiles: []string{"b.go"}},
+		{ReviewerID: 3, Phase: domain.PhaseArch, GroupKey: domain.PhaseArch},
+		{ReviewerID: 5, Phase: domain.PhaseDiff, GroupKey: "g01", TargetFiles: []string{"a.go"}},
 	}
 	rawFindings := []domain.Finding{
-		{Text: "arch issue", ReviewerID: 3, GroupKey: "arch"},
+		{Text: "arch issue", ReviewerID: 3, GroupKey: domain.PhaseArch},
 		{Text: "g01 issue", ReviewerID: 5, GroupKey: "g01"},
 	}
 	aggregated := domain.AggregateFindings(rawFindings)
@@ -722,7 +722,7 @@ func TestBuildCrossCheckContext_UsesSpecReviewerID(t *testing.T) {
 		outcomeByKey[g.GroupKey] = i
 	}
 
-	archIdx, ok := outcomeByKey["arch"]
+	archIdx, ok := outcomeByKey[domain.PhaseArch]
 	if !ok {
 		t.Fatal("arch group missing from cross-check context")
 	}
@@ -1770,7 +1770,7 @@ func TestBuildMediumDiffSpecs_BasicSplit(t *testing.T) {
 		t.Fatalf("expected 3 specs (1 arch + 2 diff), got %d", len(specs))
 	}
 
-	if specs[0].Phase != "arch" {
+	if specs[0].Phase != domain.PhaseArch {
 		t.Errorf("specs[0].Phase = %q, want %q", specs[0].Phase, "arch")
 	}
 	if specs[0].Diff != fullDiff {
@@ -1779,17 +1779,17 @@ func TestBuildMediumDiffSpecs_BasicSplit(t *testing.T) {
 	if specs[0].DiffPrecomputed != true {
 		t.Errorf("specs[0].DiffPrecomputed = %v, want true", specs[0].DiffPrecomputed)
 	}
-	if specs[0].GroupKey != "arch" {
+	if specs[0].GroupKey != domain.PhaseArch {
 		t.Errorf("specs[0].GroupKey = %q, want %q", specs[0].GroupKey, "arch")
 	}
 	if specs[0].Guidance != "test guidance" {
 		t.Errorf("specs[0].Guidance = %q, want %q", specs[0].Guidance, "test guidance")
 	}
 
-	if specs[1].Phase != "diff" {
+	if specs[1].Phase != domain.PhaseDiff {
 		t.Errorf("specs[1].Phase = %q, want %q", specs[1].Phase, "diff")
 	}
-	if specs[2].Phase != "diff" {
+	if specs[2].Phase != domain.PhaseDiff {
 		t.Errorf("specs[2].Phase = %q, want %q", specs[2].Phase, "diff")
 	}
 	if specs[1].Diff == specs[2].Diff {

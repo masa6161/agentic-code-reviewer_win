@@ -465,12 +465,12 @@ func BuildStats(results []domain.ReviewerResult, totalReviewers int, wallClock t
 		}
 
 		switch r.Phase {
-		case "arch":
+		case domain.PhaseArch:
 			stats.ArchReviewers++
 			if !r.TimedOut && !r.AuthFailed && r.ExitCode == 0 {
 				stats.SuccessfulArchReviewers++
 			}
-		case "diff":
+		case domain.PhaseDiff:
 			stats.DiffReviewers++
 			if !r.TimedOut && !r.AuthFailed && r.ExitCode == 0 {
 				stats.SuccessfulDiffReviewers++

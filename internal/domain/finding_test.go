@@ -386,7 +386,7 @@ func TestBackfillPhaseReviewerCounts_ArchOnly(t *testing.T) {
 			{Sources: []int{0}},
 		},
 	}
-	reviewerPhases := map[int]string{1: "arch"}
+	reviewerPhases := map[int]string{1: PhaseArch}
 
 	BackfillPhaseReviewerCounts(grouped, aggregated, reviewerPhases)
 
@@ -408,7 +408,7 @@ func TestBackfillPhaseReviewerCounts_DiffOnly(t *testing.T) {
 			{Sources: []int{0}},
 		},
 	}
-	reviewerPhases := map[int]string{2: "diff"}
+	reviewerPhases := map[int]string{2: PhaseDiff}
 
 	BackfillPhaseReviewerCounts(grouped, aggregated, reviewerPhases)
 
@@ -431,7 +431,7 @@ func TestBackfillPhaseReviewerCounts_Mixed(t *testing.T) {
 			{Sources: []int{0, 1}},
 		},
 	}
-	reviewerPhases := map[int]string{1: "arch", 2: "diff", 3: "diff"}
+	reviewerPhases := map[int]string{1: PhaseArch, 2: PhaseDiff, 3: PhaseDiff}
 
 	BackfillPhaseReviewerCounts(grouped, aggregated, reviewerPhases)
 
@@ -456,7 +456,7 @@ func TestBackfillPhaseReviewerCounts_DeduplicatesReviewerIDs(t *testing.T) {
 			{Sources: []int{0, 1}},
 		},
 	}
-	reviewerPhases := map[int]string{1: "arch"}
+	reviewerPhases := map[int]string{1: PhaseArch}
 
 	BackfillPhaseReviewerCounts(grouped, aggregated, reviewerPhases)
 
@@ -478,7 +478,7 @@ func TestBackfillPhaseReviewerCounts_EmptySources(t *testing.T) {
 			{Sources: []int{}},
 		},
 	}
-	reviewerPhases := map[int]string{1: "arch"}
+	reviewerPhases := map[int]string{1: PhaseArch}
 
 	BackfillPhaseReviewerCounts(grouped, aggregated, reviewerPhases)
 
@@ -500,7 +500,7 @@ func TestBackfillPhaseReviewerCounts_OutOfRangeIndex(t *testing.T) {
 			{Sources: []int{-1, 5, 100}},
 		},
 	}
-	reviewerPhases := map[int]string{1: "arch"}
+	reviewerPhases := map[int]string{1: PhaseArch}
 
 	// Must not panic
 	BackfillPhaseReviewerCounts(grouped, aggregated, reviewerPhases)
@@ -548,7 +548,7 @@ func TestBackfillPhaseReviewerCounts_InfoGroups(t *testing.T) {
 			{Sources: []int{1}},
 		},
 	}
-	reviewerPhases := map[int]string{1: "arch", 2: "diff"}
+	reviewerPhases := map[int]string{1: PhaseArch, 2: PhaseDiff}
 
 	BackfillPhaseReviewerCounts(grouped, aggregated, reviewerPhases)
 
@@ -596,5 +596,49 @@ func TestFindingGroup_JSON_IncludesNonZeroPhaseReviewerCounts(t *testing.T) {
 	}
 	if !strings.Contains(s, `"diff_reviewer_count":2`) {
 		t.Errorf("expected diff_reviewer_count:2 in JSON; got %s", s)
+	}
+}
+
+func TestAggregateFindings_PerPhaseReviewers(t *testing.T) {
+	findings := []Finding{
+		{Text: "bug", ReviewerID: 1, Phase: PhaseArch},
+		{Text: "bug", ReviewerID: 2, Phase: PhaseDiff},
+		{Text: "bug", ReviewerID: 3, Phase: PhaseDiff},
+	}
+	agg := AggregateFindings(findings)
+	if len(agg) != 1 {
+		t.Fatalf("got %d findings, want 1", len(agg))
+	}
+	if len(agg[0].ArchReviewers) != 1 || agg[0].ArchReviewers[0] != 1 {
+		t.Errorf("ArchReviewers = %v, want [1]", agg[0].ArchReviewers)
+	}
+	if len(agg[0].DiffReviewers) != 2 {
+		t.Errorf("DiffReviewers = %v, want [2, 3]", agg[0].DiffReviewers)
+	}
+}
+
+func TestAggregateFindings_PerPhaseReviewers_FlatReview(t *testing.T) {
+	findings := []Finding{
+		{Text: "bug", ReviewerID: 1, Phase: ""},
+		{Text: "bug", ReviewerID: 2, Phase: ""},
+	}
+	agg := AggregateFindings(findings)
+	if len(agg) != 1 {
+		t.Fatalf("got %d findings, want 1", len(agg))
+	}
+	if len(agg[0].ArchReviewers) != 0 {
+		t.Errorf("ArchReviewers = %v, want empty", agg[0].ArchReviewers)
+	}
+	if len(agg[0].DiffReviewers) != 2 {
+		t.Errorf("DiffReviewers = %v, want [1, 2]", agg[0].DiffReviewers)
+	}
+}
+
+func TestPhaseConstants_WireContract(t *testing.T) {
+	if PhaseArch != "arch" {
+		t.Errorf("PhaseArch = %q, wire contract requires %q", PhaseArch, "arch")
+	}
+	if PhaseDiff != "diff" {
+		t.Errorf("PhaseDiff = %q, wire contract requires %q", PhaseDiff, "diff")
 	}
 }

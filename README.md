@@ -170,9 +170,25 @@ The verdict field (`ok` / `advisory` / `blocking`) and exit-code policy apply on
 | `--exclude-pattern` |       |         | Exclude findings matching regex (repeat)  |
 | `--no-config`       |       | false   | Skip loading .acr.yaml config file        |
 | `--reviewer-agent`  | `-a`  | codex   | Agent(s) for reviews, comma-separated (codex, claude, gemini) |
+| `--arch-reviewer-agent`|    |         | Single agent for arch phase in auto-phase grouped diff (default: first --reviewer-agent) |
+| `--diff-reviewer-agents`|   |         | Agent(s) for diff phase in auto-phase grouped diff, comma-separated (default: same as --reviewer-agent) |
 | `--summarizer-agent`| `-s`  | codex   | Agent for summarization (codex, claude, gemini) |
 | `--reviewer-model`  |       |         | LLM model for review agents (env: ACR_REVIEWER_MODEL) |
 | `--summarizer-model`|       |         | LLM model for summarizer/FP filter agents (env: ACR_SUMMARIZER_MODEL) |
+| `--auto-phase`/`--no-auto-phase`| | true | Auto-select review phases based on diff size (env: ACR_AUTO_PHASE) |
+| `--phase`           |       |         | Override auto-phase: small, medium, large  |
+| `--large-diff-reviewers`|   | 4       | Number of diff reviewers in auto-phase grouped path (large diff) |
+| `--medium-diff-reviewers`|  | 2       | Number of diff reviewers for auto-phase medium and --phase medium |
+| `--small-diff-reviewers`|   | 1       | Number of reviewers for auto-phase small and --phase small |
+| `--role-prompts`/`--no-role-prompts`| | true | Use role-specific prompts for auto-phase diff/arch reviewers (note: `--help` shows `false` as the cobra default, but the effective default is `true` via config resolution) |
+| `--summarizer-timeout`|     | 5m      | Timeout for summarizer phase              |
+| `--fp-filter-timeout`|      | 5m      | Timeout for false positive filter phase   |
+| `--no-cross-check`  |       | false   | Disable cross-group consistency verification |
+| `--cross-check-agent`|      |         | Agent(s) for cross-check verification, comma-separated (default: same as --summarizer-agent) |
+| `--cross-check-model`|      |         | LLM model(s) for cross-check, comma-separated (REQUIRED when cross-check enabled) |
+| `--cross-check-timeout`|    | 5m      | Timeout for cross-check phase             |
+| `--strict`          |       | false   | Exit 1 on any advisory verdict            |
+| `--format`          |       | text    | Output format: text or json               |
 
 ### Concurrency Control
 
@@ -292,9 +308,21 @@ PR feedback summarization runs in parallel with the reviewers and is enabled by 
 | `ACR_PR_FEEDBACK`         | Enable PR feedback summarization (true/false) |
 | `ACR_PR_FEEDBACK_AGENT`   | Agent for PR feedback summarization |
 | `ACR_REVIEWER_AGENT`      | Default reviewer agent(s), comma-separated |
+| `ACR_ARCH_REVIEWER_AGENT` | Single agent for arch phase in auto-phase grouped diff |
+| `ACR_DIFF_REVIEWER_AGENTS`| Agent(s) for diff phase in auto-phase grouped diff |
 | `ACR_SUMMARIZER_AGENT`    | Default summarizer agent  |
 | `ACR_SUMMARIZER_TIMEOUT`  | Timeout for summarizer phase (e.g., "5m" or "300") |
 | `ACR_FP_FILTER_TIMEOUT`   | Timeout for false positive filter phase (e.g., "5m" or "300") |
+| `ACR_AUTO_PHASE`          | Enable auto-phase selection (true/false)   |
+| `ACR_LARGE_DIFF_REVIEWERS`| Number of diff reviewers for auto-phase large path |
+| `ACR_MEDIUM_DIFF_REVIEWERS`| Number of diff reviewers for auto-phase medium path |
+| `ACR_SMALL_DIFF_REVIEWERS`| Number of reviewers for auto-phase small path |
+| `ACR_ROLE_PROMPTS`        | Enable role-specific prompts (true/false)  |
+| `ACR_CROSS_CHECK`         | Enable cross-group consistency verification (true/false) |
+| `ACR_CROSS_CHECK_AGENT`   | Agent(s) for cross-check verification      |
+| `ACR_CROSS_CHECK_MODEL`   | LLM model(s) for cross-check               |
+| `ACR_CROSS_CHECK_TIMEOUT` | Timeout for cross-check phase (e.g., "5m" or "300") |
+| `ACR_STRICT`              | Exit 1 on any advisory verdict (true/false) |
 | `ACR_GUIDANCE`            | Steering context appended to review prompt |
 | `ACR_GUIDANCE_FILE`       | Path to file containing review guidance    |
 

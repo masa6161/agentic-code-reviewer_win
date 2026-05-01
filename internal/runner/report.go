@@ -578,15 +578,31 @@ func formatRawFindings(aggregated []domain.AggregatedFinding, indices []int, sta
 		return ""
 	}
 
+	multiPhase := stats.ArchReviewers > 0 && stats.DiffReviewers > 0
+
 	var lines []string
 	for idx, src := range indices {
 		if src < 0 || src >= len(aggregated) {
 			continue
 		}
 		entry := aggregated[src]
-		reviewerCount := len(entry.Reviewers)
 		lines = append(lines, "")
-		lines = append(lines, fmt.Sprintf("%d. (%d/%d reviewers)", idx+1, reviewerCount, stats.TotalReviewers))
+		if multiPhase {
+			var parts []string
+			if len(entry.ArchReviewers) > 0 {
+				parts = append(parts, fmt.Sprintf("arch: %d/%d", len(entry.ArchReviewers), stats.ArchReviewers))
+			}
+			if len(entry.DiffReviewers) > 0 {
+				parts = append(parts, fmt.Sprintf("diff: %d/%d", len(entry.DiffReviewers), stats.DiffReviewers))
+			}
+			if len(parts) > 0 {
+				lines = append(lines, fmt.Sprintf("%d. (%s reviewers)", idx+1, strings.Join(parts, ", ")))
+			} else {
+				lines = append(lines, fmt.Sprintf("%d. (%d/%d reviewers)", idx+1, len(entry.Reviewers), stats.TotalReviewers))
+			}
+		} else {
+			lines = append(lines, fmt.Sprintf("%d. (%d/%d reviewers)", idx+1, len(entry.Reviewers), stats.TotalReviewers))
+		}
 		lines = append(lines, "```")
 		lines = append(lines, strings.TrimRight(entry.Text, " \n"))
 		lines = append(lines, "```")

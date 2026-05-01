@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/richhaase/agentic-code-reviewer/internal/config"
+	"github.com/richhaase/agentic-code-reviewer/internal/domain"
 )
 
 // Role constants for the supported agent roles.
@@ -95,9 +96,9 @@ func ResolveReviewer(
 ) Spec {
 	var primaryRole string
 	switch strings.ToLower(phase) {
-	case "arch":
+	case domain.PhaseArch:
 		primaryRole = RoleArchReviewer
-	case "diff":
+	case domain.PhaseDiff:
 		primaryRole = RoleDiffReviewer
 	default:
 		primaryRole = ""

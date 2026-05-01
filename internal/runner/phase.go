@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/richhaase/agentic-code-reviewer/internal/agent"
+	"github.com/richhaase/agentic-code-reviewer/internal/domain"
 )
 
 // PhaseConfig defines a review phase and its parameters.
@@ -101,7 +102,7 @@ func BuildReviewerSpecs(phases []PhaseConfig, defaultAgents []agent.Agent, globa
 // Returns empty string for unknown phases (caller should fall back to global guidance).
 func defaultPromptForPhase(phase string) string {
 	switch phase {
-	case "arch":
+	case domain.PhaseArch:
 		return agent.DefaultArchPrompt
 	default:
 		return ""
