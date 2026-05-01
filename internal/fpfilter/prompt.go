@@ -31,9 +31,9 @@ func buildPromptWithFeedback(basePrompt, priorFeedback string) string {
 	return basePrompt + fmt.Sprintf(priorFeedbackSection, priorFeedback)
 }
 
-const fpEvaluationPrompt = `# False Positive Evaluator
+const fpEvaluationPrompt = `# False Positive Evaluator & Severity Triage
 
-You are an expert code reviewer evaluating findings to determine which are likely false positives.
+You are an expert code reviewer evaluating findings to determine which are likely false positives and assigning severity for triage.
 
 ## Input Format
 JSON with "findings" array, each containing:
@@ -42,6 +42,7 @@ JSON with "findings" array, each containing:
 - summary: 1-2 sentence description
 - messages: evidence excerpts from reviewers
 - reviewer_count: how many independent reviewers found this issue
+- reviewer_severity: hint from the prior pipeline stage (may be empty)
 
 ## Your Task
 For each finding, think step-by-step:
@@ -51,10 +52,18 @@ For each finding, think step-by-step:
 4. Does the evidence support a real problem or is it speculative?
 5. Would fixing this prevent actual bugs or just change style?
 6. How many reviewers found this? (higher count = more likely real issue)
+7. What severity level best describes the impact of this finding?
 
 Then assign:
 - fp_score: 0-100 (100 = definitely false positive, 0 = definitely real issue)
+- severity: one of "blocking", "advisory", or "noise" (see Severity Levels below)
 - reasoning: Brief explanation (1-2 sentences)
+
+## Severity Levels
+
+blocking: Security vulnerabilities, crashes, data loss, logic errors that produce wrong results. These must be fixed before merge.
+advisory: Real concern but not critical — resource leaks in non-hot paths, missing edge-case handling, error messages that could be clearer. Worth fixing but not a merge blocker.
+noise: Style preferences, documentation suggestions, subjective refactoring ideas. Not false positives per se, but low-value for the reviewer's attention.
 
 ## Decision Criteria
 
@@ -80,6 +89,12 @@ UNCERTAIN (fp_score 40-60):
 - Depends on context not provided
 - Partially valid concern
 
+## Decision Matrix: fp_score vs severity
+
+- severity=blocking should rarely have high fp_score. A finding that is genuinely blocking (security, crash, data loss) is almost by definition a true positive. If you assign blocking, fp_score should typically be < 30.
+- severity=noise findings are style/doc suggestions that aren't false positives but are low-value. They may have low fp_score (the suggestion is technically valid) yet still be noise. Use noise to distinguish "real but unimportant" from "wrong".
+- fp_score >= threshold overrides severity for filtering purposes, except for blocking findings which act as a safety valve — even if the FP filter would remove them, the triage layer can preserve blocking findings.
+
 ## Reviewer Agreement Signal
 The reviewer_count indicates how many independent reviewers found this issue:
 - 5+ reviewers: Strong signal this is a real issue — bias toward lower fp_score
@@ -92,36 +107,42 @@ EXAMPLE 1:
 Finding: {"id": 0, "title": "Add error handling for database connection", "summary": "The database connection error is silently ignored", "messages": ["db.Connect() error not checked on line 42"], "reviewer_count": 4}
 Reasoning: Error from db.Connect() is discarded, which could hide connection failures and cause silent data loss.
 fp_score: 10
+severity: blocking
 Why: Specific bug - unchecked error that could cause real problems.
 
 EXAMPLE 2:
 Finding: {"id": 1, "title": "Consider adding comments", "summary": "Function lacks documentation", "messages": ["calculateDiscount() should have a docstring explaining parameters"], "reviewer_count": 1}
 Reasoning: Documentation suggestion, code functions correctly without it.
 fp_score: 90
+severity: noise
 Why: Style preference, not a bug. Code works fine.
 
 EXAMPLE 3:
 Finding: {"id": 2, "title": "Potential SQL injection", "summary": "User input concatenated into query", "messages": ["query := \"SELECT * FROM users WHERE id=\" + userId"], "reviewer_count": 3}
 Reasoning: Direct string concatenation in SQL query is a textbook injection vulnerability.
 fp_score: 5
+severity: blocking
 Why: Clear security vulnerability with specific evidence.
 
 EXAMPLE 4:
 Finding: {"id": 3, "title": "Use constants for magic numbers", "summary": "Magic number 86400 should be a named constant", "messages": ["seconds := 86400 // seconds in a day"], "reviewer_count": 1}
 Reasoning: Readability suggestion. The value is correct and commented.
 fp_score: 85
+severity: noise
 Why: Style preference with no functional impact.
 
 EXAMPLE 5:
 Finding: {"id": 4, "title": "Possible nil pointer dereference", "summary": "Pointer used without nil check", "messages": ["user.Name accessed but user could be nil if not found"], "reviewer_count": 2}
 Reasoning: If user lookup returns nil, accessing user.Name will panic.
 fp_score: 15
+severity: blocking
 Why: Concrete crash risk with specific code path identified.
 
 EXAMPLE 6:
 Finding: {"id": 5, "title": "Function is too long", "summary": "Consider breaking into smaller functions", "messages": ["processOrder() is 150 lines, consider refactoring"], "reviewer_count": 2}
 Reasoning: Refactoring suggestion for maintainability, not a bug.
 fp_score: 80
+severity: noise
 Why: Code works correctly, just style/maintainability concern.
 
 ## Output Format
@@ -131,6 +152,7 @@ Return ONLY valid JSON, no markdown fences or extra text:
     {
       "id": 0,
       "fp_score": 75,
+      "severity": "blocking",
       "reasoning": "Brief explanation here"
     }
   ]
@@ -141,4 +163,6 @@ Return ONLY valid JSON, no markdown fences or extra text:
 - Think through each finding before scoring
 - Be conservative: when genuinely uncertain, use fp_score 40-60
 - Security and crash risks should almost never be filtered (fp_score < 30)
-- Pure style/docs suggestions should usually be filtered (fp_score > 70)`
+- Pure style/docs suggestions should usually be filtered (fp_score > 70)
+- Use reviewer_severity as a hint but override it based on your own analysis
+- blocking findings should have fp_score < 30 unless you have strong evidence the issue is invalid`

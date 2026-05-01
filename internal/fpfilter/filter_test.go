@@ -400,6 +400,45 @@ func TestAgreementBonus(t *testing.T) {
 	}
 }
 
+func TestTriagePrompt_ContainsSeveritySection(t *testing.T) {
+	if !strings.Contains(fpEvaluationPrompt, "Severity Levels") {
+		t.Error("prompt should contain Severity Levels section")
+	}
+	if !strings.Contains(fpEvaluationPrompt, "blocking") && !strings.Contains(fpEvaluationPrompt, "advisory") && !strings.Contains(fpEvaluationPrompt, "noise") {
+		t.Error("prompt should define blocking, advisory, and noise severity levels")
+	}
+}
+
+func TestTriagePrompt_OutputFormat_IncludesSeverity(t *testing.T) {
+	if !strings.Contains(fpEvaluationPrompt, `"severity"`) {
+		t.Error("prompt output format should include severity field")
+	}
+}
+
+func TestTriagePrompt_ReviewerSeverityHint(t *testing.T) {
+	if !strings.Contains(fpEvaluationPrompt, "reviewer_severity") {
+		t.Error("prompt should reference reviewer_severity input field")
+	}
+}
+
+func TestFindingInput_IncludesReviewerSeverity(t *testing.T) {
+	input := findingInput{
+		ID:               0,
+		Title:            "Test",
+		Summary:          "Summary",
+		Messages:         []string{"msg"},
+		ReviewerCount:    1,
+		ReviewerSeverity: "blocking",
+	}
+	data, err := json.Marshal(input)
+	if err != nil {
+		t.Fatalf("failed to marshal: %v", err)
+	}
+	if !strings.Contains(string(data), `"reviewer_severity":"blocking"`) {
+		t.Errorf("expected reviewer_severity in JSON; got %s", string(data))
+	}
+}
+
 func TestFilteringLogic_WithAgreementBonus(t *testing.T) {
 	threshold := 75
 	totalReviewers := 6

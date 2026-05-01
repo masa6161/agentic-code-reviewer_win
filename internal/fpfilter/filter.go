@@ -80,11 +80,12 @@ type evaluationRequest struct {
 }
 
 type findingInput struct {
-	ID            int      `json:"id"`
-	Title         string   `json:"title"`
-	Summary       string   `json:"summary"`
-	Messages      []string `json:"messages"`
-	ReviewerCount int      `json:"reviewer_count"`
+	ID               int      `json:"id"`
+	Title            string   `json:"title"`
+	Summary          string   `json:"summary"`
+	Messages         []string `json:"messages"`
+	ReviewerCount    int      `json:"reviewer_count"`
+	ReviewerSeverity string   `json:"reviewer_severity"` // hint from summarizer.backfillSeverity
 }
 
 type evaluationResponse struct {
