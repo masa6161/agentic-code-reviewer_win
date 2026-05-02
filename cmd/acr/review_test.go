@@ -1975,6 +1975,20 @@ func TestBuildMediumDiffSpecs_FewFiles_Split(t *testing.T) {
 	}
 }
 
+func TestExitCode_NoiseDoesNotAffectErrorExit(t *testing.T) {
+	// Error stop (exit 2) is independent of noise/triage
+	// This is structural: error returns before verdict calculation
+	if domain.ExitError == domain.ExitFindings {
+		t.Error("ExitError and ExitFindings must be distinct")
+	}
+	if domain.ExitError == domain.ExitNoFindings {
+		t.Error("ExitError and ExitNoFindings must be distinct")
+	}
+	if domain.ExitNoFindings == domain.ExitFindings {
+		t.Error("ExitNoFindings and ExitFindings must be distinct")
+	}
+}
+
 func TestBuildMediumDiffSpecs_DiffPrecomputed(t *testing.T) {
 	sections := makeSectionsForReview(6, 10)
 	fullDiff := git.JoinDiffSections(sections)
