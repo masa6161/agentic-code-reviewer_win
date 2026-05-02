@@ -103,47 +103,75 @@ The reviewer_count indicates how many independent reviewers found this issue:
 
 ## Examples
 
-EXAMPLE 1:
+EXAMPLE 1 (blocking — unchecked error):
 Finding: {"id": 0, "title": "Add error handling for database connection", "summary": "The database connection error is silently ignored", "messages": ["db.Connect() error not checked on line 42"], "reviewer_count": 4}
 Reasoning: Error from db.Connect() is discarded, which could hide connection failures and cause silent data loss.
 fp_score: 10
 severity: blocking
 Why: Specific bug - unchecked error that could cause real problems.
 
-EXAMPLE 2:
-Finding: {"id": 1, "title": "Consider adding comments", "summary": "Function lacks documentation", "messages": ["calculateDiscount() should have a docstring explaining parameters"], "reviewer_count": 1}
-Reasoning: Documentation suggestion, code functions correctly without it.
-fp_score: 90
-severity: noise
-Why: Style preference, not a bug. Code works fine.
-
-EXAMPLE 3:
-Finding: {"id": 2, "title": "Potential SQL injection", "summary": "User input concatenated into query", "messages": ["query := \"SELECT * FROM users WHERE id=\" + userId"], "reviewer_count": 3}
+EXAMPLE 2 (blocking — security vulnerability):
+Finding: {"id": 1, "title": "Potential SQL injection", "summary": "User input concatenated into query", "messages": ["query := \"SELECT * FROM users WHERE id=\" + userId"], "reviewer_count": 3}
 Reasoning: Direct string concatenation in SQL query is a textbook injection vulnerability.
 fp_score: 5
 severity: blocking
 Why: Clear security vulnerability with specific evidence.
 
-EXAMPLE 4:
-Finding: {"id": 3, "title": "Use constants for magic numbers", "summary": "Magic number 86400 should be a named constant", "messages": ["seconds := 86400 // seconds in a day"], "reviewer_count": 1}
-Reasoning: Readability suggestion. The value is correct and commented.
-fp_score: 85
-severity: noise
-Why: Style preference with no functional impact.
-
-EXAMPLE 5:
-Finding: {"id": 4, "title": "Possible nil pointer dereference", "summary": "Pointer used without nil check", "messages": ["user.Name accessed but user could be nil if not found"], "reviewer_count": 2}
+EXAMPLE 3 (blocking — crash risk):
+Finding: {"id": 2, "title": "Possible nil pointer dereference", "summary": "Pointer used without nil check", "messages": ["user.Name accessed but user could be nil if not found"], "reviewer_count": 2}
 Reasoning: If user lookup returns nil, accessing user.Name will panic.
 fp_score: 15
 severity: blocking
 Why: Concrete crash risk with specific code path identified.
 
-EXAMPLE 6:
-Finding: {"id": 5, "title": "Function is too long", "summary": "Consider breaking into smaller functions", "messages": ["processOrder() is 150 lines, consider refactoring"], "reviewer_count": 2}
-Reasoning: Refactoring suggestion for maintainability, not a bug.
-fp_score: 80
+EXAMPLE 4 (advisory — error context):
+Finding: {"id": 3, "title": "Error returned without context", "summary": "Bare error propagation loses call-site information", "messages": ["return err on line 87 should wrap with fmt.Errorf for debugging context"], "reviewer_count": 3}
+Reasoning: Bare error return makes production debugging harder, but does not cause incorrect behavior.
+fp_score: 20
+severity: advisory
+Why: Valid improvement for operability. Not a crash or data loss, but worth fixing.
+
+EXAMPLE 5 (advisory — hardcoded config):
+Finding: {"id": 4, "title": "Hardcoded timeout without configuration", "summary": "Retry timeout 3600 is hardcoded with no comment or config option", "messages": ["time.Sleep(3600 * time.Second) in retry loop, no way to tune per environment"], "reviewer_count": 2}
+Reasoning: Hardcoded timeout with no explanation or config path. Different environments need different values.
+fp_score: 25
+severity: advisory
+Why: Genuinely confusing magic number in config-sensitive context. Worth extracting and documenting.
+
+EXAMPLE 6 (advisory — SRP violation):
+Finding: {"id": 5, "title": "Function mixes validation, business logic, and I/O", "summary": "processOrder() is 250 lines handling input parsing, pricing, and database writes", "messages": ["processOrder() violates SRP: validates input, calculates discount, writes DB, sends email"], "reviewer_count": 3}
+Reasoning: Function handles 4 distinct responsibilities. Testability and maintainability suffer concretely.
+fp_score: 25
+severity: advisory
+Why: Clear SRP violation with specific evidence of mixed concerns, not just a line-count complaint.
+
+EXAMPLE 7 (advisory — missing validation):
+Finding: {"id": 6, "title": "Missing input validation on public endpoint", "summary": "Page size parameter accepted without upper bound", "messages": ["GET /api/items?page_size=999999 could return unbounded result set"], "reviewer_count": 2}
+Reasoning: No upper bound on page_size allows clients to request excessive data, causing performance degradation.
+fp_score: 20
+severity: advisory
+Why: Real concern for API stability but not a security vulnerability or crash.
+
+EXAMPLE 8 (noise — documentation on clear code):
+Finding: {"id": 7, "title": "Consider adding comments", "summary": "Function lacks documentation", "messages": ["calculateDiscount() should have a docstring explaining parameters"], "reviewer_count": 1}
+Reasoning: Documentation suggestion for a well-named function with clear parameter names. Code is self-explanatory.
+fp_score: 90
 severity: noise
-Why: Code works correctly, just style/maintainability concern.
+Why: Style preference, not a bug. Function name and signature already communicate intent.
+
+EXAMPLE 9 (noise — already-documented magic number):
+Finding: {"id": 8, "title": "Use constants for magic numbers", "summary": "Magic number 86400 should be a named constant", "messages": ["seconds := 86400 // seconds in a day"], "reviewer_count": 1}
+Reasoning: Readability suggestion. The value is correct, already commented, and used in one place.
+fp_score: 85
+severity: noise
+Why: Already documented inline. Extracting a constant adds indirection without meaningful benefit.
+
+EXAMPLE 10 (noise — naming consistency):
+Finding: {"id": 9, "title": "Rename variable for consistency", "summary": "Variable 'cnt' should be 'count' to match project conventions", "messages": ["cnt is used on line 55 but count is used everywhere else in the codebase"], "reviewer_count": 1}
+Reasoning: Minor naming inconsistency in a local variable. Does not affect correctness or readability.
+fp_score: 75
+severity: noise
+Why: Subjective style preference with negligible impact on comprehension.
 
 ## Output Format
 Return ONLY valid JSON, no markdown fences or extra text:
@@ -151,8 +179,8 @@ Return ONLY valid JSON, no markdown fences or extra text:
   "evaluations": [
     {
       "id": 0,
-      "fp_score": 75,
-      "severity": "blocking",
+      "fp_score": 15,
+      "severity": "advisory",
       "reasoning": "Brief explanation here"
     }
   ]
