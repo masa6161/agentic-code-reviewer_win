@@ -263,6 +263,8 @@ func newConfigInitCmd() *cobra.Command {
 # fp_filter:
 #   enabled: true
 #   threshold: 75
+#   triage: true  # Enable severity triage (blocking/advisory/noise classification)
+#   show_noise: false  # Show noise-level findings (hidden by default)
 #   agent: ""    # FP filter/triage agent (default: same as summarizer_agent)
 #   model: ""    # FP filter/triage model (default: same as summarizer_model)
 #   effort: ""   # FP filter/triage effort (default: same as summarizer)

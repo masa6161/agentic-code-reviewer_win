@@ -90,9 +90,9 @@ internal/
   filter/                  # Finding filtering
     filter.go              # Exclude findings by regex pattern matching
 
-  fpfilter/                # False positive filtering
-    filter.go              # LLM-based false positive detection and removal
-    prompt.go              # FP filter prompt templates (including prior feedback)
+  fpfilter/                # False positive filtering and severity triage
+    filter.go              # LLM-based false positive detection and severity triage (blocking/advisory/noise)
+    prompt.go              # FP filter and triage prompt templates (including prior feedback)
 
   feedback/                # PR feedback summarization
     fetch.go               # Fetch PR description and comments via gh CLI
@@ -141,7 +141,7 @@ internal/
 4. **Finding Aggregation**: Three-phase process:
    - First: Exact-match deduplication in `domain.AggregateFindings()`
    - Then: Semantic clustering via LLM in `summarizer.Summarize()`
-   - Finally: LLM-based false positive filtering in `fpfilter.Filter()` (enabled by default, configurable threshold)
+   - Finally: LLM-based false positive filtering and severity triage in `fpfilter.Filter()` (enabled by default, configurable threshold). Triage classifies findings as blocking/advisory/noise; noise findings are hidden by default (`--show-noise` to display).
 
 5. **Exit Codes**: Semantic exit codes (0=clean, 1=findings, 2=error, 130=interrupted) for CI integration.
 
