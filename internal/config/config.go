@@ -130,10 +130,13 @@ type CrossCheckConfig struct {
 }
 
 type FPFilterConfig struct {
-	Enabled   *bool `yaml:"enabled"`
-	Threshold *int  `yaml:"threshold"`
-	Triage    *bool `yaml:"triage"`
-	ShowNoise *bool `yaml:"show_noise"`
+	Enabled   *bool   `yaml:"enabled"`
+	Threshold *int    `yaml:"threshold"`
+	Triage    *bool   `yaml:"triage"`
+	ShowNoise *bool   `yaml:"show_noise"`
+	Agent     *string `yaml:"agent"`
+	Model     *string `yaml:"model"`
+	Effort    *string `yaml:"effort"`
 }
 
 // PRFeedbackConfig holds PR feedback summarization settings.
@@ -231,7 +234,7 @@ func (c *Config) validatePatterns() error {
 
 var knownTopLevelKeys = []string{"reviewers", "large_diff_reviewers", "medium_diff_reviewers", "small_diff_reviewers", "concurrency", "base", "timeout", "retries", "fetch", "reviewer_agent", "reviewer_agents", "arch_reviewer_agent", "diff_reviewer_agents", "summarizer_agent", "reviewer_model", "summarizer_model", "summarizer_timeout", "fp_filter_timeout", "cross_check_timeout", "guidance_file", "auto_phase", "filters", "fp_filter", "pr_feedback", "cross_check", "models", "min_large_diff_reviewers", "min_medium_diff_reviewers", "role_prompts"}
 
-var knownFPFilterKeys = []string{"enabled", "threshold", "triage", "show_noise"}
+var knownFPFilterKeys = []string{"enabled", "threshold", "triage", "show_noise", "agent", "model", "effort"}
 
 var knownModelsKeys = []string{"defaults", "sizes", "agents"}
 
@@ -858,6 +861,11 @@ type ResolvedConfig struct {
 	GuidanceFile           string
 	FPFilterEnabled        bool
 	FPThreshold            int
+	FPFilterAgent          string
+	FPFilterModel          string
+	FPFilterEffort         string
+	FPFilterModelFromCLI   bool // true when fp-filter-model set via flag or env
+	FPFilterEffortFromCLI  bool // true when fp-filter-effort set via flag or env
 	PRFeedbackEnabled      bool
 	PRFeedbackAgent        string
 	CrossCheckEnabled      bool
@@ -897,6 +905,9 @@ type FlagState struct {
 	SummarizerModelSet     bool
 	SummarizerTimeoutSet   bool
 	FPFilterTimeoutSet     bool
+	FPFilterAgentSet       bool
+	FPFilterModelSet       bool
+	FPFilterEffortSet      bool
 	CrossCheckTimeoutSet   bool
 	GuidanceSet            bool
 	GuidanceFileSet        bool
@@ -949,6 +960,12 @@ type EnvState struct {
 	SummarizerTimeoutSet   bool
 	FPFilterTimeout        time.Duration
 	FPFilterTimeoutSet     bool
+	FPFilterAgent          string
+	FPFilterAgentSet       bool
+	FPFilterModel          string
+	FPFilterModelSet       bool
+	FPFilterEffort         string
+	FPFilterEffortSet      bool
 	Guidance               string
 	GuidanceSet            bool
 	GuidanceFile           string
@@ -1111,6 +1128,18 @@ func LoadEnvState() (EnvState, []string) {
 		} else {
 			warnings = append(warnings, fmt.Sprintf("ACR_FP_FILTER_TIMEOUT=%q is not a valid duration or integer, ignoring", v))
 		}
+	}
+	if v := os.Getenv("ACR_FP_FILTER_AGENT"); v != "" {
+		state.FPFilterAgent = v
+		state.FPFilterAgentSet = true
+	}
+	if v := os.Getenv("ACR_FP_FILTER_MODEL"); v != "" {
+		state.FPFilterModel = v
+		state.FPFilterModelSet = true
+	}
+	if v := os.Getenv("ACR_FP_FILTER_EFFORT"); v != "" {
+		state.FPFilterEffort = v
+		state.FPFilterEffortSet = true
 	}
 	if v := os.Getenv("ACR_GUIDANCE"); v != "" {
 		state.Guidance = v
@@ -1342,6 +1371,15 @@ func Resolve(cfg *Config, envState EnvState, flagState FlagState, flagValues Res
 		if cfg.FPFilter.ShowNoise != nil {
 			result.ShowNoise = *cfg.FPFilter.ShowNoise
 		}
+		if cfg.FPFilter.Agent != nil {
+			result.FPFilterAgent = *cfg.FPFilter.Agent
+		}
+		if cfg.FPFilter.Model != nil {
+			result.FPFilterModel = *cfg.FPFilter.Model
+		}
+		if cfg.FPFilter.Effort != nil {
+			result.FPFilterEffort = *cfg.FPFilter.Effort
+		}
 		if cfg.PRFeedback.Enabled != nil {
 			result.PRFeedbackEnabled = *cfg.PRFeedback.Enabled
 		}
@@ -1437,6 +1475,15 @@ func Resolve(cfg *Config, envState EnvState, flagState FlagState, flagValues Res
 	if envState.FPThresholdSet {
 		result.FPThreshold = envState.FPThreshold
 	}
+	if envState.FPFilterAgentSet {
+		result.FPFilterAgent = envState.FPFilterAgent
+	}
+	if envState.FPFilterModelSet {
+		result.FPFilterModel = envState.FPFilterModel
+	}
+	if envState.FPFilterEffortSet {
+		result.FPFilterEffort = envState.FPFilterEffort
+	}
 	if envState.PRFeedbackEnabledSet {
 		result.PRFeedbackEnabled = envState.PRFeedbackEnabled
 	}
@@ -1531,6 +1578,15 @@ func Resolve(cfg *Config, envState EnvState, flagState FlagState, flagValues Res
 	if flagState.FPThresholdSet {
 		result.FPThreshold = flagValues.FPThreshold
 	}
+	if flagState.FPFilterAgentSet {
+		result.FPFilterAgent = flagValues.FPFilterAgent
+	}
+	if flagState.FPFilterModelSet {
+		result.FPFilterModel = flagValues.FPFilterModel
+	}
+	if flagState.FPFilterEffortSet {
+		result.FPFilterEffort = flagValues.FPFilterEffort
+	}
 	if flagState.NoPRFeedbackSet {
 		result.PRFeedbackEnabled = flagValues.PRFeedbackEnabled
 	}
@@ -1568,6 +1624,13 @@ func Resolve(cfg *Config, envState EnvState, flagState FlagState, flagValues Res
 	result.ReviewerModelFromCLI = flagState.ReviewerModelSet || envState.ReviewerModelSet
 	result.SummarizerModelFromCLI = flagState.SummarizerModelSet || envState.SummarizerModelSet
 	result.CrossCheckModelFromCLI = flagState.CrossCheckModelSet || envState.CrossCheckModelSet
+	result.FPFilterModelFromCLI = flagState.FPFilterModelSet || envState.FPFilterModelSet
+	result.FPFilterEffortFromCLI = flagState.FPFilterEffortSet || envState.FPFilterEffortSet
+
+	if !result.FPFilterEnabled {
+		result.TriageEnabled = false
+		result.ShowNoise = false
+	}
 
 	return result
 }

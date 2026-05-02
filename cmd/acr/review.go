@@ -180,10 +180,22 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 	// re-invoke Resolve here (pure, cheap) solely for display purposes.
 	if opts.Verbose {
 		cliSumModelLog, legacySumModelLog := cliOrLegacy(opts.SummarizerModel, opts.SummarizerModelFromCLI)
+		fpAgentLog := opts.FPFilterAgent
+		if fpAgentLog == "" {
+			fpAgentLog = opts.SummarizerAgent
+		}
+		fpModelLog := opts.FPFilterModel
+		fpModelFromCLILog := opts.FPFilterModelFromCLI
+		if fpModelLog == "" {
+			fpModelLog = opts.SummarizerModel
+			fpModelFromCLILog = opts.SummarizerModelFromCLI
+		}
+		cliFPModelLog, legacyFPModelLog := cliOrLegacy(fpModelLog, fpModelFromCLILog)
+		cliFPEffortLog, legacyFPEffortLog := cliOrLegacy(opts.FPFilterEffort, opts.FPFilterEffortFromCLI)
 		fpSpecLog := modelconfig.Resolve(
-			opts.Models, sizeStr, modelconfig.RoleFPFilter, opts.SummarizerAgent,
-			cliSumModelLog, "",
-			legacySumModelLog, "",
+			opts.Models, sizeStr, modelconfig.RoleFPFilter, fpAgentLog,
+			cliFPModelLog, cliFPEffortLog,
+			legacyFPModelLog, legacyFPEffortLog,
 		)
 		prFeedbackAgentName := opts.PRFeedbackAgent
 		if prFeedbackAgentName == "" {
@@ -647,13 +659,41 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 
 		fpCtx, fpCancel := context.WithTimeout(ctx, opts.FPFilterTimeout)
 		defer fpCancel()
-		cliSumModelFP, legacySumModelFP := cliOrLegacy(opts.SummarizerModel, opts.SummarizerModelFromCLI)
+		fpAgentName := opts.FPFilterAgent
+		if fpAgentName == "" {
+			fpAgentName = opts.SummarizerAgent
+		}
+		if fpAgentName != opts.SummarizerAgent {
+			fpAg, err := agent.NewAgentWithOptions(fpAgentName, agent.AgentOptions{})
+			if err != nil {
+				fpSpinnerCancel()
+				<-fpSpinnerDone
+				logger.Logf(terminal.StyleError, "Invalid FP filter agent: %v", err)
+				return domain.ExitError
+			}
+			if err := fpAg.IsAvailable(); err != nil {
+				fpSpinnerCancel()
+				<-fpSpinnerDone
+				logger.Logf(terminal.StyleError, "%s CLI not found (fp-filter): %v", fpAgentName, err)
+				return domain.ExitError
+			}
+		}
+
+		fpModel := opts.FPFilterModel
+		fpModelFromCLI := opts.FPFilterModelFromCLI
+		if fpModel == "" {
+			fpModel = opts.SummarizerModel
+			fpModelFromCLI = opts.SummarizerModelFromCLI
+		}
+		cliFPModel, legacyFPModel := cliOrLegacy(fpModel, fpModelFromCLI)
+		cliFPEffort, legacyFPEffort := cliOrLegacy(opts.FPFilterEffort, opts.FPFilterEffortFromCLI)
+
 		fpSpec := modelconfig.Resolve(
-			opts.Models, sizeStr, modelconfig.RoleFPFilter, opts.SummarizerAgent,
-			cliSumModelFP, "",
-			legacySumModelFP, "",
+			opts.Models, sizeStr, modelconfig.RoleFPFilter, fpAgentName,
+			cliFPModel, cliFPEffort,
+			legacyFPModel, legacyFPEffort,
 		)
-		fpFilter := fpfilter.New(opts.SummarizerAgent, fpSpec.Model, fpSpec.Effort, opts.FPThreshold, opts.TriageEnabled, opts.Verbose, logger)
+		fpFilter := fpfilter.New(fpAgentName, fpSpec.Model, fpSpec.Effort, opts.FPThreshold, opts.TriageEnabled, opts.Verbose, logger)
 		fpResult := fpFilter.Apply(fpCtx, summaryResult.Grouped, priorFeedback, stats.SuccessfulReviewers)
 		fpSpinnerCancel()
 		<-fpSpinnerDone
@@ -685,6 +725,12 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 				noiseFindingsForDisplay = append(noiseFindingsForDisplay, n.Finding)
 			}
 			stats.NoiseFilteredCount = fpResult.NoiseCount
+
+			if opts.ShowNoise && len(fpResult.Noise) > 0 {
+				for _, n := range fpResult.Noise {
+					summaryResult.Grouped.Findings = append(summaryResult.Grouped.Findings, n.Finding)
+				}
+			}
 		}
 	}
 	stats.FPFilteredCount = fpFilteredCount
@@ -835,6 +881,11 @@ func collectAllCLINames(opts ReviewOpts) []string {
 			ccName = opts.SummarizerAgent
 		}
 		names = append(names, agent.ParseAgentNames(ccName)...)
+	}
+
+	// FP filter: only if enabled and using a different agent
+	if opts.FPFilterEnabled && opts.FPFilterAgent != "" {
+		names = append(names, opts.FPFilterAgent)
 	}
 
 	return names

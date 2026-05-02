@@ -72,6 +72,9 @@ var (
 	fpThreshold         int
 	summarizerTimeout   time.Duration
 	fpFilterTimeout     time.Duration
+	fpFilterAgentName   string
+	fpFilterModel       string
+	fpFilterEffort      string
 	noPRFeedback        bool
 	prFeedbackAgent     string
 	noCrossCheck        bool
@@ -176,6 +179,12 @@ Exit codes:
 		"Timeout for summarizer phase (default: 5m, env: ACR_SUMMARIZER_TIMEOUT)")
 	rootCmd.Flags().DurationVar(&fpFilterTimeout, "fp-filter-timeout", 0,
 		"Timeout for false positive filter phase (default: 5m, env: ACR_FP_FILTER_TIMEOUT)")
+	rootCmd.Flags().StringVar(&fpFilterAgentName, "fp-filter-agent", "",
+		"LLM agent for FP filter/triage (default: same as --summarizer-agent, env: ACR_FP_FILTER_AGENT)")
+	rootCmd.Flags().StringVar(&fpFilterModel, "fp-filter-model", "",
+		"LLM model for FP filter/triage (default: same as --summarizer-model, env: ACR_FP_FILTER_MODEL)")
+	rootCmd.Flags().StringVar(&fpFilterEffort, "fp-filter-effort", "",
+		"Reasoning effort for FP filter/triage (default: same as summarizer, env: ACR_FP_FILTER_EFFORT)")
 	rootCmd.Flags().BoolVar(&noPRFeedback, "no-pr-feedback", false,
 		"Disable reading PR comments for feedback context (env: ACR_PR_FEEDBACK=false)")
 	rootCmd.Flags().StringVar(&prFeedbackAgent, "pr-feedback-agent", "",
@@ -437,6 +446,9 @@ func loadAndResolveConfig(cmd *cobra.Command, wt worktreeResult, logger *termina
 		SummarizerModelSet:     cmd.Flags().Changed("summarizer-model"),
 		SummarizerTimeoutSet:   cmd.Flags().Changed("summarizer-timeout"),
 		FPFilterTimeoutSet:     cmd.Flags().Changed("fp-filter-timeout"),
+		FPFilterAgentSet:       cmd.Flags().Changed("fp-filter-agent"),
+		FPFilterModelSet:       cmd.Flags().Changed("fp-filter-model"),
+		FPFilterEffortSet:      cmd.Flags().Changed("fp-filter-effort"),
 		GuidanceSet:            cmd.Flags().Changed("guidance"),
 		GuidanceFileSet:        cmd.Flags().Changed("guidance-file"),
 		NoFPFilterSet:          cmd.Flags().Changed("no-fp-filter"),
@@ -504,6 +516,9 @@ func loadAndResolveConfig(cmd *cobra.Command, wt worktreeResult, logger *termina
 		SummarizerModel:     summarizerModel,
 		SummarizerTimeout:   summarizerTimeout,
 		FPFilterTimeout:     fpFilterTimeout,
+		FPFilterAgent:       fpFilterAgentName,
+		FPFilterModel:       fpFilterModel,
+		FPFilterEffort:      fpFilterEffort,
 		Guidance:            guidance,
 		GuidanceFile:        guidanceFile,
 		FPFilterEnabled:     !noFPFilter,
