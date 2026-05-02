@@ -1285,6 +1285,97 @@ func TestFormatPhaseLGTMCompletedSentence_Grouped(t *testing.T) {
 	}
 }
 
+func TestRenderReport_NoiseFilteredCount(t *testing.T) {
+	terminal.WithColorsDisabled(func() {
+		grouped := domain.GroupedFindings{}
+		summaryResult := &summarizer.Result{ExitCode: 0}
+		stats := domain.ReviewStats{
+			TotalReviewers:      2,
+			SuccessfulReviewers: 2,
+			NoiseFilteredCount:  3,
+		}
+
+		result := RenderReport(grouped, summaryResult, stats, nil)
+
+		if !strings.Contains(result, "3 findings filtered as noise") {
+			t.Errorf("expected noise filtered count in output, got:\n%s", result)
+		}
+	})
+}
+
+func TestRenderReport_NoiseFilteredCountSingular(t *testing.T) {
+	terminal.WithColorsDisabled(func() {
+		grouped := domain.GroupedFindings{}
+		summaryResult := &summarizer.Result{ExitCode: 0}
+		stats := domain.ReviewStats{
+			TotalReviewers:      2,
+			SuccessfulReviewers: 2,
+			NoiseFilteredCount:  1,
+		}
+
+		result := RenderReport(grouped, summaryResult, stats, nil)
+
+		if !strings.Contains(result, "1 finding filtered as noise") {
+			t.Errorf("expected singular noise filtered count in output, got:\n%s", result)
+		}
+	})
+}
+
+func TestRenderReport_NoiseFilteredCountZeroHidden(t *testing.T) {
+	terminal.WithColorsDisabled(func() {
+		grouped := domain.GroupedFindings{}
+		summaryResult := &summarizer.Result{ExitCode: 0}
+		stats := domain.ReviewStats{
+			TotalReviewers:      2,
+			SuccessfulReviewers: 2,
+			NoiseFilteredCount:  0,
+		}
+
+		result := RenderReport(grouped, summaryResult, stats, nil)
+
+		if strings.Contains(result, "noise") {
+			t.Errorf("expected no noise line when count is zero, got:\n%s", result)
+		}
+	})
+}
+
+func TestFormatDisposition_FilteredNoise(t *testing.T) {
+	d := domain.Disposition{
+		Kind:      domain.DispositionFilteredNoise,
+		FPScore:   25,
+		Reasoning: "stylistic nit with no functional impact",
+	}
+	got := formatDisposition(d)
+	expected := "Filtered as noise (fp_score=25: stylistic nit with no functional impact)"
+	if got != expected {
+		t.Errorf("expected %q, got %q", expected, got)
+	}
+}
+
+func TestRenderLGTMMarkdown_WithNoiseDisposition(t *testing.T) {
+	comments := map[int][]AnnotatedComment{
+		1: {
+			{
+				Text: "Minor style issue",
+				Disposition: domain.Disposition{
+					Kind:      domain.DispositionFilteredNoise,
+					FPScore:   30,
+					Reasoning: "cosmetic only",
+				},
+			},
+		},
+	}
+
+	result := RenderLGTMMarkdown(domain.ReviewStats{TotalReviewers: 2, SuccessfulReviewers: 2}, comments, "dev")
+
+	if !strings.Contains(result, "Filtered as noise") {
+		t.Errorf("expected noise disposition annotation in LGTM markdown, got:\n%s", result)
+	}
+	if !strings.Contains(result, "fp_score=30") {
+		t.Errorf("expected fp_score in noise disposition, got:\n%s", result)
+	}
+}
+
 func TestRenderReport_FlatReviewNoRegression(t *testing.T) {
 	terminal.WithColorsDisabled(func() {
 		grouped := domain.GroupedFindings{

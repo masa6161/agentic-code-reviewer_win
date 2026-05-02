@@ -33,6 +33,7 @@ type ReviewStats struct {
 	FPFilterDuration        time.Duration
 	CrossCheckDuration      time.Duration
 	FPFilteredCount         int
+	NoiseFilteredCount      int
 }
 
 // AllFailed returns true if all reviewers failed.

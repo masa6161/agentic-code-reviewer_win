@@ -35,8 +35,9 @@ type FindingGroup struct {
 	ArchReviewerCount int      `json:"arch_reviewer_count,omitempty"`
 	DiffReviewerCount int      `json:"diff_reviewer_count,omitempty"`
 	Sources           []int    `json:"sources"`
-	GroupKey          string   `json:"group_key,omitempty"` // propagated from source findings
-	Severity          string   `json:"severity,omitempty"`  // "blocking" | "advisory" | "" (empty = advisory)
+	GroupKey          string   `json:"group_key,omitempty"`    // propagated from source findings
+	Severity          string   `json:"severity,omitempty"`     // "blocking" | "advisory" | "" (empty = advisory)
+	RawSeverity       string   `json:"raw_severity,omitempty"` // backfillSeverity output before triage overwrite
 }
 
 // GroupedFindings represents the output from the summarizer.
@@ -99,6 +100,7 @@ const (
 	DispositionUnmapped        DispositionKind = iota // Could not trace through pipeline (zero value)
 	DispositionInfo                                   // Categorized as informational by summarizer
 	DispositionFilteredFP                             // Removed by FP filter
+	DispositionFilteredNoise                          // Removed by triage agent (severity == "noise")
 	DispositionFilteredExclude                        // Removed by exclude pattern
 	DispositionSurvived                               // Survived all filters (became a posted finding)
 )
@@ -124,6 +126,7 @@ func BuildDispositions(
 	aggregatedCount int,
 	infoGroups []FindingGroup,
 	fpRemoved []FPRemovedInfo,
+	noiseRemoved []FPRemovedInfo,
 	excludeFiltered []FindingGroup,
 	survivingFindings []FindingGroup,
 ) map[int]Disposition {
@@ -151,7 +154,19 @@ func BuildDispositions(
 		}
 	}
 
-	// 3. Mark exclude-filtered
+	// 3. Mark noise-filtered
+	for _, n := range noiseRemoved {
+		for _, src := range n.Sources {
+			dispositions[src] = Disposition{
+				Kind:       DispositionFilteredNoise,
+				FPScore:    n.FPScore,
+				Reasoning:  n.Reasoning,
+				GroupTitle: n.Title,
+			}
+		}
+	}
+
+	// 4. Mark exclude-filtered
 	for _, g := range excludeFiltered {
 		for _, src := range g.Sources {
 			dispositions[src] = Disposition{
@@ -161,7 +176,7 @@ func BuildDispositions(
 		}
 	}
 
-	// 4. Mark survivors
+	// 5. Mark survivors
 	for _, g := range survivingFindings {
 		for _, src := range g.Sources {
 			dispositions[src] = Disposition{
@@ -171,7 +186,7 @@ func BuildDispositions(
 		}
 	}
 
-	// 5. Fill remaining unmapped indices (zero value is DispositionUnmapped)
+	// 6. Fill remaining unmapped indices (zero value is DispositionUnmapped)
 	for i := range aggregatedCount {
 		if _, ok := dispositions[i]; !ok {
 			dispositions[i] = Disposition{}

@@ -64,10 +64,15 @@ summarizer_agent: claude
 #   exclude_patterns:
 #     - "pattern to exclude"
 
-# False positive filtering
-# fp_filter:
-#   enabled: true
-#   threshold: 75
+# False positive filtering/triage
+fp_filter:
+  enabled: true
+  threshold: 75
+  triage: true           # severity triage (blocking/advisory/noise) を有効化
+  # show_noise: false    # noise 指摘を表示（既定: 非表示）
+  agent: claude          # FP filter/triage 用エージェント (default: summarizer_agent)
+  model: claude-opus-4-6 # FP filter/triage 用モデル (default: summarizer_model)
+  effort: high           # FP filter/triage 用 effort (default: summarizer と同じ)
 
 # Cross-check configuration (Round-9 contract: model is REQUIRED when enabled,
 # comma-separated count must match agent list, paired positionally).

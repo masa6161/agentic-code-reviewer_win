@@ -3306,3 +3306,140 @@ func TestCheckUnknownKeys_RolePromptsIsKnown(t *testing.T) {
 		}
 	}
 }
+
+func TestResolve_TriageEnabled_Default(t *testing.T) {
+	resolved := Resolve(nil, EnvState{}, FlagState{}, Defaults)
+	if !resolved.TriageEnabled {
+		t.Error("TriageEnabled should default to true")
+	}
+	if resolved.ShowNoise {
+		t.Error("ShowNoise should default to false")
+	}
+}
+
+func TestResolve_TriageEnabled_ThreeTierPrecedence(t *testing.T) {
+	// Config sets true
+	trueVal := true
+	cfg := &Config{FPFilter: FPFilterConfig{Triage: &trueVal}}
+	// Env overrides to false
+	env := EnvState{TriageEnabled: false, TriageEnabledSet: true}
+	resolved := Resolve(cfg, env, FlagState{}, Defaults)
+	if resolved.TriageEnabled {
+		t.Error("env ACR_TRIAGE=false should override config triage=true")
+	}
+	// Flag overrides env
+	flag := FlagState{NoTriageSet: true}
+	flagVals := Defaults
+	flagVals.TriageEnabled = true
+	resolved = Resolve(cfg, env, flag, flagVals)
+	if !resolved.TriageEnabled {
+		t.Error("flag --triage should override env ACR_TRIAGE=false")
+	}
+}
+
+func TestResolve_ShowNoise_ThreeTierPrecedence(t *testing.T) {
+	trueVal := true
+	cfg := &Config{FPFilter: FPFilterConfig{ShowNoise: &trueVal}}
+	resolved := Resolve(cfg, EnvState{}, FlagState{}, Defaults)
+	if !resolved.ShowNoise {
+		t.Error("config show_noise=true should be applied")
+	}
+	// Env overrides
+	env := EnvState{ShowNoise: false, ShowNoiseSet: true}
+	resolved = Resolve(cfg, env, FlagState{}, Defaults)
+	if resolved.ShowNoise {
+		t.Error("env ACR_SHOW_NOISE=false should override config")
+	}
+}
+
+func TestResolve_NoFPFilter_DisablesTriage(t *testing.T) {
+	flag := FlagState{NoFPFilterSet: true}
+	flagVals := Defaults
+	flagVals.FPFilterEnabled = false
+	resolved := Resolve(nil, EnvState{}, flag, flagVals)
+	if resolved.TriageEnabled {
+		t.Error("--no-fp-filter should disable triage")
+	}
+}
+
+func TestResolve_FPFilterAgent_Precedence(t *testing.T) {
+	// flag > env > yaml > empty
+	// Subtest 1: yaml only
+	cfg := &Config{FPFilter: FPFilterConfig{Agent: strPtr("gemini")}}
+	result := Resolve(cfg, EnvState{}, FlagState{}, ResolvedConfig{})
+	if result.FPFilterAgent != "gemini" {
+		t.Errorf("expected gemini, got %s", result.FPFilterAgent)
+	}
+	// Subtest 2: env overrides yaml
+	env := EnvState{FPFilterAgent: "claude", FPFilterAgentSet: true}
+	result = Resolve(cfg, env, FlagState{}, ResolvedConfig{})
+	if result.FPFilterAgent != "claude" {
+		t.Errorf("expected claude, got %s", result.FPFilterAgent)
+	}
+	// Subtest 3: flag overrides env
+	flags := FlagState{FPFilterAgentSet: true}
+	flagVals := ResolvedConfig{FPFilterAgent: "codex"}
+	result = Resolve(cfg, env, flags, flagVals)
+	if result.FPFilterAgent != "codex" {
+		t.Errorf("expected codex, got %s", result.FPFilterAgent)
+	}
+}
+
+func TestResolve_FPFilterModel_Precedence(t *testing.T) {
+	// Same 3-tier pattern for model
+	cfg := &Config{FPFilter: FPFilterConfig{Model: strPtr("gpt-4o")}}
+	result := Resolve(cfg, EnvState{}, FlagState{}, ResolvedConfig{})
+	if result.FPFilterModel != "gpt-4o" {
+		t.Errorf("expected gpt-4o, got %s", result.FPFilterModel)
+	}
+	env := EnvState{FPFilterModel: "o3", FPFilterModelSet: true}
+	result = Resolve(cfg, env, FlagState{}, ResolvedConfig{})
+	if result.FPFilterModel != "o3" {
+		t.Errorf("expected o3, got %s", result.FPFilterModel)
+	}
+	flags := FlagState{FPFilterModelSet: true}
+	flagVals := ResolvedConfig{FPFilterModel: "claude-sonnet"}
+	result = Resolve(cfg, env, flags, flagVals)
+	if result.FPFilterModel != "claude-sonnet" {
+		t.Errorf("expected claude-sonnet, got %s", result.FPFilterModel)
+	}
+}
+
+func TestResolve_FPFilterModelFromCLI(t *testing.T) {
+	// false when only yaml
+	cfg := &Config{FPFilter: FPFilterConfig{Model: strPtr("gpt-4o")}}
+	result := Resolve(cfg, EnvState{}, FlagState{}, ResolvedConfig{})
+	if result.FPFilterModelFromCLI {
+		t.Error("expected FPFilterModelFromCLI=false for yaml-only")
+	}
+	// true when env set
+	env := EnvState{FPFilterModel: "o3", FPFilterModelSet: true}
+	result = Resolve(cfg, env, FlagState{}, ResolvedConfig{})
+	if !result.FPFilterModelFromCLI {
+		t.Error("expected FPFilterModelFromCLI=true for env")
+	}
+	// true when flag set
+	flags := FlagState{FPFilterModelSet: true}
+	flagVals := ResolvedConfig{FPFilterModel: "x"}
+	result = Resolve(&Config{}, EnvState{}, flags, flagVals)
+	if !result.FPFilterModelFromCLI {
+		t.Error("expected FPFilterModelFromCLI=true for flag")
+	}
+}
+
+func TestResolve_FPFilterFields_EmptyWhenUnset(t *testing.T) {
+	// All fields empty when nothing is configured
+	result := Resolve(&Config{}, EnvState{}, FlagState{}, ResolvedConfig{})
+	if result.FPFilterAgent != "" {
+		t.Errorf("expected empty FPFilterAgent, got %s", result.FPFilterAgent)
+	}
+	if result.FPFilterModel != "" {
+		t.Errorf("expected empty FPFilterModel, got %s", result.FPFilterModel)
+	}
+	if result.FPFilterEffort != "" {
+		t.Errorf("expected empty FPFilterEffort, got %s", result.FPFilterEffort)
+	}
+	if result.FPFilterModelFromCLI {
+		t.Error("expected FPFilterModelFromCLI=false")
+	}
+}

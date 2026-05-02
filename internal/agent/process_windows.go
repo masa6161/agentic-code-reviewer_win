@@ -53,7 +53,7 @@ func processExited(pid int) (bool, error) {
 		}
 		return false, err
 	}
-	defer windows.CloseHandle(handle)
+	defer func() { _ = windows.CloseHandle(handle) }()
 
 	waitResult, err := windows.WaitForSingleObject(handle, 0)
 	if err != nil {

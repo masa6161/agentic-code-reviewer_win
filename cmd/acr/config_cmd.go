@@ -125,7 +125,24 @@ func newConfigShowCmd() *cobra.Command {
 
 			// FP filter
 			fmt.Fprintf(out, "  %-32s %t\n", "fp_filter.enabled:", resolved.FPFilterEnabled)
+			fmt.Fprintf(out, "  %-32s %t\n", "fp_filter.triage:", resolved.TriageEnabled)
+			fmt.Fprintf(out, "  %-32s %t\n", "fp_filter.show_noise:", resolved.ShowNoise)
 			fmt.Fprintf(out, "  %-32s %d\n", "fp_filter.threshold:", resolved.FPThreshold)
+			if resolved.FPFilterAgent != "" {
+				fmt.Fprintf(out, "  %-32s %s\n", "fp_filter.agent:", resolved.FPFilterAgent)
+			} else {
+				fmt.Fprintf(out, "  %-32s %s\n", "fp_filter.agent:", "(same as summarizer_agent)")
+			}
+			if resolved.FPFilterModel != "" {
+				fmt.Fprintf(out, "  %-32s %s\n", "fp_filter.model:", resolved.FPFilterModel)
+			} else {
+				fmt.Fprintf(out, "  %-32s %s\n", "fp_filter.model:", "(same as summarizer_model)")
+			}
+			if resolved.FPFilterEffort != "" {
+				fmt.Fprintf(out, "  %-32s %s\n", "fp_filter.effort:", resolved.FPFilterEffort)
+			} else {
+				fmt.Fprintf(out, "  %-32s %s\n", "fp_filter.effort:", "(same as summarizer)")
+			}
 			fmt.Fprintln(out)
 
 			// PR feedback
@@ -246,6 +263,11 @@ func newConfigInitCmd() *cobra.Command {
 # fp_filter:
 #   enabled: true
 #   threshold: 75
+#   triage: true  # Enable severity triage (blocking/advisory/noise classification)
+#   show_noise: false  # Show noise-level findings (hidden by default)
+#   agent: ""    # FP filter/triage agent (default: same as summarizer_agent)
+#   model: ""    # FP filter/triage model (default: same as summarizer_model)
+#   effort: ""   # FP filter/triage effort (default: same as summarizer)
 
 # PR feedback summarization
 # pr_feedback:

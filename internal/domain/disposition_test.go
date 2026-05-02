@@ -8,7 +8,7 @@ func TestBuildDispositions_InfoGroups(t *testing.T) {
 		[]FindingGroup{
 			{Title: "Style note", Sources: []int{0, 2}},
 		},
-		nil, nil, nil,
+		nil, nil, nil, nil,
 	)
 
 	if d := dispositions[0]; d.Kind != DispositionInfo || d.GroupTitle != "Style note" {
@@ -29,7 +29,7 @@ func TestBuildDispositions_FPFiltered(t *testing.T) {
 		[]FPRemovedInfo{
 			{Sources: []int{1}, FPScore: 85, Reasoning: "likely false positive", Title: "FP Group"},
 		},
-		nil, nil,
+		nil, nil, nil,
 	)
 
 	d := dispositions[1]
@@ -50,7 +50,7 @@ func TestBuildDispositions_FPFiltered(t *testing.T) {
 func TestBuildDispositions_Survived(t *testing.T) {
 	dispositions := BuildDispositions(
 		3,
-		nil, nil, nil,
+		nil, nil, nil, nil,
 		[]FindingGroup{
 			{Title: "Real bug", Sources: []int{0, 2}},
 		},
@@ -70,7 +70,7 @@ func TestBuildDispositions_Survived(t *testing.T) {
 func TestBuildDispositions_ExcludeFiltered(t *testing.T) {
 	dispositions := BuildDispositions(
 		3,
-		nil, nil,
+		nil, nil, nil,
 		[]FindingGroup{
 			{Title: "Excluded finding", Sources: []int{0, 2}},
 		},
@@ -89,7 +89,7 @@ func TestBuildDispositions_ExcludeFiltered(t *testing.T) {
 }
 
 func TestBuildDispositions_UnmappedRemainUnmapped(t *testing.T) {
-	dispositions := BuildDispositions(2, nil, nil, nil, nil)
+	dispositions := BuildDispositions(2, nil, nil, nil, nil, nil)
 
 	if d := dispositions[0]; d.Kind != DispositionUnmapped {
 		t.Errorf("index 0: got %+v, want Unmapped", d)
@@ -109,7 +109,7 @@ func TestBuildDispositions_PriorityOverride(t *testing.T) {
 		[]FPRemovedInfo{
 			{Sources: []int{1}, FPScore: 90, Title: "FP"},
 		},
-		nil,
+		nil, nil,
 		[]FindingGroup{
 			{Title: "Survived", Sources: []int{2}},
 		},
@@ -127,7 +127,7 @@ func TestBuildDispositions_PriorityOverride(t *testing.T) {
 }
 
 func TestBuildDispositions_Empty(t *testing.T) {
-	dispositions := BuildDispositions(0, nil, nil, nil, nil)
+	dispositions := BuildDispositions(0, nil, nil, nil, nil, nil)
 	if len(dispositions) != 0 {
 		t.Errorf("expected empty map for 0 aggregated, got %d entries", len(dispositions))
 	}
@@ -142,6 +142,7 @@ func TestBuildDispositions_AllKindsCombined(t *testing.T) {
 		[]FPRemovedInfo{
 			{Sources: []int{1}, FPScore: 82, Reasoning: "noise", Title: "FP finding"},
 		},
+		nil,
 		[]FindingGroup{
 			{Title: "Excluded thing", Sources: []int{3}},
 		},

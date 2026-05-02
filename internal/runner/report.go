@@ -184,6 +184,16 @@ func RenderReport(
 			terminal.Color(terminal.Dim), stats.FPFilteredCount, findingWord, positiveWord, terminal.Color(terminal.Reset)))
 	}
 
+	if stats.NoiseFilteredCount > 0 {
+		findingWord := "finding"
+		if stats.NoiseFilteredCount != 1 {
+			findingWord = "findings"
+		}
+		lines = append(lines, "")
+		lines = append(lines, fmt.Sprintf("%sℹ %d %s filtered as noise%s",
+			terminal.Color(terminal.Dim), stats.NoiseFilteredCount, findingWord, terminal.Color(terminal.Reset)))
+	}
+
 	if stats.WallClockDuration > 0 || len(stats.ReviewerDurations) > 0 || summaryResult.Duration > 0 {
 		lines = append(lines, "")
 		lines = append(lines, fmt.Sprintf("%sTiming:%s", terminal.Color(terminal.Dim), terminal.Color(terminal.Reset)))
@@ -471,6 +481,8 @@ func formatDisposition(d domain.Disposition) string {
 		return "Categorized as informational during summarization"
 	case domain.DispositionFilteredFP:
 		return fmt.Sprintf("Filtered as likely false positive (score %d)", d.FPScore)
+	case domain.DispositionFilteredNoise:
+		return fmt.Sprintf("Filtered as noise (fp_score=%d: %s)", d.FPScore, d.Reasoning)
 	case domain.DispositionFilteredExclude:
 		return "Filtered by exclude pattern"
 	case domain.DispositionSurvived:
