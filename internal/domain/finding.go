@@ -35,9 +35,9 @@ type FindingGroup struct {
 	ArchReviewerCount int      `json:"arch_reviewer_count,omitempty"`
 	DiffReviewerCount int      `json:"diff_reviewer_count,omitempty"`
 	Sources           []int    `json:"sources"`
-	GroupKey          string   `json:"group_key,omitempty"`      // propagated from source findings
-	Severity          string   `json:"severity,omitempty"`       // "blocking" | "advisory" | "" (empty = advisory)
-	RawSeverity       string   `json:"raw_severity,omitempty"`   // backfillSeverity output before triage overwrite
+	GroupKey          string   `json:"group_key,omitempty"`    // propagated from source findings
+	Severity          string   `json:"severity,omitempty"`     // "blocking" | "advisory" | "" (empty = advisory)
+	RawSeverity       string   `json:"raw_severity,omitempty"` // backfillSeverity output before triage overwrite
 }
 
 // GroupedFindings represents the output from the summarizer.

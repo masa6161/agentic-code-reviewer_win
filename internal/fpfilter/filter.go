@@ -38,13 +38,13 @@ type Result struct {
 }
 
 type Filter struct {
-	agentName    string
-	model        string
-	effort       string
-	threshold    int
+	agentName     string
+	model         string
+	effort        string
+	threshold     int
 	triageEnabled bool
-	verbose      bool
-	logger       *terminal.Logger
+	verbose       bool
+	logger        *terminal.Logger
 }
 
 // New creates a new false positive filter.
@@ -58,13 +58,13 @@ func New(agentName, model, effort string, threshold int, triageEnabled, verbose 
 		threshold = DefaultThreshold
 	}
 	return &Filter{
-		agentName:    agentName,
-		model:        model,
-		effort:       effort,
-		threshold:    threshold,
+		agentName:     agentName,
+		model:         model,
+		effort:        effort,
+		threshold:     threshold,
 		triageEnabled: triageEnabled,
-		logger:       logger,
-		verbose:      verbose,
+		logger:        logger,
+		verbose:       verbose,
 	}
 }
 
