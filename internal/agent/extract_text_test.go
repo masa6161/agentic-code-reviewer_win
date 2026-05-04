@@ -32,6 +32,11 @@ func TestCodexSummaryParser_ExtractText(t *testing.T) {
 			input:   "not json",
 			wantErr: true,
 		},
+		{
+			name:  "non-JSON line before valid JSONL is skipped",
+			input: "Status: ready\n{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"{\\\"evaluations\\\":[]}\"}}",
+			want:  `{"evaluations":[]}`,
+		},
 	}
 
 	p := NewCodexSummaryParser()

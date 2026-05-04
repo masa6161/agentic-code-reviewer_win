@@ -3,7 +3,6 @@ package agent
 import (
 	"bufio"
 	"encoding/json"
-	"fmt"
 
 	"github.com/richhaase/agentic-code-reviewer/internal/domain"
 )
@@ -36,8 +35,8 @@ func NewCodexOutputParser(reviewerID int) *CodexOutputParser {
 //
 // Returns a finding when one is found.
 // Returns (nil, nil) when no more findings are available (end of stream).
-// Returns (nil, RecoverableParseError) for malformed lines - caller should continue.
 // Returns (nil, error) for fatal scanner errors - caller should stop.
+// Non-JSON lines (e.g. codex CLI status messages) are silently skipped.
 func (p *CodexOutputParser) ReadFinding(scanner *bufio.Scanner) (*domain.Finding, error) {
 	for scanner.Scan() {
 		p.lineNum++
@@ -48,7 +47,7 @@ func (p *CodexOutputParser) ReadFinding(scanner *bufio.Scanner) (*domain.Finding
 			continue
 		}
 
-		// Parse the JSONL event
+		// Parse the JSONL event; skip non-JSON lines (CLI status messages etc.)
 		var event struct {
 			Item struct {
 				Type string `json:"type"`
@@ -57,11 +56,10 @@ func (p *CodexOutputParser) ReadFinding(scanner *bufio.Scanner) (*domain.Finding
 		}
 
 		if err := json.Unmarshal([]byte(line), &event); err != nil {
-			p.parseErrors++
-			return nil, &RecoverableParseError{
-				Line:    p.lineNum,
-				Message: fmt.Sprintf("invalid JSON: %v", err),
+			if len(line) > 0 && line[0] == '{' {
+				p.parseErrors++
 			}
+			continue
 		}
 
 		// Only process agent_message items with non-empty, actionable text

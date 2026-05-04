@@ -142,27 +142,27 @@ func TestCodexOutputParser_ParseErrors(t *testing.T) {
 			wantParseErrors: 0,
 		},
 		{
-			name: "single parse error",
+			name: "non-JSON lines silently skipped",
 			input: `not valid json
 {"item": {"type": "agent_message", "text": "Valid finding"}}`,
 			wantFindings:    1,
-			wantParseErrors: 1,
+			wantParseErrors: 0,
 		},
 		{
-			name: "multiple parse errors",
+			name: "non-JSON lines skipped but malformed JSON counted",
 			input: `not valid json
 {"item": {"type": "agent_message", "text": "Finding 1"}}
 {malformed json
 also invalid
 {"item": {"type": "agent_message", "text": "Finding 2"}}`,
 			wantFindings:    2,
-			wantParseErrors: 3,
+			wantParseErrors: 1,
 		},
 		{
-			name:            "all lines invalid",
+			name:            "all lines non-JSON produces no findings",
 			input:           "invalid\nalso invalid\nstill invalid",
 			wantFindings:    0,
-			wantParseErrors: 3,
+			wantParseErrors: 0,
 		},
 		{
 			name:            "empty input no errors",

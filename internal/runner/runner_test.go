@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -315,21 +316,21 @@ invalid json line here
 
 	result := r.runReviewer(context.Background(), 1)
 
-	// Should have 2 findings despite 1 parse error
+	// Should have 2 findings; non-JSON line is silently skipped (no parse error)
 	if len(result.Findings) != 2 {
 		t.Errorf("expected 2 findings, got %d", len(result.Findings))
 	}
-	if result.ParseErrors != 1 {
-		t.Errorf("expected 1 parse error, got %d", result.ParseErrors)
+	if result.ParseErrors != 0 {
+		t.Errorf("expected 0 parse errors (non-JSON lines skipped), got %d", result.ParseErrors)
 	}
 }
 
-func TestRunReviewer_RecoverableParseError(t *testing.T) {
-	// Test that runner continues parsing when parser returns RecoverableParseError
-	// This tests the explicit contract between parser and runner
+func TestRunReviewer_NonJSONLinesSkipped(t *testing.T) {
+	// Test that codex parser silently skips plain-text non-JSON lines (no parse errors).
+	// Lines starting with '{' that fail JSON parse ARE counted as parse errors.
 	mockAgent := &mockStreamingAgent{
-		name:   "codex", // Use codex parser
-		output: "line1\nline2\nline3\n",
+		name:   "codex",
+		output: "status line\n{malformed json\n",
 	}
 
 	r := &Runner{
@@ -342,10 +343,24 @@ func TestRunReviewer_RecoverableParseError(t *testing.T) {
 
 	result := r.runReviewer(context.Background(), 1)
 
-	// The codex parser will treat all non-JSON lines as parse errors but continue.
-	// This verifies the parser continues after recoverable errors.
-	if result.ParseErrors != 3 {
-		t.Errorf("expected 3 parse errors for non-JSON lines, got %d", result.ParseErrors)
+	// "status line" is plain text → skipped silently (0 errors)
+	// "{malformed json" starts with '{' → counted as parse error (1 error)
+	if result.ParseErrors != 1 {
+		t.Errorf("expected 1 parse error (malformed JSON only), got %d", result.ParseErrors)
+	}
+}
+
+func TestRunReviewer_RecoverableParseErrorContract(t *testing.T) {
+	// Verify the runner's IsRecoverable branch (runner.go:349-356) is correct.
+	// No current parser returns RecoverableParseError, but the branch is retained
+	// for future parser implementations. This test validates the contract at the
+	// type level rather than through an integration path.
+	var err error = &agent.RecoverableParseError{Line: 5, Message: "test"}
+	if !agent.IsRecoverable(err) {
+		t.Error("RecoverableParseError should be identified by IsRecoverable")
+	}
+	if agent.IsRecoverable(fmt.Errorf("fatal error")) {
+		t.Error("regular error should not be identified as recoverable")
 	}
 }
 
