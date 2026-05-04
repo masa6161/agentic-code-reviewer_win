@@ -113,6 +113,32 @@ func TestCodexSummaryParser_Parse(t *testing.T) {
 			want:    nil,
 			wantErr: true,
 		},
+		{
+			name:  "non-JSON lines at start are skipped",
+			input: []byte("Starting session...\n" + wrapInJSONL(`"{\"findings\": [], \"info\": []}"`)),
+			want: &domain.GroupedFindings{
+				Findings: []domain.FindingGroup{},
+				Info:     []domain.FindingGroup{},
+			},
+			wantErr: false,
+		},
+		{
+			name:  "non-JSON lines interspersed are skipped",
+			input: []byte(`{"type":"thread.started","thread_id":"test"}` + "\nSearching codebase...\n" + `{"type":"item.completed","item":{"type":"agent_message","text":"{\"findings\": [{\"title\": \"Bug\", \"summary\": \"A bug\", \"messages\": [\"m\"], \"reviewer_count\": 1, \"sources\": [0]}], \"info\": []}"}}` + "\nDone.\n"),
+			want: &domain.GroupedFindings{
+				Findings: []domain.FindingGroup{
+					{Title: "Bug", Summary: "A bug", Messages: []string{"m"}, ReviewerCount: 1, Sources: []int{0}},
+				},
+				Info: []domain.FindingGroup{},
+			},
+			wantErr: false,
+		},
+		{
+			name:    "only non-JSON lines returns error",
+			input:   []byte("Starting session...\nSearching...\nDone."),
+			want:    nil,
+			wantErr: true,
+		},
 	}
 
 	parser := NewCodexSummaryParser()
@@ -157,20 +183,21 @@ func TestCodexSummaryParser_SummaryParserInterface(t *testing.T) {
 	var _ SummaryParser = (*CodexSummaryParser)(nil)
 }
 
-func TestCodexSummaryParser_DecodeErrorIncluded(t *testing.T) {
+func TestCodexSummaryParser_NoAgentMessageError(t *testing.T) {
 	parser := NewCodexSummaryParser()
 
-	// Malformed JSON that will cause a decode error
+	// Two JSON objects concatenated on a single line: json.Unmarshal rejects the
+	// line, so it is skipped entirely and no agent_message is found.
 	input := []byte(`{"type":"thread.started"}{invalid json here}`)
 
 	_, err := parser.Parse(input)
 	if err == nil {
-		t.Fatal("expected error for malformed JSON")
+		t.Fatal("expected error when no agent_message is found")
 	}
 
-	// Error should mention decode failure
-	if !strings.Contains(err.Error(), "failed to decode") {
-		t.Errorf("error should include decode failure details, got: %v", err)
+	// Error should indicate that no agent_message was found
+	if !strings.Contains(err.Error(), "no agent_message found") {
+		t.Errorf("error should mention no agent_message found, got: %v", err)
 	}
 }
 
