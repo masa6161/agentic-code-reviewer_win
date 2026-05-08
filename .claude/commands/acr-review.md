@@ -148,17 +148,36 @@ Iteration N (N = 1 から開始):
      - 上記以外 → ステップ 6 へ
 
   6. 状態更新:
-     - .acr/gate-state.json に現在の状態を書き込む
+     ステップ 2 で解決済みの base ref（以降 `<base>`）をそのまま使用する。
+     ハッシュ計算時は git 設定による出力差異を排除するため `--no-color --no-ext-diff` を付与する。
+     - `git diff --no-color --no-ext-diff <base>` を 1 回実行し、出力を取得する
+     - code_diff_hash を計算: 上記出力全体の SHA256 ハッシュ
+     - file_diff_hashes を計算: 上記出力を `^diff --git` 行で分割し、各セクションから
+       ファイル名（`diff --git a/<path> b/<path>` の b/ 側）を抽出、セクション内容の
+       SHA256 ハッシュを計算して {filename: hash} マップを作成
+     - 現在の状態を history に追加し、.acr/gate-state.json に書き込む（code_diff_hash, file_diff_hashes 含む）
      - 停止判定の前に記録することで、振動停止・max-iter 停止時も最終 iteration が残る
 
-  7. 振動検知 (iteration >= 2):
-     - 現 iteration の finding signatures を計算（findings[] + cross_check.findings[] の両方を含む）
-     - findings[] の signature = title + "|" + severity + "|" + group_key
-     - cross_check.findings[] の signature = title + "|" + severity + "|" + type
-       （cross_check findings には group_key がないため type を使用）
-     - 前 iteration の signatures との重複率を Jaccard 係数で計算:
-       重複率 = |current ∩ previous| / |current ∪ previous|
-     - 重複率 >= 70% → 振動停止。残存 findings をユーザーに報告して終了
+  7. 振動検知 (iteration >= 3):
+     振動とは修正が A→B→A と元に戻るパターンであり、検出には最低 3 回の
+     観測が必要。iteration N のコード状態を iteration N-2 のコード状態と比較する。
+     ※ history[N-2] は「iteration 番号が N-2 の履歴エントリ」を指す（0-based 配列
+       インデックスではない）。history 配列は iteration 順に追加されるため、
+       配列上は history[N-3] の位置になることに注意。
+
+     a) 完全振動: code_diff_hash == history[N-2].code_diff_hash
+        → コードが iteration N-2 と完全に同一の状態に戻った → 振動停止
+
+     b) 部分振動: iteration N-2 → N-1 で変更されたファイルが N で元に戻ったか判定
+        - modified = {f : f の hash が history[N-2] と history[N-1] で異なる}
+          （片方にのみ存在するファイルも含む）
+        - reverted = {f in modified : f の hash が history[N] と history[N-2] で一致}
+          （N-2 に存在しなかったファイルが N でも存在しない場合も一致とみなす）
+        - |modified| == 0 → 部分振動判定をスキップ（N-2 と N-1 間で変化なし）
+        - |reverted| / |modified| >= 70% → 振動停止
+
+     振動停止と max-iter 停止が同一 iteration で該当する場合、振動停止を優先する
+     （原因の説明としてより正確なため）
 
   8. Max-iter チェック:
      - iteration >= max_iter → 停止。残存 findings を報告して終了
@@ -197,8 +216,11 @@ Iteration N (N = 1 から開始):
 ```markdown
 ## ACR Review — 振動検知により停止
 
-反復 {N} 回目で、前回と同一の findings が 70% 以上再出現しました（Jaccard 係数 >= 0.7）。
-これ以上の自動修正では収束しない可能性があります。
+反復 {N} 回目で、コード状態が反復 {N-2} 回目と同一（または 70% 以上一致）に戻りました。
+修正が A→B→A パターンで振動しており、これ以上の自動修正では収束しない可能性があります。
+
+- **検知種別**: {完全振動 | 部分振動（一致率 XX%）}
+- **比較対象**: iteration {N} vs iteration {N-2}
 
 **残存 findings:**
 {各 finding の MD ブロック}
@@ -317,7 +339,11 @@ Iteration N (N = 1 から開始):
       "verdict": "blocking",
       "blocking_count": 2,
       "advisory_count": 1,
-      "finding_signatures": ["title1|blocking|g01", "title2|advisory|arch"]
+      "code_diff_hash": "a1b2c3d4e5f6...",
+      "file_diff_hashes": {
+        "internal/agent/codex.go": "f1a2b3...",
+        "cmd/acr/review.go": "c4d5e6..."
+      }
     }
   ]
 }
@@ -352,7 +378,7 @@ Iteration N (N = 1 から開始):
 | ACR exit 130 | 中断停止 | 中断された旨を報告し、必要に応じて再実行を促す |
 | JSON パース失敗 | 異常停止 | raw 出力を報告してユーザーに判断を仰ぐ |
 | max-iter 到達 | 上限停止 | 残存 findings を報告してユーザーに判断を仰ぐ |
-| 振動検知 (>= 70%) | 収束不能 | 残存 findings を報告してユーザーに判断を仰ぐ |
+| 振動検知 (iteration >= 3) | 収束不能 | コード状態が iteration N-2 と一致（完全一致または per-file 70% 以上一致）。残存 findings を報告してユーザーに判断を仰ぐ |
 
 ---
 
