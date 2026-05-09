@@ -466,6 +466,10 @@ func loadAndResolveConfig(cmd *cobra.Command, wt worktreeResult, logger *termina
 		NoTriageSet:            cmd.Flags().Changed("no-triage"),
 	}
 
+	if cmd.Flags().Changed("no-fp-filter") && noFPFilter {
+		logger.Logf(terminal.StyleWarning, "--no-fp-filter %s", config.FPFilterDeprecationSuffix)
+	}
+
 	// Load env var state
 	envState, envWarnings := config.LoadEnvState()
 	for _, warning := range envWarnings {
