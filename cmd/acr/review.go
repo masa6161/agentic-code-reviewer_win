@@ -94,8 +94,8 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 	}
 
 	// --phase large: override sizeStr so model resolution uses sizes.large.
-	if opts.Phase == "large" && sizeStr != "large" {
-		sizeStr = "large"
+	if opts.Phase == domain.SizeLarge && sizeStr != domain.SizeLarge {
+		sizeStr = domain.SizeLarge
 	}
 
 	// Resolve generic (phase="") reviewer specs with per-agent-name effort/model
@@ -294,7 +294,7 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 			phaseFromAuto = size != git.DiffSizeSmall
 			if opts.Verbose {
 				switch {
-				case apr.UseGrouped && sizeStr == "large":
+				case apr.UseGrouped && sizeStr == domain.SizeLarge:
 					logger.Logf(terminal.StyleInfo, "Auto-phase: grouped (arch+%d diff groups)",
 						len(groupedSpecs)-1)
 					logPerPhaseModelMatrix(logger, opts, sizeStr)
@@ -320,7 +320,7 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 	}
 
 	// --phase large: build grouped specs before dispatch (defensive fallback to medium)
-	if phaseStr == "large" && !useGroupedSpecs {
+	if phaseStr == domain.SizeLarge && !useGroupedSpecs {
 		plr, agentsErr := resolvePhaseLarge(diff, opts.Guidance, diffPrecomputed,
 			func() (agent.Agent, []agent.Agent, error) {
 				return buildPhaseAgents(opts, sizeStr)
@@ -393,9 +393,9 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 	} else if phaseStr != "" {
 		totalForParse := opts.Reviewers
 		switch phaseStr {
-		case "small":
+		case domain.SizeSmall:
 			totalForParse = opts.SmallDiffReviewers
-		case "medium":
+		case domain.SizeMedium:
 			totalForParse = opts.MediumDiffReviewers + 1
 		}
 		phases, phaseErr := parsePhases(phaseStr, totalForParse)
@@ -527,7 +527,7 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 	// Medium grouped specs also set useGroupedSpecs=true but cross-check
 	// config/model resolution only supports sizes.large.
 	var ccResult *summarizer.CrossCheckResult
-	if useGroupedSpecs && sizeStr == "large" && opts.CrossCheckEnabled && ctx.Err() == nil {
+	if useGroupedSpecs && sizeStr == domain.SizeLarge && opts.CrossCheckEnabled && ctx.Err() == nil {
 		// Lazy resolve: top-level cross_check.model parsing and per-agent
 		// modelconfig.Resolve happen here, NOT at startup. The sizeStr=="large"
 		// guard ensures the size layer cascade lines up with
@@ -846,7 +846,7 @@ func specsHaveArch(specs []runner.ReviewerSpec) bool {
 // paths (--phase small/medium, --no-auto-phase without --phase large) cannot
 // trigger cross-check, so validation is safely skipped.
 func shouldRunRuntimeValidation(autoPhase bool, phaseFlag string) bool {
-	return (autoPhase && phaseFlag == "") || phaseFlag == "large"
+	return (autoPhase && phaseFlag == "") || phaseFlag == domain.SizeLarge
 }
 
 // collectAllCLINames returns CLI names that may be invoked during an auto-phase
@@ -906,11 +906,11 @@ func parsePhases(phaseStr string, totalReviewers int) ([]runner.PhaseConfig, err
 		return nil, fmt.Errorf("totalReviewers must be >= 1, got %d", totalReviewers)
 	}
 	switch phaseStr {
-	case "small":
+	case domain.SizeSmall:
 		return []runner.PhaseConfig{
 			{Phase: domain.PhaseDiff, ReviewerCount: totalReviewers},
 		}, nil
-	case "medium":
+	case domain.SizeMedium:
 		if totalReviewers < 2 {
 			return nil, fmt.Errorf("phase %q requires >= 2 reviewers (1 arch + >= 1 diff), got %d", phaseStr, totalReviewers)
 		}
@@ -1110,7 +1110,7 @@ func resolveAutoPhase(
 	switch size {
 	case git.DiffSizeSmall:
 		// Small: flat diff path; reviewer count comes from small_diff_reviewers.
-		return autoPhaseResult{PhaseStr: "small"}, nil
+		return autoPhaseResult{PhaseStr: domain.SizeSmall}, nil
 	case git.DiffSizeLarge:
 		fileCount := len(git.ParseDiffSections(diff))
 		effectiveGroups := largeDiffReviewers
@@ -1126,7 +1126,7 @@ func resolveAutoPhase(
 			// buildAgents, so per-phase override CLI availability does not gate
 			// the fallback.
 			return autoPhaseResult{
-				PhaseStr:        "medium",
+				PhaseStr:        domain.SizeMedium,
 				MediumDiffCount: mediumDiffReviewers,
 				FallbackReason: fmt.Sprintf(
 					"only %d non-empty diff group(s) possible (file_count=%d, large_diff_reviewers=%d)",
@@ -1145,7 +1145,7 @@ func resolveAutoPhase(
 		specs, err := buildGroupedDiffSpecs(diff, guidance, diffPrecomputed, archAgent, diffAgents, effectiveGroups)
 		if err != nil {
 			return autoPhaseResult{
-				PhaseStr:        "medium",
+				PhaseStr:        domain.SizeMedium,
 				MediumDiffCount: mediumDiffReviewers,
 				FallbackReason:  fmt.Sprintf("buildGroupedDiffSpecs failed: %v", err),
 			}, nil
@@ -1154,7 +1154,7 @@ func resolveAutoPhase(
 		diffGroupCount := len(specs) - 1
 		if diffGroupCount < 2 {
 			return autoPhaseResult{
-				PhaseStr:        "medium",
+				PhaseStr:        domain.SizeMedium,
 				MediumDiffCount: mediumDiffReviewers,
 				FallbackReason:  fmt.Sprintf("only %d non-empty diff group(s) after building", diffGroupCount),
 			}, nil
@@ -1166,7 +1166,7 @@ func resolveAutoPhase(
 	default: // medium
 		if diff == "" {
 			return autoPhaseResult{
-				PhaseStr:        "medium",
+				PhaseStr:        domain.SizeMedium,
 				MediumDiffCount: mediumDiffReviewers,
 			}, nil
 		}
@@ -1180,7 +1180,7 @@ func resolveAutoPhase(
 		}
 		if effectiveGroups < 2 {
 			return autoPhaseResult{
-				PhaseStr:        "medium",
+				PhaseStr:        domain.SizeMedium,
 				MediumDiffCount: mediumDiffReviewers,
 				FallbackReason: fmt.Sprintf(
 					"only %d non-empty diff group(s) possible (file_count=%d, medium_diff_reviewers=%d)",
@@ -1197,7 +1197,7 @@ func resolveAutoPhase(
 		}
 		if medSpecs == nil {
 			return autoPhaseResult{
-				PhaseStr:        "medium",
+				PhaseStr:        domain.SizeMedium,
 				MediumDiffCount: mediumDiffReviewers,
 				FallbackReason:  "diff split not viable after grouping",
 			}, nil
@@ -1231,7 +1231,7 @@ func resolvePhaseLarge(
 	}
 	if effectiveGroups < 2 {
 		return autoPhaseResult{
-			PhaseStr:        "medium",
+			PhaseStr:        domain.SizeMedium,
 			MediumDiffCount: mediumDiffReviewers,
 			FallbackReason:  fmt.Sprintf("only %d file(s), need >=2 for grouped review", fileCount),
 		}, nil
@@ -1243,7 +1243,7 @@ func resolvePhaseLarge(
 	specs, err := buildGroupedDiffSpecs(diff, guidance, diffPrecomputed, archAgent, diffAgents, effectiveGroups)
 	if err != nil {
 		return autoPhaseResult{
-			PhaseStr:        "medium",
+			PhaseStr:        domain.SizeMedium,
 			MediumDiffCount: mediumDiffReviewers,
 			FallbackReason:  fmt.Sprintf("buildGroupedDiffSpecs failed: %v", err),
 		}, nil
@@ -1251,7 +1251,7 @@ func resolvePhaseLarge(
 	diffGroupCount := len(specs) - 1
 	if diffGroupCount < 2 {
 		return autoPhaseResult{
-			PhaseStr:        "medium",
+			PhaseStr:        domain.SizeMedium,
 			MediumDiffCount: mediumDiffReviewers,
 			FallbackReason:  fmt.Sprintf("only %d non-empty diff group(s) after building", diffGroupCount),
 		}, nil

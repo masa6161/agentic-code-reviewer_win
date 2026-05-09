@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/richhaase/agentic-code-reviewer/internal/domain"
 )
 
 func TestLoadFromDirWithWarnings_ValidConfig(t *testing.T) {
@@ -2084,7 +2086,7 @@ func TestConfig_ModelsSection_Parses(t *testing.T) {
 	}
 
 	// sizes
-	small, ok := m.Sizes["small"]
+	small, ok := m.Sizes[domain.SizeSmall]
 	if !ok {
 		t.Fatal("sizes.small not found")
 	}
@@ -2094,7 +2096,7 @@ func TestConfig_ModelsSection_Parses(t *testing.T) {
 	if small.Reviewer.Effort != "low" {
 		t.Errorf("sizes.small.reviewer.effort: got %q, want %q", small.Reviewer.Effort, "low")
 	}
-	large, ok := m.Sizes["large"]
+	large, ok := m.Sizes[domain.SizeLarge]
 	if !ok {
 		t.Fatal("sizes.large not found")
 	}
@@ -2414,11 +2416,11 @@ func TestConfig_ModelsEffort_CaseInsensitive_Sizes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected case-insensitive effort to be accepted in sizes, got: %v", err)
 	}
-	small := result.Config.Models.Sizes["small"]
+	small := result.Config.Models.Sizes[domain.SizeSmall]
 	if small.Reviewer == nil || small.Reviewer.Effort != "LOW" {
 		t.Errorf("expected sizes.small.reviewer.effort=LOW, got %+v", small.Reviewer)
 	}
-	large := result.Config.Models.Sizes["large"]
+	large := result.Config.Models.Sizes[domain.SizeLarge]
 	if large.ArchReviewer == nil || large.ArchReviewer.Effort != "MediuM" {
 		t.Errorf("expected sizes.large.arch_reviewer.effort=MediuM, got %+v", large.ArchReviewer)
 	}
@@ -3090,7 +3092,7 @@ func TestValidateRuntime_CrossCheckModelsTreeFallback(t *testing.T) {
 			CrossCheckTimeout: 5 * time.Minute,
 			Models: ModelsConfig{
 				Sizes: map[string]RoleModels{
-					"large": {CrossCheck: &ModelSpec{Model: "gpt-5.4-large"}},
+					domain.SizeLarge: {CrossCheck: &ModelSpec{Model: "gpt-5.4-large"}},
 				},
 			},
 		}
@@ -3160,7 +3162,7 @@ func TestValidateRuntime_CrossCheckModelsTreeFallback(t *testing.T) {
 			CrossCheckTimeout: 5 * time.Minute,
 			Models: ModelsConfig{
 				Sizes: map[string]RoleModels{
-					"small": {CrossCheck: &ModelSpec{Model: "gpt-5.4-small"}},
+					domain.SizeSmall: {CrossCheck: &ModelSpec{Model: "gpt-5.4-small"}},
 				},
 			},
 		}
@@ -3182,7 +3184,7 @@ func TestValidateRuntime_CrossCheckModelsTreeFallback(t *testing.T) {
 			CrossCheckTimeout: 5 * time.Minute,
 			Models: ModelsConfig{
 				Sizes: map[string]RoleModels{
-					"medium": {CrossCheck: &ModelSpec{Model: "gpt-5.4-medium"}},
+					domain.SizeMedium: {CrossCheck: &ModelSpec{Model: "gpt-5.4-medium"}},
 				},
 			},
 		}
@@ -3206,7 +3208,7 @@ func TestValidateRuntime_CrossCheckModelsTreeFallback(t *testing.T) {
 			CrossCheckTimeout: 5 * time.Minute,
 			Models: ModelsConfig{
 				Sizes: map[string]RoleModels{
-					"large": {CrossCheck: &ModelSpec{Model: "gpt-5.4-large"}},
+					domain.SizeLarge: {CrossCheck: &ModelSpec{Model: "gpt-5.4-large"}},
 				},
 			},
 		}

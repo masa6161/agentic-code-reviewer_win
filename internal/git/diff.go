@@ -6,6 +6,8 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+
+	"github.com/richhaase/agentic-code-reviewer/internal/domain"
 )
 
 // UpdateBranchResult contains the result of an UpdateCurrentBranch operation.
@@ -264,11 +266,11 @@ const (
 func (d DiffSize) String() string {
 	switch d {
 	case DiffSizeSmall:
-		return "small"
+		return domain.SizeSmall
 	case DiffSizeMedium:
-		return "medium"
+		return domain.SizeMedium
 	case DiffSizeLarge:
-		return "large"
+		return domain.SizeLarge
 	default:
 		return "unknown"
 	}
