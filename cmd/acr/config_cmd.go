@@ -342,7 +342,11 @@ func newConfigValidateCmd() *cobra.Command {
 			// ignored and defaults used), but in validation mode we report them as errors
 			// since the user should fix their environment configuration.
 			envState, envWarnings := config.LoadEnvState()
-			errors = append(errors, envWarnings...)
+			for _, w := range envWarnings {
+				if !strings.Contains(w, "deprecated") {
+					errors = append(errors, w)
+				}
+			}
 
 			// ValidateAll path: when the config file has semantic errors we use an
 			// empty config so the individual semantic errors (already surfaced in

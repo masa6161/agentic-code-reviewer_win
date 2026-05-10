@@ -1299,6 +1299,47 @@ func TestLoadEnvState_MalformedFPFilter(t *testing.T) {
 	}
 }
 
+func TestLoadEnvState_FPFilterFalse_DeprecatedWarning(t *testing.T) {
+	clearACREnv(t)
+	t.Setenv("ACR_FP_FILTER", "false")
+	state, warnings := LoadEnvState()
+	if !state.FPFilterSet {
+		t.Error("expected FPFilterSet to be true")
+	}
+	if state.FPFilterEnabled {
+		t.Error("expected FPFilterEnabled to be false")
+	}
+	if !hasWarningContaining(warnings, "deprecated") {
+		t.Errorf("expected deprecated warning for ACR_FP_FILTER=false, got %v", warnings)
+	}
+}
+
+func TestLoadEnvState_FPFilterZero_DeprecatedWarning(t *testing.T) {
+	clearACREnv(t)
+	t.Setenv("ACR_FP_FILTER", "0")
+	state, warnings := LoadEnvState()
+	if !state.FPFilterSet {
+		t.Error("expected FPFilterSet to be true")
+	}
+	if state.FPFilterEnabled {
+		t.Error("expected FPFilterEnabled to be false")
+	}
+	if !hasWarningContaining(warnings, "deprecated") {
+		t.Errorf("expected deprecated warning for ACR_FP_FILTER=0, got %v", warnings)
+	}
+}
+
+func TestLoadEnvState_FPFilterTrue_NoDeprecatedWarning(t *testing.T) {
+	clearACREnv(t)
+	t.Setenv("ACR_FP_FILTER", "true")
+	_, warnings := LoadEnvState()
+	for _, w := range warnings {
+		if strings.Contains(w, "deprecated") {
+			t.Errorf("unexpected deprecated warning for ACR_FP_FILTER=true: %s", w)
+		}
+	}
+}
+
 func TestLoadEnvState_MalformedPRFeedback(t *testing.T) {
 	clearACREnv(t)
 	t.Setenv("ACR_PR_FEEDBACK", "maybe")

@@ -21,6 +21,9 @@ import (
 // ConfigFileName is the name of the config file.
 const ConfigFileName = ".acr.yaml"
 
+// FPFilterDeprecationSuffix is the shared deprecation message suffix for FP filter disable paths.
+const FPFilterDeprecationSuffix = "is deprecated; FP filter is now enabled by default with severity triage"
+
 // Duration is a custom type that handles YAML duration parsing.
 // Supports both Go duration format ("5m", "300s") and numeric seconds.
 type Duration time.Duration
@@ -1159,6 +1162,7 @@ func LoadEnvState() (EnvState, []string) {
 		case "false", "0":
 			state.FPFilterEnabled = false
 			state.FPFilterSet = true
+			warnings = append(warnings, fmt.Sprintf("ACR_FP_FILTER=%s %s", v, FPFilterDeprecationSuffix))
 		default:
 			warnings = append(warnings, fmt.Sprintf("ACR_FP_FILTER=%q is not a valid boolean (use true/false/1/0), ignoring", v))
 		}
