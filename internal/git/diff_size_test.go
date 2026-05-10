@@ -1,6 +1,10 @@
 package git
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/richhaase/agentic-code-reviewer/internal/domain"
+)
 
 func TestParseDiffStat(t *testing.T) {
 	tests := []struct {
@@ -96,9 +100,9 @@ func TestDiffSize_String(t *testing.T) {
 		size DiffSize
 		want string
 	}{
-		{DiffSizeSmall, "small"},
-		{DiffSizeMedium, "medium"},
-		{DiffSizeLarge, "large"},
+		{DiffSizeSmall, domain.SizeSmall},
+		{DiffSizeMedium, domain.SizeMedium},
+		{DiffSizeLarge, domain.SizeLarge},
 		{DiffSize(99), "unknown"},
 	}
 

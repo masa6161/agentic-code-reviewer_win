@@ -14,6 +14,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/richhaase/agentic-code-reviewer/internal/agent"
+	"github.com/richhaase/agentic-code-reviewer/internal/domain"
 	"github.com/richhaase/agentic-code-reviewer/internal/git"
 )
 
@@ -670,7 +671,7 @@ func canResolveCrossCheckModelForAgent(m ModelsConfig, agentName string) bool {
 	// Other size layers (sizes.small / sizes.medium) are dead code for this role
 	// and intentionally rejected here so users get a clear validate-time error
 	// rather than a silent "validates OK but cross-check never runs".
-	if rm, ok := m.Sizes["large"]; ok {
+	if rm, ok := m.Sizes[domain.SizeLarge]; ok {
 		if rm.CrossCheck != nil && strings.TrimSpace(rm.CrossCheck.Model) != "" {
 			return true
 		}
@@ -720,7 +721,7 @@ func (c *Config) validateModelsAgents() []string {
 	return errs
 }
 
-var validSizeKeys = []string{"small", "medium", "large"}
+var validSizeKeys = []string{domain.SizeSmall, domain.SizeMedium, domain.SizeLarge}
 
 // validateModelsSizes checks that all size keys in models.sizes are valid.
 func (c *Config) validateModelsSizes() []string {

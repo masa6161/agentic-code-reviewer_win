@@ -68,10 +68,10 @@ func TestResolve(t *testing.T) {
 						Reviewer: ms("x", ""),
 					},
 					Sizes: map[string]config.RoleModels{
-						"large": {Reviewer: ms("large-only", "")},
+						domain.SizeLarge: {Reviewer: ms("large-only", "")},
 					},
 				},
-				size:      "large",
+				size:      domain.SizeLarge,
 				role:      RoleReviewer,
 				agentName: "codex",
 			},
@@ -82,13 +82,13 @@ func TestResolve(t *testing.T) {
 			args: args{
 				cfgModels: config.ModelsConfig{
 					Sizes: map[string]config.RoleModels{
-						"large": {Reviewer: ms("large", "")},
+						domain.SizeLarge: {Reviewer: ms("large", "")},
 					},
 					Agents: map[string]config.RoleModels{
 						"codex": {Reviewer: ms("codex-only", "")},
 					},
 				},
-				size:      "large",
+				size:      domain.SizeLarge,
 				role:      RoleReviewer,
 				agentName: "codex",
 			},
@@ -155,7 +155,7 @@ func TestResolve(t *testing.T) {
 			args: args{
 				cfgModels: config.ModelsConfig{
 					Sizes: map[string]config.RoleModels{
-						"large": {Reviewer: ms("x", "")},
+						domain.SizeLarge: {Reviewer: ms("x", "")},
 					},
 				},
 				size:      "",
@@ -304,10 +304,10 @@ func TestResolveReviewer(t *testing.T) {
 						Reviewer: ms("def-gen", "med"),
 					},
 					Sizes: map[string]config.RoleModels{
-						"large": {DiffReviewer: ms("large-diff", "high")},
+						domain.SizeLarge: {DiffReviewer: ms("large-diff", "high")},
 					},
 				},
-				size:      "large",
+				size:      domain.SizeLarge,
 				phase:     domain.PhaseDiff,
 				agentName: "codex",
 			},

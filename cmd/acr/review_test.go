@@ -25,19 +25,19 @@ func TestParsePhases(t *testing.T) {
 	}{
 		{
 			name:      "small with 1 reviewer",
-			phaseStr:  "small",
+			phaseStr:  domain.SizeSmall,
 			reviewers: 1,
 			want:      []runner.PhaseConfig{{Phase: domain.PhaseDiff, ReviewerCount: 1}},
 		},
 		{
 			name:      "small with 3 reviewers",
-			phaseStr:  "small",
+			phaseStr:  domain.SizeSmall,
 			reviewers: 3,
 			want:      []runner.PhaseConfig{{Phase: domain.PhaseDiff, ReviewerCount: 3}},
 		},
 		{
 			name:      "medium with 3 reviewers",
-			phaseStr:  "medium",
+			phaseStr:  domain.SizeMedium,
 			reviewers: 3,
 			want: []runner.PhaseConfig{
 				{Phase: domain.PhaseArch, ReviewerCount: 1},
@@ -46,7 +46,7 @@ func TestParsePhases(t *testing.T) {
 		},
 		{
 			name:      "medium with 2 reviewers (minimum)",
-			phaseStr:  "medium",
+			phaseStr:  domain.SizeMedium,
 			reviewers: 2,
 			want: []runner.PhaseConfig{
 				{Phase: domain.PhaseArch, ReviewerCount: 1},
@@ -55,7 +55,7 @@ func TestParsePhases(t *testing.T) {
 		},
 		{
 			name:      "medium with 1 reviewer errors (needs >= 2)",
-			phaseStr:  "medium",
+			phaseStr:  domain.SizeMedium,
 			reviewers: 1,
 			wantErr:   true,
 		},
@@ -79,13 +79,13 @@ func TestParsePhases(t *testing.T) {
 		},
 		{
 			name:      "zero reviewers",
-			phaseStr:  "small",
+			phaseStr:  domain.SizeSmall,
 			reviewers: 0,
 			wantErr:   true,
 		},
 		{
 			name:      "negative reviewers",
-			phaseStr:  "small",
+			phaseStr:  domain.SizeSmall,
 			reviewers: -1,
 			wantErr:   true,
 		},
@@ -300,7 +300,7 @@ func TestAutoPhase_Large_FallbackOnError(t *testing.T) {
 	if apr.UseGrouped {
 		t.Fatal("expected UseGrouped=false when buildGroupedDiffSpecs fails")
 	}
-	if apr.PhaseStr != "medium" {
+	if apr.PhaseStr != domain.SizeMedium {
 		t.Errorf("expected PhaseStr 'medium', got %q", apr.PhaseStr)
 	}
 	if apr.MediumDiffCount != 2 {
@@ -498,11 +498,11 @@ func TestResolveCrossCheckAgents_ResolvesFromSizesModelsTree(t *testing.T) {
 		CrossCheckModel:   "",
 		Models: config.ModelsConfig{
 			Sizes: map[string]config.RoleModels{
-				"large": {CrossCheck: &config.ModelSpec{Model: "gpt-5.4-large"}},
+				domain.SizeLarge: {CrossCheck: &config.ModelSpec{Model: "gpt-5.4-large"}},
 			},
 		},
 	}}
-	_, models, err := resolveCrossCheckAgents(opts, "large")
+	_, models, err := resolveCrossCheckAgents(opts, domain.SizeLarge)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -625,7 +625,7 @@ func TestResolveAutoPhase_OneDiffGroup_FallsBackToFlat(t *testing.T) {
 	if apr.UseGrouped {
 		t.Fatal("expected UseGrouped=false for large_diff_reviewers=1")
 	}
-	if apr.PhaseStr != "medium" {
+	if apr.PhaseStr != domain.SizeMedium {
 		t.Errorf("expected PhaseStr 'medium', got %q", apr.PhaseStr)
 	}
 	if apr.FallbackReason == "" {
@@ -817,7 +817,7 @@ func TestExecuteReview_NoArgs_UsesAutoPhasePath(t *testing.T) {
 func TestExecuteReview_PhaseSmall_UsesFlatPath(t *testing.T) {
 	opts := ReviewOpts{
 		ResolvedConfig: config.ResolvedConfig{AutoPhase: true},
-		Phase:          "small",
+		Phase:          domain.SizeSmall,
 	}
 	if shouldUseAutoPhase(opts) {
 		t.Error("expected shouldUseAutoPhase=false when Phase is explicitly set")
@@ -845,25 +845,25 @@ func TestShouldRunRuntimeValidation_AutoPhase_NoExplicitPhase(t *testing.T) {
 }
 
 func TestShouldRunRuntimeValidation_AutoPhase_PhaseLarge(t *testing.T) {
-	if !shouldRunRuntimeValidation(true, "large") {
+	if !shouldRunRuntimeValidation(true, domain.SizeLarge) {
 		t.Error("expected true: --phase large can trigger cross-check via grouped review")
 	}
 }
 
 func TestShouldRunRuntimeValidation_NoAutoPhase_PhaseLarge(t *testing.T) {
-	if !shouldRunRuntimeValidation(false, "large") {
+	if !shouldRunRuntimeValidation(false, domain.SizeLarge) {
 		t.Error("expected true: --no-auto-phase --phase large still triggers cross-check")
 	}
 }
 
 func TestShouldRunRuntimeValidation_AutoPhase_PhaseSmall(t *testing.T) {
-	if shouldRunRuntimeValidation(true, "small") {
+	if shouldRunRuntimeValidation(true, domain.SizeSmall) {
 		t.Error("expected false: --phase small cannot trigger cross-check")
 	}
 }
 
 func TestShouldRunRuntimeValidation_AutoPhase_PhaseMedium(t *testing.T) {
-	if shouldRunRuntimeValidation(true, "medium") {
+	if shouldRunRuntimeValidation(true, domain.SizeMedium) {
 		t.Error("expected false: --phase medium cannot trigger cross-check")
 	}
 }
@@ -1060,7 +1060,7 @@ func TestResolveAutoPhase_LargeFallbackToMedium_WhenFileCountTooSmall(t *testing
 	if apr.UseGrouped {
 		t.Fatal("expected UseGrouped=false when fileCount<2")
 	}
-	if apr.PhaseStr != "medium" {
+	if apr.PhaseStr != domain.SizeMedium {
 		t.Errorf("expected PhaseStr 'medium', got %q", apr.PhaseStr)
 	}
 	if apr.MediumDiffCount != 3 {
@@ -1079,7 +1079,7 @@ func TestResolveAutoPhase_MediumUsesMediumDiffReviewersKnob(t *testing.T) {
 	if apr.UseGrouped {
 		t.Fatal("expected UseGrouped=false on medium")
 	}
-	if apr.PhaseStr != "medium" {
+	if apr.PhaseStr != domain.SizeMedium {
 		t.Errorf("expected PhaseStr 'medium', got %q", apr.PhaseStr)
 	}
 	if apr.MediumDiffCount != 4 {
@@ -1122,7 +1122,7 @@ func TestResolveAutoPhase_Small(t *testing.T) {
 	if apr.UseGrouped {
 		t.Errorf("expected UseGrouped=false for small")
 	}
-	if apr.PhaseStr != "small" {
+	if apr.PhaseStr != domain.SizeSmall {
 		t.Errorf("expected PhaseStr 'small', got %q", apr.PhaseStr)
 	}
 	if apr.MediumDiffCount != 0 {
@@ -1226,7 +1226,7 @@ func TestResolvePhaseLarge_InsufficientFiles_FallbackToMedium(t *testing.T) {
 	if result.UseGrouped {
 		t.Fatal("expected UseGrouped=false for 1 file")
 	}
-	if result.PhaseStr != "medium" {
+	if result.PhaseStr != domain.SizeMedium {
 		t.Errorf("expected PhaseStr 'medium', got %q", result.PhaseStr)
 	}
 	if result.FallbackReason == "" {
@@ -1516,7 +1516,7 @@ func TestLogPerPhaseModelMatrix_EmptyReviewerAgentsWithArchOverride(t *testing.T
 			DiffReviewerAgents: []string{"claude"},
 		},
 	}
-	logPerPhaseModelMatrix(terminal.NewLogger(), opts, "large")
+	logPerPhaseModelMatrix(terminal.NewLogger(), opts, domain.SizeLarge)
 }
 
 func TestLogPerPhaseModelMatrix_ArchOverrideTakesPrecedence(t *testing.T) {
@@ -1532,7 +1532,7 @@ func TestLogPerPhaseModelMatrix_ArchOverrideTakesPrecedence(t *testing.T) {
 			ArchReviewerAgent: "claude",
 		},
 	}
-	logPerPhaseModelMatrix(terminal.NewLogger(), opts, "large")
+	logPerPhaseModelMatrix(terminal.NewLogger(), opts, domain.SizeLarge)
 }
 
 func TestLogPerPhaseModelMatrix_ReviewerAgentsFallback(t *testing.T) {
@@ -1547,7 +1547,7 @@ func TestLogPerPhaseModelMatrix_ReviewerAgentsFallback(t *testing.T) {
 			ReviewerAgents: []string{"codex", "claude"},
 		},
 	}
-	logPerPhaseModelMatrix(terminal.NewLogger(), opts, "large")
+	logPerPhaseModelMatrix(terminal.NewLogger(), opts, domain.SizeLarge)
 }
 
 func TestLogPerPhaseModelMatrix_BothEmpty_GracefulDegrade(t *testing.T) {
@@ -1565,7 +1565,7 @@ func TestLogPerPhaseModelMatrix_BothEmpty_GracefulDegrade(t *testing.T) {
 			DiffReviewerAgents: nil,
 		},
 	}
-	logPerPhaseModelMatrix(terminal.NewLogger(), opts, "large")
+	logPerPhaseModelMatrix(terminal.NewLogger(), opts, domain.SizeLarge)
 }
 
 // --- logCrossCheckModelMatrix tests ---
@@ -1594,7 +1594,7 @@ func TestLogCrossCheckModelMatrix_ResolveErrorEmitsWarningNoPanic(t *testing.T) 
 			Models:            config.ModelsConfig{}, // empty: no path resolves
 		},
 	}
-	logCrossCheckModelMatrix(terminal.NewLogger(), opts, "large")
+	logCrossCheckModelMatrix(terminal.NewLogger(), opts, domain.SizeLarge)
 }
 
 func TestLogCrossCheckModelMatrix_AgentDefaultsToSummarizerWhenCrossCheckAgentEmpty(t *testing.T) {
@@ -1613,7 +1613,7 @@ func TestLogCrossCheckModelMatrix_AgentDefaultsToSummarizerWhenCrossCheckAgentEm
 			CrossCheckModel:   "gpt-5.4-mini",
 		},
 	}
-	logCrossCheckModelMatrix(terminal.NewLogger(), opts, "large")
+	logCrossCheckModelMatrix(terminal.NewLogger(), opts, domain.SizeLarge)
 }
 
 func TestLogCrossCheckModelMatrix_EmitsOneRowPerResolvedAgent(t *testing.T) {
@@ -1639,7 +1639,7 @@ func TestLogCrossCheckModelMatrix_EmitsOneRowPerResolvedAgent(t *testing.T) {
 			},
 		},
 	}
-	logCrossCheckModelMatrix(terminal.NewLogger(), opts, "large")
+	logCrossCheckModelMatrix(terminal.NewLogger(), opts, domain.SizeLarge)
 }
 
 // --- collectAllCLINames tests ---
