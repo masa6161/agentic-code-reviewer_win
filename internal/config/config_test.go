@@ -420,6 +420,62 @@ func TestResolve_ConfigOverridesDefault(t *testing.T) {
 	}
 }
 
+func TestResolve_CodexHomeFromEnvOnly(t *testing.T) {
+	envState := EnvState{CodexHome: "env-codex-home", CodexHomeSet: true}
+	result := Resolve(&Config{}, envState, FlagState{}, ResolvedConfig{})
+	if result.CodexHome != "env-codex-home" {
+		t.Errorf("expected env CodexHome, got %q", result.CodexHome)
+	}
+}
+
+func TestLoadEnvState_CodexHomePrecedence(t *testing.T) {
+	t.Setenv("ACR_CODEX_HOME", "acr-codex-home")
+	t.Setenv("CODEX_HOME", "codex-home")
+
+	state, warnings := LoadEnvState()
+	if len(warnings) != 0 {
+		t.Errorf("expected no warnings, got %v", warnings)
+	}
+	if !state.CodexHomeSet {
+		t.Fatal("expected CodexHomeSet=true")
+	}
+	if state.CodexHome != "acr-codex-home" {
+		t.Errorf("expected ACR_CODEX_HOME to win, got %q", state.CodexHome)
+	}
+}
+
+func TestLoadEnvState_CodexHomeFallsBackToCodexHome(t *testing.T) {
+	t.Setenv("ACR_CODEX_HOME", "")
+	t.Setenv("CODEX_HOME", "codex-home")
+
+	state, warnings := LoadEnvState()
+	if len(warnings) != 0 {
+		t.Errorf("expected no warnings, got %v", warnings)
+	}
+	if !state.CodexHomeSet {
+		t.Fatal("expected CodexHomeSet=true")
+	}
+	if state.CodexHome != "codex-home" {
+		t.Errorf("expected CODEX_HOME fallback, got %q", state.CodexHome)
+	}
+}
+
+func TestLoadEnvState_CodexHomeTrimsWhitespaceAndFallsBack(t *testing.T) {
+	t.Setenv("ACR_CODEX_HOME", "   ")
+	t.Setenv("CODEX_HOME", " codex-home ")
+
+	state, warnings := LoadEnvState()
+	if len(warnings) != 0 {
+		t.Errorf("expected no warnings, got %v", warnings)
+	}
+	if !state.CodexHomeSet {
+		t.Fatal("expected CodexHomeSet=true")
+	}
+	if state.CodexHome != "codex-home" {
+		t.Errorf("expected trimmed CODEX_HOME fallback, got %q", state.CodexHome)
+	}
+}
+
 func TestResolve_DefaultsUsedWhenNothingSet(t *testing.T) {
 	cfg := &Config{} // empty config
 	envState := EnvState{}
@@ -3347,6 +3403,30 @@ func TestCheckUnknownKeys_RolePromptsIsKnown(t *testing.T) {
 		if strings.Contains(w, "role_prompts") {
 			t.Errorf("role_prompts should be a known key, got warning: %s", w)
 		}
+	}
+}
+
+func TestLoadFromPathWithWarnings_CodexHomeIsUnknown(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, ".acr.yaml")
+
+	content := "codex_home: C:/Users/example/.codex\n"
+	if err := os.WriteFile(configPath, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := LoadFromPathWithWarnings(configPath)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	found := false
+	for _, w := range result.Warnings {
+		if strings.Contains(w, "codex_home") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected unknown-key warning for codex_home, got %v", result.Warnings)
 	}
 }
 

@@ -96,6 +96,11 @@ func newConfigShowCmd() *cobra.Command {
 				fmt.Fprintf(out, "  %-32s %s\n", "diff_reviewer_agents:", "(reviewer_agents)")
 			}
 			fmt.Fprintf(out, "  %-32s %s\n", "summarizer_agent:", resolved.SummarizerAgent)
+			if resolved.CodexHome != "" {
+				fmt.Fprintf(out, "  %-32s %s\n", "codex_home (env):", resolved.CodexHome)
+			} else {
+				fmt.Fprintf(out, "  %-32s %s\n", "codex_home (env):", "(ACR_CODEX_HOME/CODEX_HOME env or USERPROFILE/HOME/.codex)")
+			}
 			fmt.Fprintln(out)
 
 			// Models
@@ -244,6 +249,10 @@ func newConfigInitCmd() *cobra.Command {
 
 # Agent for summarization: codex, claude, gemini
 # summarizer_agent: codex
+
+# Codex CLI home is not read from .acr.yaml because repository config is shared.
+# Set ACR_CODEX_HOME as a Windows User environment variable instead.
+# Precedence: ACR_CODEX_HOME > CODEX_HOME > USERPROFILE/HOME/.codex
 
 # Timeout for summarizer phase (default: 5m)
 # summarizer_timeout: 5m
