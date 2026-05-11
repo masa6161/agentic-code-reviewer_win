@@ -14,6 +14,7 @@ type PhaseConfig struct {
 	AgentName     string // Which agent to use (empty = default from caller)
 	Model         string // Model override (empty = agent default)
 	Effort        string // Reasoning effort override (empty = agent default)
+	CodexHome     string // Codex home override passed only to Codex agents
 	Prompt        string // Per-phase guidance override (empty = use global guidance; phase prompt template is selected by Phase)
 }
 
@@ -41,25 +42,28 @@ func BuildReviewerSpecs(phases []PhaseConfig, defaultAgents []agent.Agent, globa
 			var a agent.Agent
 			if pc.AgentName != "" {
 				var err error
-				a, err = agent.NewAgentWithOptions(pc.AgentName, agent.AgentOptions{Model: pc.Model, Effort: pc.Effort})
+				a, err = agent.NewAgentWithOptions(pc.AgentName, agent.AgentOptions{Model: pc.Model, Effort: pc.Effort, CodexHome: pc.CodexHome})
 				if err != nil {
 					return nil, fmt.Errorf("phase %q agent %q: %w", pc.Phase, pc.AgentName, err)
 				}
 			} else {
 				base := agent.AgentForReviewer(defaultAgents, reviewerIdx)
-				if pc.Effort != "" || pc.Model != "" {
+				if pc.Effort != "" || pc.Model != "" || pc.CodexHome != "" {
 					// Merge: pc.Effort/Model が空のときは base agent の既存値を継承する。
 					// 部分 override (例: pc.Effort="high" のみ) で base agent の model
 					// 設定が落ちないようにするための cascade。現状 caller はこの分岐に
 					// 到達しないが (parsePhases / auto-phase はいずれも pc.Effort/Model
 					// を空に保つ)、将来 caller が増えたときの regression を予防する。
 					baseOpts := base.Options()
-					merged := agent.AgentOptions{Model: pc.Model, Effort: pc.Effort}
+					merged := agent.AgentOptions{Model: pc.Model, Effort: pc.Effort, CodexHome: pc.CodexHome}
 					if merged.Model == "" {
 						merged.Model = baseOpts.Model
 					}
 					if merged.Effort == "" {
 						merged.Effort = baseOpts.Effort
+					}
+					if merged.CodexHome == "" {
+						merged.CodexHome = baseOpts.CodexHome
 					}
 					var rebindErr error
 					a, rebindErr = agent.NewAgentWithOptions(base.Name(), merged)

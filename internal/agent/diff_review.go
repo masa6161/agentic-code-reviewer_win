@@ -15,6 +15,8 @@ type diffReviewConfig struct {
 	Command string
 	// Args are the CLI arguments (e.g., ["--print", "-"] for claude).
 	Args []string
+	// Env adds or overrides environment variables for this command.
+	Env map[string]string
 	// DefaultPrompt is the standard review prompt template for this agent.
 	DefaultPrompt string
 	// RefFilePrompt is the review prompt template used when diff is in a file (must have %s for path).
@@ -83,6 +85,7 @@ func executeDiffBasedReview(ctx context.Context, config *ReviewConfig, dc diffRe
 		Command:      dc.Command,
 		Args:         dc.Args,
 		Stdin:        stdin,
+		Env:          dc.Env,
 		WorkDir:      config.WorkDir,
 		TempFilePath: tempFilePath,
 	})

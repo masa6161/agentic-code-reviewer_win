@@ -10,9 +10,10 @@ import (
 
 // mockPhaseAgent implements agent.Agent for phase testing.
 type mockPhaseAgent struct {
-	name   string
-	model  string
-	effort string
+	name      string
+	model     string
+	effort    string
+	codexHome string
 }
 
 func (m *mockPhaseAgent) Name() string       { return m.name }
@@ -24,7 +25,7 @@ func (m *mockPhaseAgent) ExecuteSummary(_ context.Context, _ string, _ []byte) (
 	return nil, nil
 }
 func (m *mockPhaseAgent) Options() agent.AgentOptions {
-	return agent.AgentOptions{Model: m.model, Effort: m.effort}
+	return agent.AgentOptions{Model: m.model, Effort: m.effort, CodexHome: m.codexHome}
 }
 
 func TestBuildReviewerSpecs_ArchAndDiff(t *testing.T) {
@@ -162,15 +163,15 @@ func TestDefaultPromptForPhase(t *testing.T) {
 	}
 }
 
-// TestBuildReviewerSpecs_PhaseConfigEffortPreservesBaseModel locks in the
+// TestBuildReviewerSpecs_PhaseConfigEffortPreservesBaseOptions locks in the
 // cascade-merge behavior added in Round-9: when a PhaseConfig overrides only
 // Effort (or only Model) on the AgentName=="" path, the rebuilt agent must
-// inherit the unset field from the base agent's existing options instead of
-// silently dropping it. The current callers never populate PhaseConfig.Effort
-// or .Model, so this guard exists purely to prevent a future caller from
+// inherit unset fields from the base agent's existing options instead of
+// silently dropping them. The current callers never populate PhaseConfig.Effort
+// or .Model directly, so this guard exists purely to prevent a future caller from
 // re-introducing the Round-8 dead-code regression.
-func TestBuildReviewerSpecs_PhaseConfigEffortPreservesBaseModel(t *testing.T) {
-	base := &mockPhaseAgent{name: "codex", model: "gpt-5", effort: ""}
+func TestBuildReviewerSpecs_PhaseConfigEffortPreservesBaseOptions(t *testing.T) {
+	base := &mockPhaseAgent{name: "codex", model: "gpt-5", effort: "", codexHome: "base-codex-home"}
 	phases := []PhaseConfig{
 		{Phase: domain.PhaseDiff, ReviewerCount: 1, Effort: "high"},
 	}
@@ -189,5 +190,34 @@ func TestBuildReviewerSpecs_PhaseConfigEffortPreservesBaseModel(t *testing.T) {
 	}
 	if got.Effort != "high" {
 		t.Errorf("phase override lost: Options().Effort = %q, want %q", got.Effort, "high")
+	}
+	if got.CodexHome != "base-codex-home" {
+		t.Errorf("base CodexHome dropped: Options().CodexHome = %q, want %q", got.CodexHome, "base-codex-home")
+	}
+}
+
+func TestBuildReviewerSpecs_PhaseConfigCodexHomeOverridesBase(t *testing.T) {
+	base := &mockPhaseAgent{name: "codex", model: "gpt-5", effort: "medium", codexHome: "base-codex-home"}
+	phases := []PhaseConfig{
+		{Phase: domain.PhaseDiff, ReviewerCount: 1, CodexHome: "phase-codex-home"},
+	}
+
+	specs, err := BuildReviewerSpecs(phases, []agent.Agent{base}, "", "", false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(specs) != 1 {
+		t.Fatalf("got %d specs, want 1", len(specs))
+	}
+
+	got := specs[0].Agent.Options()
+	if got.Model != "gpt-5" {
+		t.Errorf("base model dropped: Options().Model = %q, want %q", got.Model, "gpt-5")
+	}
+	if got.Effort != "medium" {
+		t.Errorf("base effort dropped: Options().Effort = %q, want %q", got.Effort, "medium")
+	}
+	if got.CodexHome != "phase-codex-home" {
+		t.Errorf("phase CodexHome override lost: Options().CodexHome = %q, want %q", got.CodexHome, "phase-codex-home")
 	}
 }
