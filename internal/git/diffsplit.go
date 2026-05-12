@@ -192,31 +192,78 @@ func GroupDiffSections(sections []DiffSection, maxFilesPerGroup, maxLinesPerGrou
 		groups = append(groups, DiffGroup{Sections: curSections})
 	}
 
-	// Merge adjacent groups until within maxGroups
+	// Merge groups until within maxGroups.
+	// Strategy: pick the group with the fewest lines, then merge it with the
+	// partner whose combined line count is closest to the target average
+	// (totalLines / targetGroupCount). Partners that stay within the packing
+	// thresholds (maxLinesPerGroup, maxFilesPerGroup) are preferred; threshold
+	// exceedance is allowed only when no compliant partner exists.
+	// This removes the adjacency bias of the previous algorithm — git diff
+	// alphabetical order has no semantic meaning — and produces more balanced
+	// group sizes while respecting packing thresholds where possible.
+	lineCounts := make([]int, len(groups))
+	totalLines := 0
+	for i, g := range groups {
+		lc := groupLineCount(g)
+		lineCounts[i] = lc
+		totalLines += lc
+	}
 	for len(groups) > maxGroups {
-		// Find the adjacent pair with the smallest combined line count
-		bestIdx := 0
-		bestSum := groupLineCount(groups[0]) + groupLineCount(groups[1])
-		for i := 1; i < len(groups)-1; i++ {
-			sum := groupLineCount(groups[i]) + groupLineCount(groups[i+1])
-			if sum < bestSum {
-				bestSum = sum
-				bestIdx = i
+		targetAvg := totalLines / (len(groups) - 1)
+
+		minIdx := 0
+		for i := 1; i < len(groups); i++ {
+			if lineCounts[i] < lineCounts[minIdx] {
+				minIdx = i
+			}
+		}
+		minLines := lineCounts[minIdx]
+
+		bestPartner := -1
+		bestDist := 0
+		bestWithin := false
+		for i := range groups {
+			if i == minIdx {
+				continue
+			}
+			combined := minLines + lineCounts[i]
+			within := combined <= maxLinesPerGroup
+			dist := combined - targetAvg
+			if dist < 0 {
+				dist = -dist
+			}
+			if bestPartner == -1 ||
+				(within && !bestWithin) ||
+				(within == bestWithin && dist < bestDist) {
+				bestPartner = i
+				bestDist = dist
+				bestWithin = within
 			}
 		}
 
-		// Merge groups[bestIdx] and groups[bestIdx+1] into a fresh slice so the
-		// merged group does not alias the underlying array of either source group.
-		mergedSections := make([]DiffSection, 0, len(groups[bestIdx].Sections)+len(groups[bestIdx+1].Sections))
-		mergedSections = append(mergedSections, groups[bestIdx].Sections...)
-		mergedSections = append(mergedSections, groups[bestIdx+1].Sections...)
+		lo, hi := minIdx, bestPartner
+		if lo > hi {
+			lo, hi = hi, lo
+		}
+		mergedSections := make([]DiffSection, 0, len(groups[lo].Sections)+len(groups[hi].Sections))
+		mergedSections = append(mergedSections, groups[lo].Sections...)
+		mergedSections = append(mergedSections, groups[hi].Sections...)
 		merged := DiffGroup{Sections: mergedSections}
-		// Replace bestIdx and bestIdx+1 with the merged group
+		mergedLC := lineCounts[lo] + lineCounts[hi]
+
 		newGroups := make([]DiffGroup, 0, len(groups)-1)
-		newGroups = append(newGroups, groups[:bestIdx]...)
+		newGroups = append(newGroups, groups[:lo]...)
 		newGroups = append(newGroups, merged)
-		newGroups = append(newGroups, groups[bestIdx+2:]...)
+		newGroups = append(newGroups, groups[lo+1:hi]...)
+		newGroups = append(newGroups, groups[hi+1:]...)
 		groups = newGroups
+
+		newLC := make([]int, 0, len(lineCounts)-1)
+		newLC = append(newLC, lineCounts[:lo]...)
+		newLC = append(newLC, mergedLC)
+		newLC = append(newLC, lineCounts[lo+1:hi]...)
+		newLC = append(newLC, lineCounts[hi+1:]...)
+		lineCounts = newLC
 	}
 
 	// Assign keys

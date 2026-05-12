@@ -274,6 +274,21 @@ Iteration N (N = 1 から開始):
 {notes_for_next_review の内容}
 ```
 
+### スコープ外再検証
+
+各 finding のレポート出力前に、変更 diff のスコープ外の知識を用いた再検証を行う。
+
+**背景**: ACR の FP filter は変更 diff の範囲内で false positive を判定する。影響範囲の検証にスコープ外の知識（呼び出し元の契約、コードベース全体の構造、ユーザーの設計意図など）を必要とする指摘は構造的にすり抜ける。
+
+**手順**: 各 finding に対し、以下を確認する:
+1. 指摘が参照する契約・不変条件は、変更スコープ外のコードで実際に成立しているか
+2. 指摘が想定する下流への影響は、実際の呼び出し元で発生しうるか
+3. ユーザーの設計意図と矛盾しないか
+
+再検証の結果は Finding ブロックの「修正方針」に反映する:
+- **妥当**: 具体的な修正方針を策定する
+- **FP**: 対応不要とし、FP と判断した根拠を記載する
+
 ### Finding ブロック
 
 全 finding（findings[] と cross_check.findings[] の両方）に対して 1 から始まる通し番号 `{seq}` を振る。findings[] を先に番号付けし、cross_check.findings[] はその続番とする。
@@ -301,7 +316,7 @@ Iteration N (N = 1 から開始):
 - `{title}`: `title` フィールドをそのまま使用
 - `{summary}`: `summary` フィールドをそのまま使用
 - `{messages[]}`: 各メッセージを改行で区切って表示
-- **修正方針**: あなた自身が finding の内容を分析し、どのファイルのどの部分をどう修正すべきか具体的に策定する
+- **修正方針**: スコープ外再検証を経た上で策定する。妥当な finding にはどのファイルのどの部分をどう修正すべきか具体的に記載する。FP と判断した場合は「FP: {根拠}」と記載し対応不要とする
 
 ### Cross-Check Finding ブロック
 
@@ -309,7 +324,7 @@ Cross-check finding 固有のフィールド導出ルール:
 - `{SEVERITY}`: Finding ブロックと同一ルール（`severity` を大文字化。空文字の場合は "ADVISORY"）
 - `{type}`: `type` フィールドをそのまま使用（"escalation" / "gap" 等）
 - `{involved_groups}`: `involved_groups` 配列をカンマ区切りで結合
-- **修正方針**: cross-check の内容と `related_finding_ids` で紐づく arch/diff findings を分析し、修正方針を策定する。対応する arch/diff finding（`#{seq}`）で既に同等の修正方針を述べている場合は番号参照でよい
+- **修正方針**: スコープ外再検証を経た上で策定する。cross-check の内容と `related_finding_ids` で紐づく arch/diff findings を分析し、妥当な場合は修正方針を記載する。FP と判断した場合は「FP: {根拠}」と記載し対応不要とする。対応する arch/diff finding（`#{seq}`）で既に同等の修正方針を述べている場合は番号参照でよい
 
 ```markdown
 ### #{seq} [{SEVERITY}] [CROSS-CHECK] {title}
