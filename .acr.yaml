@@ -76,8 +76,8 @@ fp_filter:
   threshold: 75
   triage: true           # severity triage (blocking/advisory/noise) を有効化
   # show_noise: false    # noise 指摘を表示（既定: 非表示）
-  agent: claude          # FP filter/triage 用エージェント (default: summarizer_agent)
-  model: claude-opus-4-6 # FP filter/triage 用モデル (default: summarizer_model)
+  agent: codex           # FP filter/triage 用エージェント (default: summarizer_agent)
+  model: gpt-5.5         # FP filter/triage 用モデル (default: summarizer_model)
   effort: high           # FP filter/triage 用 effort (default: summarizer と同じ)
 
 # Cross-check configuration (Round-9 contract: model is REQUIRED when enabled,
@@ -85,7 +85,7 @@ fp_filter:
 cross_check:
   enabled: true
   agent: "codex,claude,gemini"
-  model: "gpt-5.5,claude-opus-4-7,gemini-3.1-pro-preview"
+  model: "gpt-5.5,claude-opus-4-6,gemini-3.1-pro-preview"
 
 # PR feedback summarization
 # pr_feedback:
