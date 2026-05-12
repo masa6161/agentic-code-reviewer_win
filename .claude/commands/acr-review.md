@@ -276,10 +276,12 @@ Iteration N (N = 1 から開始):
 
 ### Finding ブロック
 
+全 finding（findings[] と cross_check.findings[] の両方）に対して 1 から始まる通し番号 `{seq}` を振る。findings[] を先に番号付けし、cross_check.findings[] はその続番とする。
+
 各 finding について以下のブロックを出力:
 
 ```markdown
-### [{SEVERITY}] {title}
+### #{seq} [{SEVERITY}] {title}
 - **Severity**: {severity}
 - **Phase**: {phase}
 
@@ -303,13 +305,24 @@ Iteration N (N = 1 から開始):
 
 ### Cross-Check Finding ブロック
 
+Cross-check finding 固有のフィールド導出ルール:
+- `{SEVERITY}`: Finding ブロックと同一ルール（`severity` を大文字化。空文字の場合は "ADVISORY"）
+- `{type}`: `type` フィールドをそのまま使用（"escalation" / "gap" 等）
+- `{involved_groups}`: `involved_groups` 配列をカンマ区切りで結合
+- **修正方針**: cross-check の内容と `related_finding_ids` で紐づく arch/diff findings を分析し、修正方針を策定する。対応する arch/diff finding（`#{seq}`）で既に同等の修正方針を述べている場合は番号参照でよい
+
 ```markdown
-### [CROSS-CHECK] {title}
+### #{seq} [{SEVERITY}] [CROSS-CHECK] {title}
 - **Severity**: {severity}
 - **Type**: {type}
 - **関連グループ**: {involved_groups をカンマ区切りで表示}
 
 **要約:** {summary}
+
+**修正方針:**
+{cross-check の内容と関連する arch/diff findings を分析し、具体的な修正方針を策定する。
+ 関連する arch/diff finding で既に修正方針を述べている場合は、そちらを参照する形でよい
+ （例: "上記 #{seq} の修正方針に準ずる"）}
 ```
 
 ### カウントの計算
