@@ -5,7 +5,9 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
 
@@ -31,8 +33,9 @@ var _ Agent = (*CodexAgent)(nil)
 
 // CodexAgent implements the Agent interface for the Codex CLI backend.
 type CodexAgent struct {
-	model  string
-	effort string
+	model     string
+	effort    string
+	codexHome string
 }
 
 // NewCodexAgent creates a new CodexAgent instance.
@@ -43,7 +46,7 @@ func NewCodexAgent(model string) *CodexAgent {
 
 // NewCodexAgentWithOptions creates a new CodexAgent instance with the given options.
 func NewCodexAgentWithOptions(opts AgentOptions) *CodexAgent {
-	return &CodexAgent{model: opts.Model, effort: opts.Effort}
+	return &CodexAgent{model: opts.Model, effort: opts.Effort, codexHome: opts.CodexHome}
 }
 
 // Name returns the agent's identifier.
@@ -53,7 +56,7 @@ func (c *CodexAgent) Name() string {
 
 // Options returns the AgentOptions the agent was constructed with.
 func (c *CodexAgent) Options() AgentOptions {
-	return AgentOptions{Model: c.model, Effort: c.effort}
+	return AgentOptions{Model: c.model, Effort: c.effort, CodexHome: c.codexHome}
 }
 
 // IsAvailable checks if the codex CLI is installed and accessible.
@@ -97,6 +100,7 @@ func (c *CodexAgent) ExecuteReview(ctx context.Context, config *ReviewConfig) (*
 		return executeDiffBasedReview(ctx, config, diffReviewConfig{
 			Command:       "codex",
 			Args:          args,
+			Env:           c.codexEnv(),
 			DefaultPrompt: DefaultCodexPrompt,
 			RefFilePrompt: DefaultCodexRefFilePrompt,
 		})
@@ -111,6 +115,7 @@ func (c *CodexAgent) ExecuteReview(ctx context.Context, config *ReviewConfig) (*
 	return executeCommand(ctx, executeOptions{
 		Command: "codex",
 		Args:    args,
+		Env:     c.codexEnv(),
 		WorkDir: config.WorkDir,
 	})
 }
@@ -144,5 +149,47 @@ func (c *CodexAgent) ExecuteSummary(ctx context.Context, prompt string, input []
 		Command: "codex",
 		Args:    args,
 		Stdin:   stdin,
+		Env:     c.codexEnv(),
 	})
+}
+
+func (c *CodexAgent) codexEnv() map[string]string {
+	env := make(map[string]string)
+
+	codexHome := strings.TrimSpace(c.codexHome)
+	if codexHome == "" {
+		codexHome = strings.TrimSpace(os.Getenv("ACR_CODEX_HOME"))
+	}
+	if codexHome == "" {
+		codexHome = strings.TrimSpace(os.Getenv("CODEX_HOME"))
+	}
+	if codexHome == "" {
+		codexHome = defaultCodexHome()
+	}
+	if codexHome != "" {
+		env["CODEX_HOME"] = codexHome
+	}
+
+	userProfile := strings.TrimSpace(os.Getenv("USERPROFILE"))
+	home := strings.TrimSpace(os.Getenv("HOME"))
+
+	if userProfile == "" && home != "" {
+		env["USERPROFILE"] = home
+	}
+	if home == "" && userProfile != "" {
+		env["HOME"] = userProfile
+	}
+	env["LC_ALL"] = "C"
+
+	return env
+}
+
+func defaultCodexHome() string {
+	if userProfile := strings.TrimSpace(os.Getenv("USERPROFILE")); userProfile != "" {
+		return filepath.Join(userProfile, ".codex")
+	}
+	if home := strings.TrimSpace(os.Getenv("HOME")); home != "" {
+		return filepath.Join(home, ".codex")
+	}
+	return ""
 }

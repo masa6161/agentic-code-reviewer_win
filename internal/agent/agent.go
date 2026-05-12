@@ -16,6 +16,10 @@ import (
 type AgentOptions struct {
 	Model  string
 	Effort string
+	// CodexHome is the resolved Codex home for codex subprocesses.
+	// It is supplied by operator-controlled environment resolution, not by
+	// repository .acr.yaml content.
+	CodexHome string
 }
 
 // Agent represents a backend that can execute code reviews and summarizations.
@@ -44,6 +48,6 @@ type Agent interface {
 
 	// Options returns the AgentOptions the agent was constructed with.
 	// Used by callers (e.g., runner.BuildReviewerSpecs) to merge per-phase
-	// overrides with the agent's existing model/effort configuration.
+	// overrides with the agent's existing construction options.
 	Options() AgentOptions
 }

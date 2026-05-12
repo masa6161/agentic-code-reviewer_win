@@ -311,6 +311,142 @@ func TestCodexAgent_ExecuteSummary_Args(t *testing.T) {
 	}
 }
 
+func TestCodexAgent_ExecuteReview_PassesConfiguredCodexAuthEnv(t *testing.T) {
+	prepareMockCLI(t, "codex", "env")
+
+	configuredCodexHome := filepath.Join(t.TempDir(), "configured-codex")
+	userProfile := filepath.Join(t.TempDir(), "profile")
+	appData := filepath.Join(t.TempDir(), "appdata")
+	localAppData := filepath.Join(t.TempDir(), "localappdata")
+	t.Setenv("ACR_CODEX_HOME", "")
+	t.Setenv("CODEX_HOME", "")
+	t.Setenv("HOME", "")
+	t.Setenv("USERPROFILE", userProfile)
+	t.Setenv("APPDATA", appData)
+	t.Setenv("LOCALAPPDATA", localAppData)
+
+	agent := NewCodexAgentWithOptions(AgentOptions{CodexHome: configuredCodexHome})
+	result, err := agent.ExecuteReview(context.Background(), &ReviewConfig{
+		BaseRef: "main",
+		WorkDir: t.TempDir(),
+	})
+	if err != nil {
+		t.Fatalf("ExecuteReview() error: %v", err)
+	}
+	defer result.Close()
+
+	output, err := io.ReadAll(result)
+	if err != nil {
+		t.Fatalf("failed to read output: %v", err)
+	}
+	env := parseEnvOutput(string(output))
+
+	if got := env["CODEX_HOME"]; got != configuredCodexHome {
+		t.Errorf("CODEX_HOME = %q, want %q", got, configuredCodexHome)
+	}
+	if got := env["USERPROFILE"]; got != userProfile {
+		t.Errorf("USERPROFILE = %q, want %q", got, userProfile)
+	}
+	if got := env["HOME"]; got != userProfile {
+		t.Errorf("HOME = %q, want %q", got, userProfile)
+	}
+	if got := env["APPDATA"]; got != appData {
+		t.Errorf("APPDATA = %q, want %q", got, appData)
+	}
+	if got := env["LOCALAPPDATA"]; got != localAppData {
+		t.Errorf("LOCALAPPDATA = %q, want %q", got, localAppData)
+	}
+	if got := env["LC_ALL"]; got != "C" {
+		t.Errorf("LC_ALL = %q, want %q", got, "C")
+	}
+}
+
+func TestCodexAgent_ExecuteReview_ConfiguredCodexHomeOverridesProcessEnv(t *testing.T) {
+	prepareMockCLI(t, "codex", "env")
+
+	configuredCodexHome := filepath.Join(t.TempDir(), "configured-codex")
+	codexHome := filepath.Join(t.TempDir(), "codex-home")
+	acrCodexHome := filepath.Join(t.TempDir(), "acr-codex-home")
+	t.Setenv("ACR_CODEX_HOME", acrCodexHome)
+	t.Setenv("CODEX_HOME", codexHome)
+
+	agent := NewCodexAgentWithOptions(AgentOptions{CodexHome: configuredCodexHome})
+	result, err := agent.ExecuteReview(context.Background(), &ReviewConfig{
+		BaseRef: "main",
+		WorkDir: t.TempDir(),
+	})
+	if err != nil {
+		t.Fatalf("ExecuteReview() error: %v", err)
+	}
+	defer result.Close()
+
+	output, err := io.ReadAll(result)
+	if err != nil {
+		t.Fatalf("failed to read output: %v", err)
+	}
+	env := parseEnvOutput(string(output))
+	if got := env["CODEX_HOME"]; got != configuredCodexHome {
+		t.Errorf("CODEX_HOME = %q, want %q", got, configuredCodexHome)
+	}
+}
+
+func TestCodexAgent_ExecuteReview_CodexHomeFallsBackToProcessEnv(t *testing.T) {
+	prepareMockCLI(t, "codex", "env")
+
+	codexHome := filepath.Join(t.TempDir(), "codex-home")
+	acrCodexHome := filepath.Join(t.TempDir(), "acr-codex-home")
+	t.Setenv("ACR_CODEX_HOME", acrCodexHome)
+	t.Setenv("CODEX_HOME", codexHome)
+
+	agent := NewCodexAgent("")
+	result, err := agent.ExecuteReview(context.Background(), &ReviewConfig{
+		BaseRef: "main",
+		WorkDir: t.TempDir(),
+	})
+	if err != nil {
+		t.Fatalf("ExecuteReview() error: %v", err)
+	}
+	defer result.Close()
+
+	output, err := io.ReadAll(result)
+	if err != nil {
+		t.Fatalf("failed to read output: %v", err)
+	}
+	env := parseEnvOutput(string(output))
+	if got := env["CODEX_HOME"]; got != acrCodexHome {
+		t.Errorf("CODEX_HOME = %q, want %q", got, acrCodexHome)
+	}
+}
+
+func TestCodexAgent_ExecuteReview_DefaultCodexHomeFromUserProfile(t *testing.T) {
+	prepareMockCLI(t, "codex", "env")
+
+	userProfile := filepath.Join(t.TempDir(), "profile")
+	t.Setenv("ACR_CODEX_HOME", "")
+	t.Setenv("CODEX_HOME", "")
+	t.Setenv("USERPROFILE", userProfile)
+
+	agent := NewCodexAgent("")
+	result, err := agent.ExecuteReview(context.Background(), &ReviewConfig{
+		BaseRef: "main",
+		WorkDir: t.TempDir(),
+	})
+	if err != nil {
+		t.Fatalf("ExecuteReview() error: %v", err)
+	}
+	defer result.Close()
+
+	output, err := io.ReadAll(result)
+	if err != nil {
+		t.Fatalf("failed to read output: %v", err)
+	}
+	env := parseEnvOutput(string(output))
+	want := filepath.Join(userProfile, ".codex")
+	if got := env["CODEX_HOME"]; got != want {
+		t.Errorf("CODEX_HOME = %q, want %q", got, want)
+	}
+}
+
 func TestCodexReasoningEffortArgs(t *testing.T) {
 	cases := []struct {
 		in   string
@@ -337,6 +473,17 @@ func TestCodexReasoningEffortArgs(t *testing.T) {
 			}
 		})
 	}
+}
+
+func parseEnvOutput(output string) map[string]string {
+	env := make(map[string]string)
+	for _, line := range strings.Split(output, "\n") {
+		key, value, ok := strings.Cut(line, "=")
+		if ok {
+			env[key] = value
+		}
+	}
+	return env
 }
 
 func TestCodexAgent_ExecuteReview_WithEffort(t *testing.T) {

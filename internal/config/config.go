@@ -856,6 +856,7 @@ type ResolvedConfig struct {
 	// ReviewerAgents.
 	DiffReviewerAgents     []string
 	SummarizerAgent        string
+	CodexHome              string
 	ReviewerModel          string
 	SummarizerModel        string
 	SummarizerTimeout      time.Duration
@@ -956,6 +957,8 @@ type EnvState struct {
 	DiffReviewerAgentsSet  bool
 	SummarizerAgent        string
 	SummarizerAgentSet     bool
+	CodexHome              string
+	CodexHomeSet           bool
 	ReviewerModel          string
 	ReviewerModelSet       bool
 	SummarizerModel        string
@@ -1102,6 +1105,13 @@ func LoadEnvState() (EnvState, []string) {
 	if v := os.Getenv("ACR_SUMMARIZER_AGENT"); v != "" {
 		state.SummarizerAgent = v
 		state.SummarizerAgentSet = true
+	}
+	if v := strings.TrimSpace(os.Getenv("ACR_CODEX_HOME")); v != "" {
+		state.CodexHome = v
+		state.CodexHomeSet = true
+	} else if v := strings.TrimSpace(os.Getenv("CODEX_HOME")); v != "" {
+		state.CodexHome = v
+		state.CodexHomeSet = true
 	}
 	if v := os.Getenv("ACR_REVIEWER_MODEL"); v != "" {
 		state.ReviewerModel = v
@@ -1458,6 +1468,9 @@ func Resolve(cfg *Config, envState EnvState, flagState FlagState, flagValues Res
 	}
 	if envState.SummarizerAgentSet {
 		result.SummarizerAgent = envState.SummarizerAgent
+	}
+	if envState.CodexHomeSet {
+		result.CodexHome = envState.CodexHome
 	}
 	if envState.ReviewerModelSet {
 		result.ReviewerModel = envState.ReviewerModel

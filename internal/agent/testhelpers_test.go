@@ -35,6 +35,8 @@ func runAgentTestHelper() int {
 		return emitArgs(false, false)
 	case "args-prefix-stdin":
 		return emitArgs(true, true)
+	case "env":
+		return emitEnv("CODEX_HOME", "HOME", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "LC_ALL")
 	case "stdin":
 		_, _ = io.Copy(os.Stdout, os.Stdin)
 		return 0
@@ -60,6 +62,14 @@ func runAgentTestHelper() int {
 		_, _ = io.Copy(io.Discard, os.Stdin)
 		return 0
 	}
+}
+
+func emitEnv(keys ...string) int {
+	for _, key := range keys {
+		fmt.Fprintf(os.Stdout, "%s=%s\n", key, os.Getenv(key))
+	}
+	_, _ = io.Copy(io.Discard, os.Stdin)
+	return 0
 }
 
 func emitArgs(prefix bool, copyStdin bool) int {

@@ -5,7 +5,10 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
+	"runtime"
+	"strings"
 	"time"
 )
 
@@ -66,6 +69,8 @@ type executeOptions struct {
 	Stdin io.Reader
 	// WorkDir sets the working directory for the command.
 	WorkDir string
+	// Env adds or overrides environment variables for this command.
+	Env map[string]string
 	// TempFilePath is a temp file to clean up on Close (used by ref-file pattern).
 	TempFilePath string
 }
@@ -84,6 +89,9 @@ func executeCommand(ctx context.Context, opts executeOptions) (*ExecutionResult,
 	// #nosec G204 - Command is always one of the known agent CLIs (codex, claude, gemini)
 	// passed from trusted code in the agent implementations, not user input.
 	cmd := exec.CommandContext(ctx, opts.Command, opts.Args...)
+	if len(opts.Env) > 0 {
+		cmd.Env = mergeEnv(os.Environ(), opts.Env)
+	}
 
 	if opts.Stdin != nil {
 		cmd.Stdin = opts.Stdin
@@ -123,4 +131,45 @@ func executeCommand(ctx context.Context, opts executeOptions) (*ExecutionResult,
 	}
 
 	return reader.ToExecutionResult(), nil
+}
+
+func mergeEnv(base []string, overrides map[string]string) []string {
+	if len(overrides) == 0 {
+		return base
+	}
+
+	out := make([]string, 0, len(base)+len(overrides))
+	seen := make(map[string]int, len(base)+len(overrides))
+	for _, entry := range base {
+		key, _, ok := strings.Cut(entry, "=")
+		if !ok {
+			out = append(out, entry)
+			continue
+		}
+		norm := normalizeEnvKey(key)
+		seen[norm] = len(out)
+		out = append(out, entry)
+	}
+
+	for key, value := range overrides {
+		if key == "" {
+			continue
+		}
+		entry := key + "=" + value
+		norm := normalizeEnvKey(key)
+		if idx, ok := seen[norm]; ok {
+			out[idx] = entry
+			continue
+		}
+		seen[norm] = len(out)
+		out = append(out, entry)
+	}
+	return out
+}
+
+func normalizeEnvKey(key string) string {
+	if runtime.GOOS == "windows" {
+		return strings.ToUpper(key)
+	}
+	return key
 }

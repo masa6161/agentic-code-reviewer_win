@@ -112,8 +112,9 @@ type inputItem struct {
 // SummarizeOptions bundles model/effort resolution for the summarizer role.
 // Empty fields fall back to the agent's built-in defaults.
 type SummarizeOptions struct {
-	Model  string
-	Effort string
+	Model     string
+	Effort    string
+	CodexHome string
 }
 
 // Summarize summarizes the aggregated findings using an LLM.
@@ -133,7 +134,7 @@ func Summarize(ctx context.Context, agentName string, opts SummarizeOptions, agg
 	}
 
 	// Create agent
-	ag, err := agent.NewAgentWithOptions(agentName, agent.AgentOptions{Model: opts.Model, Effort: opts.Effort})
+	ag, err := agent.NewAgentWithOptions(agentName, agent.AgentOptions{Model: opts.Model, Effort: opts.Effort, CodexHome: opts.CodexHome})
 	if err != nil {
 		return nil, err
 	}

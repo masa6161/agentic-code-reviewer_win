@@ -56,6 +56,12 @@ diff_reviewer_agents:
 
 # Agent for summarization: codex, claude, gemini
 summarizer_agent: claude
+
+# Codex CLI home is intentionally not configured in .acr.yaml because this file
+# is repository-controlled. Set ACR_CODEX_HOME as a Windows User environment
+# variable instead.
+# Precedence: ACR_CODEX_HOME > CODEX_HOME > USERPROFILE/HOME/.codex
+
 # Path to file containing review guidance
 # guidance_file: ""
 

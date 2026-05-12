@@ -311,6 +311,8 @@ PR feedback summarization runs in parallel with the reviewers and is enabled by 
 | `ACR_ARCH_REVIEWER_AGENT` | Single agent for arch phase in auto-phase grouped diff |
 | `ACR_DIFF_REVIEWER_AGENTS`| Agent(s) for diff phase in auto-phase grouped diff |
 | `ACR_SUMMARIZER_AGENT`    | Default summarizer agent  |
+| `ACR_CODEX_HOME`          | Codex home directory passed to `codex` subprocesses; set as a user environment variable, not in `.acr.yaml` |
+| `CODEX_HOME`              | Fallback Codex home directory when `ACR_CODEX_HOME` is unset |
 | `ACR_SUMMARIZER_TIMEOUT`  | Timeout for summarizer phase (e.g., "5m" or "300") |
 | `ACR_FP_FILTER_TIMEOUT`   | Timeout for false positive filter phase (e.g., "5m" or "300") |
 | `ACR_AUTO_PHASE`          | Enable auto-phase selection (true/false)   |
@@ -325,6 +327,14 @@ PR feedback summarization runs in parallel with the reviewers and is enabled by 
 | `ACR_STRICT`              | Exit 1 on any advisory verdict (true/false) |
 | `ACR_GUIDANCE`            | Steering context appended to review prompt |
 | `ACR_GUIDANCE_FILE`       | Path to file containing review guidance    |
+
+Codex auth home is intentionally operator-controlled. On Windows, prefer a User
+environment variable and restart the terminal/agent process so child `codex`
+processes inherit it:
+
+```powershell
+[Environment]::SetEnvironmentVariable("ACR_CODEX_HOME", "C:\Users\<you>\.acr-codex-home", "User")
+```
 
 ## Configuration
 
@@ -346,6 +356,9 @@ fetch: true               # Fetch base ref from origin before diff
 #   - claude
 #   - gemini
 # summarizer_agent: codex # Agent for summarization (codex, claude, gemini)
+# Codex home is intentionally not configurable in .acr.yaml because repository
+# config is shared. Set ACR_CODEX_HOME as a user environment variable instead.
+# Precedence: ACR_CODEX_HOME > CODEX_HOME > USERPROFILE/HOME/.codex
 # reviewer_model: ""      # LLM model override for review agents
 # summarizer_model: ""    # LLM model override for summarizer/FP filter agents
 summarizer_timeout: 5m    # Timeout for summarizer phase
