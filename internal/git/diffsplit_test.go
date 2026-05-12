@@ -397,6 +397,68 @@ func TestGroupDiffSections_LargeFileExceedsThreshold(t *testing.T) {
 	}
 }
 
+func TestGroupDiffSections_MergeBalanced(t *testing.T) {
+	// 6 sections packed as 1-file groups with skewed sizes:
+	// small(10), large(300), small(10), small(10), large(300), small(10)
+	// The new target-average merge avoids combining two large files into a
+	// single group, producing better line-count balance than the old
+	// adjacency-based strategy.
+	sections := []DiffSection{
+		{FilePath: "a.go", Content: "diff --git a/a.go b/a.go\n+line", AddedLines: 10},
+		{FilePath: "b.go", Content: "diff --git a/b.go b/b.go\n+line", AddedLines: 300},
+		{FilePath: "c.go", Content: "diff --git a/c.go b/c.go\n+line", AddedLines: 10},
+		{FilePath: "d.go", Content: "diff --git a/d.go b/d.go\n+line", AddedLines: 10},
+		{FilePath: "e.go", Content: "diff --git a/e.go b/e.go\n+line", AddedLines: 300},
+		{FilePath: "f.go", Content: "diff --git a/f.go b/f.go\n+line", AddedLines: 10},
+	}
+	groups := GroupDiffSections(sections, 1, 500, 3)
+
+	if len(groups) != 3 {
+		t.Fatalf("GroupDiffSections() returned %d groups, want 3", len(groups))
+	}
+
+	total := 0
+	for _, g := range groups {
+		total += len(g.Sections)
+	}
+	if total != 6 {
+		t.Errorf("total sections = %d, want 6", total)
+	}
+
+	// The two 300-line files must NOT be merged with each other.
+	for i, g := range groups {
+		lc := groupLineCount(g)
+		if lc > 400 {
+			t.Errorf("group[%d] has %d lines — two large files were merged together, expected better balance", i, lc)
+		}
+	}
+}
+
+func TestGroupDiffSections_MergeRespectsThresholds(t *testing.T) {
+	// 4 groups: [290, 290, 40, 20], maxGroups=3, maxLines=300
+	// Without threshold awareness: 20+290=310 (closest to avg=213) → exceeds 300.
+	// With threshold preference: 20+40=60 (within 300) is chosen instead.
+	sections := []DiffSection{
+		{FilePath: "a.go", Content: "diff --git a/a.go b/a.go\n+line", AddedLines: 290},
+		{FilePath: "b.go", Content: "diff --git a/b.go b/b.go\n+line", AddedLines: 290},
+		{FilePath: "c.go", Content: "diff --git a/c.go b/c.go\n+line", AddedLines: 40},
+		{FilePath: "d.go", Content: "diff --git a/d.go b/d.go\n+line", AddedLines: 20},
+	}
+	groups := GroupDiffSections(sections, 1, 300, 3)
+
+	if len(groups) != 3 {
+		t.Fatalf("GroupDiffSections() returned %d groups, want 3", len(groups))
+	}
+
+	// The two small files (40+20=60) should merge, keeping both 290-line groups separate.
+	for i, g := range groups {
+		lc := groupLineCount(g)
+		if lc > 300 {
+			t.Errorf("group[%d] has %d lines — exceeded maxLinesPerGroup=300; threshold-compliant merge (40+20=60) was available", i, lc)
+		}
+	}
+}
+
 func TestGroupDiffSections_GroupKeys(t *testing.T) {
 	sections := makeSections(7, 10)
 	// maxFiles=2 → groups: [f1,f2], [f3,f4], [f5,f6], [f7] = 4 groups
