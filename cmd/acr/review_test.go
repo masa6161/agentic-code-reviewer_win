@@ -747,6 +747,94 @@ func TestBuildCrossCheckContext_UsesSpecReviewerID(t *testing.T) {
 	}
 }
 
+func TestBuildCrossCheckContext_PartialExitWithFindings(t *testing.T) {
+	specs := []runner.ReviewerSpec{
+		{ReviewerID: 1, Phase: domain.PhaseDiff, GroupKey: "g01", TargetFiles: []string{"a.go"}},
+	}
+	findings := []domain.Finding{
+		{Text: "issue found", ReviewerID: 1, GroupKey: "g01"},
+	}
+	aggregated := domain.AggregateFindings(findings)
+	results := []domain.ReviewerResult{
+		{ReviewerID: 1, ExitCode: 1, Findings: findings},
+	}
+
+	ccCtx := buildCrossCheckContext(aggregated, specs, results)
+
+	o := ccCtx.Outcomes[0]
+	if !o.Succeeded {
+		t.Errorf("expected Succeeded=true for non-zero exit with findings, got false")
+	}
+	if !o.PartialExit {
+		t.Errorf("expected PartialExit=true for non-zero exit with findings, got false")
+	}
+	if o.FindingCount != 1 {
+		t.Errorf("expected FindingCount=1, got %d", o.FindingCount)
+	}
+}
+
+func TestBuildCrossCheckContext_FailedNoFindings(t *testing.T) {
+	specs := []runner.ReviewerSpec{
+		{ReviewerID: 1, Phase: domain.PhaseDiff, GroupKey: "g01", TargetFiles: []string{"a.go"}},
+	}
+	results := []domain.ReviewerResult{
+		{ReviewerID: 1, ExitCode: 1},
+	}
+
+	ccCtx := buildCrossCheckContext(nil, specs, results)
+
+	o := ccCtx.Outcomes[0]
+	if o.Succeeded {
+		t.Errorf("expected Succeeded=false for non-zero exit with no findings, got true")
+	}
+	if o.PartialExit {
+		t.Errorf("expected PartialExit=false for non-zero exit with no findings, got true")
+	}
+}
+
+func TestBuildCrossCheckContext_AuthFailedWithFindings(t *testing.T) {
+	specs := []runner.ReviewerSpec{
+		{ReviewerID: 1, Phase: domain.PhaseDiff, GroupKey: "g01", TargetFiles: []string{"a.go"}},
+	}
+	findings := []domain.Finding{
+		{Text: "issue found", ReviewerID: 1, GroupKey: "g01"},
+	}
+	aggregated := domain.AggregateFindings(findings)
+	results := []domain.ReviewerResult{
+		{ReviewerID: 1, ExitCode: 1, AuthFailed: true, Findings: findings},
+	}
+
+	ccCtx := buildCrossCheckContext(aggregated, specs, results)
+
+	o := ccCtx.Outcomes[0]
+	if o.Succeeded {
+		t.Errorf("expected Succeeded=false for auth failure even with findings, got true")
+	}
+}
+
+func TestBuildCrossCheckContext_CleanExitNotPartial(t *testing.T) {
+	specs := []runner.ReviewerSpec{
+		{ReviewerID: 1, Phase: domain.PhaseDiff, GroupKey: "g01", TargetFiles: []string{"a.go"}},
+	}
+	findings := []domain.Finding{
+		{Text: "issue found", ReviewerID: 1, GroupKey: "g01"},
+	}
+	aggregated := domain.AggregateFindings(findings)
+	results := []domain.ReviewerResult{
+		{ReviewerID: 1, ExitCode: 0, Findings: findings},
+	}
+
+	ccCtx := buildCrossCheckContext(aggregated, specs, results)
+
+	o := ccCtx.Outcomes[0]
+	if !o.Succeeded {
+		t.Errorf("expected Succeeded=true for clean exit, got false")
+	}
+	if o.PartialExit {
+		t.Errorf("expected PartialExit=false for clean exit, got true")
+	}
+}
+
 // --- isLGTM gate tests ---
 
 // TestReviewGate_CrossCheckOnlyBlocking_FailsGate: grouped has no findings but

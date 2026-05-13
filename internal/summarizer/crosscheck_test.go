@@ -128,6 +128,27 @@ func TestBuildCrossCheckPayload_OutcomesMergedByKey(t *testing.T) {
 	}
 }
 
+func TestBuildCrossCheckPayload_PartialExitPropagated(t *testing.T) {
+	ccCtx := CrossCheckContext{
+		Groups: []GroupInfo{
+			{GroupKey: "g01", Phase: domain.PhaseDiff, TargetFiles: []string{"a.go"}},
+		},
+		Outcomes: []GroupOutcome{
+			{GroupKey: "g01", Succeeded: true, PartialExit: true, FindingCount: 2},
+		},
+	}
+	payload := buildCrossCheckPayload(ccCtx)
+	if len(payload.Groups) != 1 {
+		t.Fatalf("expected 1 group, got %d", len(payload.Groups))
+	}
+	if !payload.Groups[0].PartialExit {
+		t.Errorf("expected PartialExit=true in payload, got false")
+	}
+	if !payload.Groups[0].Succeeded {
+		t.Errorf("expected Succeeded=true in payload, got false")
+	}
+}
+
 func TestCrossCheck_SkippedForSingleGroup(t *testing.T) {
 	ccCtx := CrossCheckContext{
 		Groups: []GroupInfo{{GroupKey: domain.PhaseArch}},

@@ -1041,7 +1041,8 @@ func buildCrossCheckContext(findings []domain.AggregatedFinding, specs []runner.
 	}
 
 	// Aggregate outcomes by group key. A group succeeds if >=1 reviewer for it
-	// returned without timeout/auth failure.
+	// returned exit 0, or produced findings despite non-zero exit, without
+	// timeout/auth failure.
 	outcomeByKey := make(map[string]*summarizer.GroupOutcome, len(groupInfos))
 	for _, g := range groupInfos {
 		outcomeByKey[g.GroupKey] = &summarizer.GroupOutcome{GroupKey: g.GroupKey}
@@ -1063,8 +1064,16 @@ func buildCrossCheckContext(findings []domain.AggregatedFinding, specs []runner.
 		if r.AuthFailed {
 			o.AuthFailed = true
 		}
-		if !r.TimedOut && !r.AuthFailed && r.ExitCode == 0 {
-			o.Succeeded = true
+		if !r.TimedOut && !r.AuthFailed {
+			if r.ExitCode == 0 {
+				o.Succeeded = true
+			} else if len(r.Findings) > 0 {
+				// Non-zero exit with findings: the reviewer ran far enough to
+				// produce results (e.g., sandbox shell failure after review).
+				// Treating this as a gap would re-introduce Issue #42.
+				o.Succeeded = true
+				o.PartialExit = true
+			}
 		}
 		o.FindingCount += len(r.Findings)
 	}
