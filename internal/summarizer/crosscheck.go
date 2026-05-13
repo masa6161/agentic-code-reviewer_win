@@ -83,6 +83,7 @@ type GroupOutcome struct {
 	TimedOut     bool
 	AuthFailed   bool
 	FindingCount int
+	PartialExit  bool
 }
 
 // CrossCheckResult contains the cross-group verification results.
@@ -186,10 +187,11 @@ Key context:
 - "arch" group reviewed the ENTIRE change for architectural concerns
 - "diff" groups (g01, g02, ...) each reviewed a SUBSET of files
 - Groups with succeeded=false or finding_count=0 may indicate blind spots
+- Groups with partial_exit=true (present only when true; absent means false) completed review despite non-fatal tool errors (e.g., sandbox shell failures) - treat their findings as valid, not as coverage gaps
 
 Tasks:
 1. CONTRADICTIONS: findings from different groups giving mutually exclusive recommendations
-2. GAPS: arch concerns not addressed by any succeeding diff group, OR cross-file issues split across group boundaries. A diff group with succeeded=false is a gap source (no data, not "no issues").
+2. GAPS: arch concerns not addressed by any succeeding diff group, OR cross-file issues split across group boundaries. A diff group with succeeded=false is a gap source (no data, not "no issues"). A diff group with succeeded=true and partial_exit=true is NOT a gap - it reviewed the diff successfully despite optional tool failures.
 3. ESCALATIONS: findings whose severity should increase when seen in multi-group context (e.g., pattern affects files across multiple groups)
 
 Output (JSON only, no prose):
@@ -210,6 +212,7 @@ Rules:
 - Return ONLY valid JSON
 - Only report genuine cross-group issues - do not restate existing findings
 - A diff group with succeeded=false means its coverage is unknown - flag as gap
+- A diff group with partial_exit=true but succeeded=true is NOT a gap - its findings are valid
 - If no cross-group issues: {"findings": []}
 `
 
@@ -223,6 +226,7 @@ type crossCheckGroupJSON struct {
 	Succeeded    bool     `json:"succeeded"`
 	TimedOut     bool     `json:"timed_out,omitempty"`
 	AuthFailed   bool     `json:"auth_failed,omitempty"`
+	PartialExit  bool     `json:"partial_exit,omitempty"`
 	FindingCount int      `json:"finding_count"`
 }
 
@@ -267,6 +271,7 @@ func buildCrossCheckPayload(ccCtx CrossCheckContext) crossCheckPayload {
 			Succeeded:    o.Succeeded,
 			TimedOut:     o.TimedOut,
 			AuthFailed:   o.AuthFailed,
+			PartialExit:  o.PartialExit,
 			FindingCount: o.FindingCount,
 		})
 	}
