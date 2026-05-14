@@ -401,15 +401,13 @@ func (r *Runner) runReviewer(ctx context.Context, reviewerID int) domain.Reviewe
 		r.logger.Logf(terminal.StyleWarning, "Reviewer #%d: close error (non-fatal): %v", reviewerID, closeErr)
 	}
 	result.ExitCode = execResult.ExitCode()
+	result.Stderr = strings.TrimSpace(execResult.Stderr())
 
 	// Detect auth failure from exit code and stderr
 	if result.ExitCode != 0 {
-		if r.verbose() {
-			stderr := strings.TrimSpace(execResult.Stderr())
-			if stderr != "" {
-				r.logger.Logf(terminal.StyleWarning, "Reviewer #%d stderr:%s\n%s",
-					reviewerID, terminal.Color(terminal.Reset), stderr)
-			}
+		if r.verbose() && result.Stderr != "" {
+			r.logger.Logf(terminal.StyleWarning, "Reviewer #%d stderr:%s\n%s",
+				reviewerID, terminal.Color(terminal.Reset), result.Stderr)
 		}
 		result.AuthFailed = agent.IsAuthFailure(selectedAgent.Name(), result.ExitCode, execResult.Stderr())
 	}

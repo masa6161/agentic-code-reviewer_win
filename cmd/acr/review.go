@@ -524,6 +524,11 @@ func executeReview(ctx context.Context, opts ReviewOpts, logger *terminal.Logger
 	// Check if all reviewers failed
 	if stats.AllFailed() {
 		logger.Log("All reviewers failed", terminal.StyleError)
+		if !opts.Verbose {
+			if detail := formatFailedReviewerStderr(results); detail != "" {
+				logger.Logf(terminal.StyleWarning, "\n%s", detail)
+			}
+		}
 		return domain.ExitError
 	}
 

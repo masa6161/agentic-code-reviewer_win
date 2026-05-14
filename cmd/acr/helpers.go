@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/richhaase/agentic-code-reviewer/internal/domain"
 )
@@ -45,4 +46,34 @@ func exitCode(code domain.ExitCode) error {
 		return nil
 	}
 	return exitCodeError{code: code}
+}
+
+const maxStderrLines = 40
+
+func formatFailedReviewerStderr(results []domain.ReviewerResult) string {
+	var parts []string
+	for _, r := range results {
+		if r.Stderr == "" {
+			continue
+		}
+		label := "failed"
+		if r.AuthFailed {
+			label = "auth failed"
+		} else if r.TimedOut {
+			label = "timed out"
+		}
+
+		header := fmt.Sprintf("Reviewer #%d (%s) [%s]:", r.ReviewerID, r.AgentName, label)
+
+		lines := strings.Split(r.Stderr, "\n")
+		var body string
+		if len(lines) > maxStderrLines {
+			body = fmt.Sprintf("... (last %d lines of captured output)\n", maxStderrLines) + strings.Join(lines[len(lines)-maxStderrLines:], "\n")
+		} else {
+			body = r.Stderr
+		}
+
+		parts = append(parts, header+"\n"+body)
+	}
+	return strings.Join(parts, "\n\n")
 }
