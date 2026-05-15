@@ -17,13 +17,13 @@
 
 ## プロジェクト概要
 
-Go 製 CLI `acr` の native Windows ポーティング。フォーク元は [richhaase/agentic-code-reviewer](https://github.com/richhaase/agentic-code-reviewer)（mac/unix 専用）。LLM reviewer CLI (`codex`, `claude`, `gemini`) をサブプロセスで起動し、並列コードレビューを行う。GitHub 連携は `gh` CLI 前提。PR 投稿機能はベータ段階で、`--local` が現在サポートされるパス。
+Go 製 CLI `arc` の native Windows ポーティング。現行リポジトリは [masa6161/arc-cli](https://github.com/masa6161/arc-cli)。Rich Haase 版を起点にした hard fork として、Adaptive Review Coordinator へリネームしている。LLM reviewer CLI (`codex`, `claude`, `gemini`) をサブプロセスで起動し、並列コードレビューを行う。GitHub 連携は `gh` CLI 前提。PR 投稿機能はベータ段階で、`--local` が現在サポートされるパス。
 
 ## ビルドとテスト
 
 ```powershell
 go test ./...
-go build ./cmd/acr
+go build ./cmd/arc
 ```
 
 詳細（キャッシュ設定、auto-phase、Makefile の制限事項）は [docs/development.md](docs/development.md#ビルドとテスト詳細) を参照。
@@ -33,25 +33,25 @@ go build ./cmd/acr
 - 全シェルコマンドにデフォルトで PowerShell 構文を使用すること。bash 固有の構文（bash 式 sed、bash 環境変数展開など）は使用しない。
 - git 操作の interactive rebase では `GIT_SEQUENCE_EDITOR` ハックより `--autosquash` フラグを優先。
 
-## ACR バイナリの使い分け
+## ARC バイナリの使い分け
 
-- コードレビュー実行 → 安定バイナリ `C:\Users\kondo\go\bin\acr.exe`
-- ACR のコード変更テスト → テストビルド `.\acr.exe`
+- コードレビュー実行 → 安定バイナリ `C:\Users\kondo\go\bin\arc.exe`
+- ARC のコード変更テスト → テストビルド `.\arc.exe`
 - レビューゲートにテストビルドを使うことは禁止
 
-詳細は [docs/development.md](docs/development.md#ACR-バイナリの使い分け詳細) を参照。
+詳細は [docs/development.md](docs/development.md#ARC-バイナリの使い分け詳細) を参照。
 
 ## 変更時の最低確認
 
 - `internal/agent/` を触ったら: `go test ./internal/agent ./internal/runner ./integration`
-- `cmd/acr/` を触ったら: `go build -o .\acr.exe .\cmd\acr` + 必要なら `.\acr.exe --help`
-- reviewer 実行パスを触ったら: 可能なら `.\acr.exe --local ... --verbose` で実動作確認
-- コードレビュー実行時: 必ず安定バイナリ `C:\Users\kondo\go\bin\acr.exe` を使用
+- `cmd/arc/` を触ったら: `go build -o .\arc.exe .\cmd\arc` + 必要なら `.\arc.exe --help`
+- reviewer 実行パスを触ったら: 可能なら `.\arc.exe --local ... --verbose` で実動作確認
+- コードレビュー実行時: 必ず安定バイナリ `C:\Users\kondo\go\bin\arc.exe` を使用
 
 ## GitHub / Git 操作
 
-- GitHub 操作には常にユーザーのフォークリポジトリ `masa6161/agentic-code-reviewer_win` (origin) を使用すること。upstream (`richhaase/agentic-code-reviewer`) は不可。`gh api` 呼び出し前にリモートターゲットを確認すること。
-- `gh pr create` 実行時は `--repo masa6161/agentic-code-reviewer_win` を明示指定する。ユーザーから明示的にフォーク元への PR を指示された場合のみ、upstream を対象にしてよい。
+- GitHub 操作には常にユーザーのフォークリポジトリ `masa6161/arc-cli` (origin) を使用すること。Rich Haase 版 upstream は不可。`gh api` 呼び出し前にリモートターゲットを確認すること。
+- `gh pr create` 実行時は `--repo masa6161/arc-cli` を明示指定する。ユーザーから明示的にフォーク元への PR を指示された場合のみ、upstream を対象にしてよい。
 - PR レビューワークフローでは、レビューコメントへの返信に正しいエンドポイントで `gh api` を使用すること（`POST /repos/{owner}/{repo}/pulls/{pull_number}/reviews/{review_id}/comments` または pulls comments の返信エンドポイント）。呼び出し前に API エンドポイントを確認すること。
 - 変更は意味単位で分割してコミットする。
 - 過去コミットの是正なら `fixup` を優先する。

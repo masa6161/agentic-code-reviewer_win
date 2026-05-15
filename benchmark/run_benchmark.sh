@@ -1,5 +1,5 @@
 #!/bin/bash
-# ACR Role-Prompts A/B Benchmark
+# ARC Role-Prompts A/B Benchmark
 # Design: paired comparison on single Large diff
 # Base: 0469d70 (pre-role-prompt-tuning merge)
 # Diff: 12 files, 417 lines → auto-phase Large
@@ -8,7 +8,7 @@
 
 BASE="0469d70"
 OUTDIR="benchmark"
-BINARY="./acr.exe"
+BINARY="./arc.exe"
 
 mkdir -p "$OUTDIR"
 

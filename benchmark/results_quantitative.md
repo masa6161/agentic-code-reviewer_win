@@ -1,4 +1,4 @@
-# ACR Role-Prompts Benchmark: 定量結果
+# ARC Role-Prompts Benchmark: 定量結果
 
 **実施日**: 2026-04-29
 **対象 diff**: 0469d70..HEAD (12 files, 417 lines, auto-phase=Large)
