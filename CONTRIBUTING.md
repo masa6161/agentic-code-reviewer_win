@@ -33,11 +33,9 @@ you must review with at least 2. Override with:
 
 ## Project Structure
 
-See [CLAUDE.md](CLAUDE.md) for architecture overview, code patterns,
-and guidance on adding features.
+アーキテクチャ概要、コードパターン、機能追加ガイドは [AGENTS.md](AGENTS.md) を参照。
 
-## AI Contributors
+## AI コントリビューター
 
-This project uses CLAUDE.md as the primary development guide for AI
-assistants. If you're using Claude Code, Codex, or similar tools to
-contribute, that file has everything you need.
+本プロジェクトでは [AGENTS.md](AGENTS.md) を全 AI エージェント共通の開発ガイドとして使用しています。
+Claude Code, Codex, Gemini 等のツールで貢献する場合は、このファイルを参照してください。
