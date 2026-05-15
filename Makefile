@@ -1,11 +1,11 @@
-# Agentic Code Reviewer development tasks
+# Adaptive Review Coordinator development tasks
 
 .PHONY: help build test test-coverage fmt lint vet tidy clean find-deadcode staticcheck check eval eval-check-deps
 
 # Show available targets
 help:
 	@echo "Available targets:"
-	@echo "  build        - Build the acr binary with version information"
+	@echo "  build        - Build the arc binary with version information"
 	@echo "  test         - Run all unit tests"
 	@echo "  test-coverage - Run tests with coverage"
 	@echo "  fmt          - Format Go source code"
@@ -18,18 +18,18 @@ help:
 	@echo "  check        - Run all quality checks (fmt, lint, vet, staticcheck, tests)"
 	@echo "  eval         - Run eval tests (requires bats-core)"
 
-# Build the acr binary with version information
+# Build the arc binary with version information
 build:
-	@echo "Building acr with version information..."
+	@echo "Building arc with version information..."
 	@mkdir -p bin
 	@VERSION=$$(git describe --tags --always --dirty 2>/dev/null || echo "dev"); \
 	COMMIT=$$(git rev-parse --short HEAD 2>/dev/null || echo "none"); \
 	DATE=$$(date -u +"%Y-%m-%dT%H:%M:%SZ"); \
-	if ! go build -ldflags "-X main.version=$$VERSION -X main.commit=$$COMMIT -X main.date=$$DATE" -o bin/acr ./cmd/acr; then \
+	if ! go build -ldflags "-X main.version=$$VERSION -X main.commit=$$COMMIT -X main.date=$$DATE" -o bin/arc ./cmd/arc; then \
 		echo "Build failed"; \
 		exit 1; \
 	fi; \
-	echo "Built versioned acr binary to bin/ (version: $$VERSION)"
+	echo "Built versioned arc binary to bin/ (version: $$VERSION)"
 
 # Run all unit tests
 test:

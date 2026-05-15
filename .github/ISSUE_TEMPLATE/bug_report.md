@@ -22,7 +22,7 @@ assignees: ''
 
 ## Environment
 
-- ACR version: (`acr --version`)
+- ARC version: (`arc --version`)
 - OS: 
 - Agent: (codex/claude/gemini)
 

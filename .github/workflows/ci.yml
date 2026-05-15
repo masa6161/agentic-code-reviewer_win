@@ -74,8 +74,8 @@ jobs:
       with:
         go-version-file: 'go.mod'
 
-    - name: Build acr
-      run: go build ./cmd/acr
+    - name: Build arc
+      run: go build ./cmd/arc
 
   install:
     name: Install (windows-latest)
@@ -90,8 +90,8 @@ jobs:
       with:
         go-version-file: 'go.mod'
 
-    - name: Install acr from source
-      run: go install ./cmd/acr
+    - name: Install arc from source
+      run: go install ./cmd/arc
 
   test-race:
     name: Test (Race Detection)
