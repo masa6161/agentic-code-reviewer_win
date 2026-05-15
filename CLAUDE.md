@@ -1,6 +1,7 @@
 # CLAUDE.md
 
-Claude Code 固有の補足ガイドです。共通の開発ガイドは [AGENTS.md](AGENTS.md) を参照してください。
+Claude Code 固有の補足ガイドです。
+共通ルールは [AGENTS.md](AGENTS.md)、プロジェクト固有の設計方針や手順は [docs/development.md](docs/development.md) を参照してください。
 
 ## 言語
 
