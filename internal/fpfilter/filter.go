@@ -7,9 +7,9 @@ import (
 	"io"
 	"time"
 
-	"github.com/richhaase/agentic-code-reviewer/internal/agent"
-	"github.com/richhaase/agentic-code-reviewer/internal/domain"
-	"github.com/richhaase/agentic-code-reviewer/internal/terminal"
+	"github.com/masa6161/arc-cli/internal/agent"
+	"github.com/masa6161/arc-cli/internal/domain"
+	"github.com/masa6161/arc-cli/internal/terminal"
 )
 
 // DefaultThreshold is the minimum confidence score (0-100) for a finding to

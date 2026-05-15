@@ -5,8 +5,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/richhaase/agentic-code-reviewer/internal/domain"
-	"github.com/richhaase/agentic-code-reviewer/internal/git"
+	"github.com/masa6161/arc-cli/internal/domain"
+	"github.com/masa6161/arc-cli/internal/git"
 )
 
 // diffReviewConfig holds the agent-specific parameters for a diff-based review.

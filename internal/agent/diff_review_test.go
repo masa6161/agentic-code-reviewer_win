@@ -3,7 +3,7 @@ package agent
 import (
 	"testing"
 
-	"github.com/richhaase/agentic-code-reviewer/internal/domain"
+	"github.com/masa6161/arc-cli/internal/domain"
 )
 
 func TestResolvePrompts_RolePromptsEnabled_ArchPhase(t *testing.T) {

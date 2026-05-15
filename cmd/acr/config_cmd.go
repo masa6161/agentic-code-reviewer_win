@@ -8,9 +8,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/richhaase/agentic-code-reviewer/internal/config"
-	"github.com/richhaase/agentic-code-reviewer/internal/git"
-	"github.com/richhaase/agentic-code-reviewer/internal/terminal"
+	"github.com/masa6161/arc-cli/internal/config"
+	"github.com/masa6161/arc-cli/internal/git"
+	"github.com/masa6161/arc-cli/internal/terminal"
 )
 
 func newConfigCmd() *cobra.Command {
@@ -223,7 +223,7 @@ func newConfigInitCmd() *cobra.Command {
 			}
 
 			starter := `# acr configuration file
-# See https://github.com/richhaase/agentic-code-reviewer for documentation.
+# See https://github.com/masa6161/arc-cli for documentation.
 
 # Number of parallel reviewers to run (default: 5)
 # reviewers: 5

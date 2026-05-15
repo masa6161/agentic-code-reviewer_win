@@ -6,13 +6,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/richhaase/agentic-code-reviewer/internal/agent"
-	"github.com/richhaase/agentic-code-reviewer/internal/config"
-	"github.com/richhaase/agentic-code-reviewer/internal/domain"
-	"github.com/richhaase/agentic-code-reviewer/internal/git"
-	"github.com/richhaase/agentic-code-reviewer/internal/runner"
-	"github.com/richhaase/agentic-code-reviewer/internal/summarizer"
-	"github.com/richhaase/agentic-code-reviewer/internal/terminal"
+	"github.com/masa6161/arc-cli/internal/agent"
+	"github.com/masa6161/arc-cli/internal/config"
+	"github.com/masa6161/arc-cli/internal/domain"
+	"github.com/masa6161/arc-cli/internal/git"
+	"github.com/masa6161/arc-cli/internal/runner"
+	"github.com/masa6161/arc-cli/internal/summarizer"
+	"github.com/masa6161/arc-cli/internal/terminal"
 )
 
 func TestParsePhases(t *testing.T) {

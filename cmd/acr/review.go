@@ -7,16 +7,16 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/richhaase/agentic-code-reviewer/internal/agent"
-	"github.com/richhaase/agentic-code-reviewer/internal/domain"
-	"github.com/richhaase/agentic-code-reviewer/internal/feedback"
-	"github.com/richhaase/agentic-code-reviewer/internal/filter"
-	"github.com/richhaase/agentic-code-reviewer/internal/fpfilter"
-	"github.com/richhaase/agentic-code-reviewer/internal/git"
-	"github.com/richhaase/agentic-code-reviewer/internal/modelconfig"
-	"github.com/richhaase/agentic-code-reviewer/internal/runner"
-	"github.com/richhaase/agentic-code-reviewer/internal/summarizer"
-	"github.com/richhaase/agentic-code-reviewer/internal/terminal"
+	"github.com/masa6161/arc-cli/internal/agent"
+	"github.com/masa6161/arc-cli/internal/domain"
+	"github.com/masa6161/arc-cli/internal/feedback"
+	"github.com/masa6161/arc-cli/internal/filter"
+	"github.com/masa6161/arc-cli/internal/fpfilter"
+	"github.com/masa6161/arc-cli/internal/git"
+	"github.com/masa6161/arc-cli/internal/modelconfig"
+	"github.com/masa6161/arc-cli/internal/runner"
+	"github.com/masa6161/arc-cli/internal/summarizer"
+	"github.com/masa6161/arc-cli/internal/terminal"
 )
 
 // cliOrLegacy returns (cliModel, legacyModel) based on whether the value came

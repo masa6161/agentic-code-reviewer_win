@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/richhaase/agentic-code-reviewer/internal/domain"
+	"github.com/masa6161/arc-cli/internal/domain"
 )
 
 // CodexSummaryParser parses summary output from the Codex CLI.

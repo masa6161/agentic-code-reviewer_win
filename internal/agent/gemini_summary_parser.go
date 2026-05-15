@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/richhaase/agentic-code-reviewer/internal/domain"
+	"github.com/masa6161/arc-cli/internal/domain"
 )
 
 // geminiSummaryWrapper represents the JSON wrapper Gemini outputs with -o json.

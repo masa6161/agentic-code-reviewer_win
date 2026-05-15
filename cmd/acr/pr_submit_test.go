@@ -5,10 +5,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/richhaase/agentic-code-reviewer/internal/domain"
-	"github.com/richhaase/agentic-code-reviewer/internal/github"
-	"github.com/richhaase/agentic-code-reviewer/internal/summarizer"
-	"github.com/richhaase/agentic-code-reviewer/internal/terminal"
+	"github.com/masa6161/arc-cli/internal/domain"
+	"github.com/masa6161/arc-cli/internal/github"
+	"github.com/masa6161/arc-cli/internal/summarizer"
+	"github.com/masa6161/arc-cli/internal/terminal"
 )
 
 func TestPrContext_Defaults(t *testing.T) {

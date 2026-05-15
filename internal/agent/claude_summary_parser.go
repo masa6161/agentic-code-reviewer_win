@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/richhaase/agentic-code-reviewer/internal/domain"
+	"github.com/masa6161/arc-cli/internal/domain"
 )
 
 // claudeTextWrapper is used by ExtractText to get structured_output as raw JSON.

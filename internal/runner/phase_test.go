@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/richhaase/agentic-code-reviewer/internal/agent"
-	"github.com/richhaase/agentic-code-reviewer/internal/domain"
+	"github.com/masa6161/arc-cli/internal/agent"
+	"github.com/masa6161/arc-cli/internal/domain"
 )
 
 // mockPhaseAgent implements agent.Agent for phase testing.

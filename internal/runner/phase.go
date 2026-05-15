@@ -3,8 +3,8 @@ package runner
 import (
 	"fmt"
 
-	"github.com/richhaase/agentic-code-reviewer/internal/agent"
-	"github.com/richhaase/agentic-code-reviewer/internal/domain"
+	"github.com/masa6161/arc-cli/internal/agent"
+	"github.com/masa6161/arc-cli/internal/domain"
 )
 
 // PhaseConfig defines a review phase and its parameters.

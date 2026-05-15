@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/richhaase/agentic-code-reviewer/internal/terminal"
+	"github.com/masa6161/arc-cli/internal/terminal"
 )
 
 func TestSummarizer_EmptyPRNumber(t *testing.T) {

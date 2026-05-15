@@ -9,7 +9,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/richhaase/agentic-code-reviewer/internal/domain"
+	"github.com/masa6161/arc-cli/internal/domain"
 )
 
 func TestLoadFromDirWithWarnings_ValidConfig(t *testing.T) {

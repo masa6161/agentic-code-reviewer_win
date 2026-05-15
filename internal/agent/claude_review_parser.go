@@ -4,7 +4,7 @@ import (
 	"bufio"
 	"strings"
 
-	"github.com/richhaase/agentic-code-reviewer/internal/domain"
+	"github.com/masa6161/arc-cli/internal/domain"
 )
 
 // ClaudeOutputParser parses text output from the claude CLI.

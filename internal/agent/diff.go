@@ -3,7 +3,7 @@ package agent
 import (
 	"context"
 
-	"github.com/richhaase/agentic-code-reviewer/internal/git"
+	"github.com/masa6161/arc-cli/internal/git"
 )
 
 // These functions delegate to the git package where they now live.

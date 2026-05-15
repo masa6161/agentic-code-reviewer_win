@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/richhaase/agentic-code-reviewer/internal/domain"
-	"github.com/richhaase/agentic-code-reviewer/internal/terminal"
+	"github.com/masa6161/arc-cli/internal/domain"
+	"github.com/masa6161/arc-cli/internal/terminal"
 )
 
 func TestFilterFindingsByIndices_SelectsCorrectFindings(t *testing.T) {

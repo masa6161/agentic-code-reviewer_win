@@ -12,12 +12,12 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/richhaase/agentic-code-reviewer/internal/agent"
-	"github.com/richhaase/agentic-code-reviewer/internal/config"
-	"github.com/richhaase/agentic-code-reviewer/internal/domain"
-	"github.com/richhaase/agentic-code-reviewer/internal/git"
-	"github.com/richhaase/agentic-code-reviewer/internal/github"
-	"github.com/richhaase/agentic-code-reviewer/internal/terminal"
+	"github.com/masa6161/arc-cli/internal/agent"
+	"github.com/masa6161/arc-cli/internal/config"
+	"github.com/masa6161/arc-cli/internal/domain"
+	"github.com/masa6161/arc-cli/internal/git"
+	"github.com/masa6161/arc-cli/internal/github"
+	"github.com/masa6161/arc-cli/internal/terminal"
 )
 
 // parseDiffReviewerAgentsFlag splits a comma-separated agent string into

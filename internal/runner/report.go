@@ -6,10 +6,10 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/richhaase/agentic-code-reviewer/internal/agent"
-	"github.com/richhaase/agentic-code-reviewer/internal/domain"
-	"github.com/richhaase/agentic-code-reviewer/internal/summarizer"
-	"github.com/richhaase/agentic-code-reviewer/internal/terminal"
+	"github.com/masa6161/arc-cli/internal/agent"
+	"github.com/masa6161/arc-cli/internal/domain"
+	"github.com/masa6161/arc-cli/internal/summarizer"
+	"github.com/masa6161/arc-cli/internal/terminal"
 )
 
 const maxRawOutputLines = 10
@@ -566,9 +566,9 @@ func RenderJSON(grouped *domain.GroupedFindings, ccResult *summarizer.CrossCheck
 // renderFooter returns a small attribution line for GitHub comments.
 func renderFooter(version string) string {
 	if version == "" {
-		return "_Posted by [acr](https://github.com/richhaase/agentic-code-reviewer)_"
+		return "_Posted by [acr](https://github.com/masa6161/arc-cli)_"
 	}
-	return fmt.Sprintf("_Posted by [acr](https://github.com/richhaase/agentic-code-reviewer) %s_", version)
+	return fmt.Sprintf("_Posted by [acr](https://github.com/masa6161/arc-cli) %s_", version)
 }
 
 func collectSourceIndices(groups []domain.FindingGroup) []int {

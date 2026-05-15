@@ -3,7 +3,7 @@ package runner
 import (
 	"testing"
 
-	"github.com/richhaase/agentic-code-reviewer/internal/agent"
+	"github.com/masa6161/arc-cli/internal/agent"
 )
 
 func TestFormatDistributionFromSpecs_Empty(t *testing.T) {

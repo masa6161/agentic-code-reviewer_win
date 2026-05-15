@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/richhaase/agentic-code-reviewer/internal/config"
+	"github.com/masa6161/arc-cli/internal/config"
 )
 
 // chdir changes to dir and returns a cleanup function to restore the original directory.
