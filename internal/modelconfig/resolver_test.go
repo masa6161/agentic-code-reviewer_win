@@ -3,8 +3,8 @@ package modelconfig
 import (
 	"testing"
 
-	"github.com/richhaase/agentic-code-reviewer/internal/config"
-	"github.com/richhaase/agentic-code-reviewer/internal/domain"
+	"github.com/masa6161/arc-cli/internal/config"
+	"github.com/masa6161/arc-cli/internal/domain"
 )
 
 func ms(model, effort string) *config.ModelSpec {

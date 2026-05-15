@@ -1,10 +1,10 @@
 #!/bin/bash
-# ACR Benchmark Result Analyzer
+# ARC Benchmark Result Analyzer
 # Extracts metrics from JSON output files
 
 OUTDIR="benchmark"
 
-echo "=== ACR Role-Prompts Benchmark Results ==="
+echo "=== ARC Role-Prompts Benchmark Results ==="
 echo ""
 
 for condition in no-role-prompts role-prompts; do

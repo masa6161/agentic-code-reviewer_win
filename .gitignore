@@ -28,7 +28,7 @@ go.work.sum
 .env
 
 # binary
-bin/acr
+bin/arc
 
 # Editor/IDE
 # .idea/
@@ -36,10 +36,10 @@ bin/acr
 
 # Claude Code local settings
 .claude/settings.local.json
-bin/acr-test
+bin/arc-test
 
 /.omc/
-/.acr/
+/.arc/
 /backlog/
 /back_log/
 /docs/cf_skills

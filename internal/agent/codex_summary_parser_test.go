@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/richhaase/agentic-code-reviewer/internal/domain"
+	"github.com/masa6161/arc-cli/internal/domain"
 )
 
 func TestNewCodexSummaryParser(t *testing.T) {

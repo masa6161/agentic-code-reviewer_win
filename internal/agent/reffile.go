@@ -39,7 +39,7 @@ func WriteDiffToTempFile(workDir, diff string) (string, error) {
 		return "", err
 	}
 
-	tempPath := filepath.Join(wd, fmt.Sprintf(".acr-diff-%s.patch", uuid.New().String()))
+	tempPath := filepath.Join(wd, fmt.Sprintf(".arc-diff-%s.patch", uuid.New().String()))
 	if err := os.WriteFile(tempPath, []byte(diff), 0600); err != nil {
 		return "", fmt.Errorf("failed to write diff to temp file: %w", err)
 	}
@@ -67,7 +67,7 @@ func WriteInputToTempFile(workDir string, input []byte, suffix string) (string, 
 		return "", err
 	}
 
-	tempPath := filepath.Join(wd, fmt.Sprintf(".acr-%s-%s", suffix, uuid.New().String()))
+	tempPath := filepath.Join(wd, fmt.Sprintf(".arc-%s-%s", suffix, uuid.New().String()))
 	if err := os.WriteFile(tempPath, input, 0600); err != nil {
 		return "", fmt.Errorf("failed to write input to temp file: %w", err)
 	}

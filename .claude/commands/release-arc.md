@@ -1,4 +1,4 @@
-# Release ACR
+# Release ARC
 
 Create a new version tag and trigger the release workflow.
 

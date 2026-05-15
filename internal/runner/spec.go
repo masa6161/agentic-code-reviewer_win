@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/richhaase/agentic-code-reviewer/internal/agent"
+	"github.com/masa6161/arc-cli/internal/agent"
 )
 
 // FormatDistributionFromSpecs returns a human-readable distribution summary

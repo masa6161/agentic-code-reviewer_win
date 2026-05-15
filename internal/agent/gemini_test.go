@@ -223,12 +223,12 @@ func TestGeminiAgent_ExecuteReview_RefFileMode(t *testing.T) {
 	}
 
 	outputStr := string(output)
-	if !strings.Contains(outputStr, ".acr-diff-") {
+	if !strings.Contains(outputStr, ".arc-diff-") {
 		t.Errorf("expected ref-file path in prompt for large diff, got:\n%s", outputStr[:min(200, len(outputStr))])
 	}
 
 	result.Close()
-	matches, _ := filepath.Glob(filepath.Join(tmpDir, ".acr-diff-*"))
+	matches, _ := filepath.Glob(filepath.Join(tmpDir, ".arc-diff-*"))
 	if len(matches) > 0 {
 		t.Errorf("temp diff file not cleaned up: %v", matches)
 	}

@@ -15,7 +15,7 @@ var (
 // buildVersionString formats version information for display.
 func buildVersionString() string {
 	ver, rev, buildDate := getVersionInfo()
-	return fmt.Sprintf("acr %s (commit: %s, built: %s)", ver, rev, buildDate)
+	return fmt.Sprintf("arc %s (commit: %s, built: %s)", ver, rev, buildDate)
 }
 
 // getVersionInfo returns version information, falling back to debug.ReadBuildInfo()

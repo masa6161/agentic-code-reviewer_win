@@ -220,7 +220,7 @@ func TestClaudeAgent_ExecuteReview_RefFileMode(t *testing.T) {
 	}
 
 	outputStr := string(output)
-	if !strings.Contains(outputStr, ".acr-diff-") {
+	if !strings.Contains(outputStr, ".arc-diff-") {
 		t.Errorf("expected ref-file path in prompt for large diff, got:\n%s", outputStr[:min(200, len(outputStr))])
 	}
 	if !strings.Contains(outputStr, "Read tool") {
@@ -228,7 +228,7 @@ func TestClaudeAgent_ExecuteReview_RefFileMode(t *testing.T) {
 	}
 
 	result.Close()
-	matches, _ := filepath.Glob(filepath.Join(tmpDir, ".acr-diff-*"))
+	matches, _ := filepath.Glob(filepath.Join(tmpDir, ".arc-diff-*"))
 	if len(matches) > 0 {
 		t.Errorf("temp diff file not cleaned up: %v", matches)
 	}
@@ -290,7 +290,7 @@ func TestClaudeAgent_ExecuteReview_ExplicitRefFile(t *testing.T) {
 	}
 
 	outputStr := string(output)
-	if !strings.Contains(outputStr, ".acr-diff-") {
+	if !strings.Contains(outputStr, ".arc-diff-") {
 		t.Errorf("UseRefFile=true should trigger ref-file mode, got:\n%s", outputStr[:min(200, len(outputStr))])
 	}
 }

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/richhaase/agentic-code-reviewer/internal/config"
+	"github.com/masa6161/arc-cli/internal/config"
 )
 
 // chdir changes to dir and returns a cleanup function to restore the original directory.
@@ -52,12 +52,12 @@ func TestConfigInit_CreatesFile(t *testing.T) {
 
 	configPath := filepath.Join(dir, config.ConfigFileName)
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		t.Fatal("expected .acr.yaml to be created")
+		t.Fatal("expected .arc.yaml to be created")
 	}
 
 	content, err := os.ReadFile(configPath)
 	if err != nil {
-		t.Fatalf("failed to read .acr.yaml: %v", err)
+		t.Fatalf("failed to read .arc.yaml: %v", err)
 	}
 	text := string(content)
 	if !strings.Contains(text, "summarizer_timeout: 5m") {
@@ -94,7 +94,7 @@ func TestConfigValidate_ValidConfig(t *testing.T) {
 	// Round-9: cross_check defaults to enabled and now requires a model.
 	// Supply via env so this test exercises the "valid" path it claims to
 	// test, not the cross-check guard.
-	t.Setenv("ACR_CROSS_CHECK_MODEL", "test-cc-model")
+	t.Setenv("ARC_CROSS_CHECK_MODEL", "test-cc-model")
 
 	cmd := newConfigCmd()
 	buf := new(bytes.Buffer)
@@ -113,7 +113,7 @@ func TestConfigValidate_DetectsInvalidEnvVars(t *testing.T) {
 	initGitRepo(t, dir)
 
 	// Set semantically invalid env var (parses fine, but fails validation)
-	t.Setenv("ACR_REVIEWERS", "0")
+	t.Setenv("ARC_REVIEWERS", "0")
 
 	cmd := newConfigCmd()
 	buf := new(bytes.Buffer)
@@ -123,7 +123,7 @@ func TestConfigValidate_DetectsInvalidEnvVars(t *testing.T) {
 	err := cmd.Execute()
 
 	if err == nil {
-		t.Fatal("expected error for invalid ACR_REVIEWERS=0, got nil")
+		t.Fatal("expected error for invalid ARC_REVIEWERS=0, got nil")
 	}
 	if !strings.Contains(err.Error(), "error") {
 		t.Errorf("expected error message to mention errors, got: %v", err)
@@ -135,7 +135,7 @@ func TestConfigValidate_DetectsInvalidAgent(t *testing.T) {
 	chdir(t, dir)
 	initGitRepo(t, dir)
 
-	t.Setenv("ACR_REVIEWER_AGENT", "unsupported")
+	t.Setenv("ARC_REVIEWER_AGENT", "unsupported")
 
 	cmd := newConfigCmd()
 	buf := new(bytes.Buffer)
@@ -145,7 +145,7 @@ func TestConfigValidate_DetectsInvalidAgent(t *testing.T) {
 	err := cmd.Execute()
 
 	if err == nil {
-		t.Fatal("expected error for invalid ACR_REVIEWER_AGENT=unsupported, got nil")
+		t.Fatal("expected error for invalid ARC_REVIEWER_AGENT=unsupported, got nil")
 	}
 	if !strings.Contains(err.Error(), "error") {
 		t.Errorf("expected error message to mention errors, got: %v", err)
@@ -157,7 +157,7 @@ func TestConfigValidate_DetectsNegativeRetries(t *testing.T) {
 	chdir(t, dir)
 	initGitRepo(t, dir)
 
-	t.Setenv("ACR_RETRIES", "-1")
+	t.Setenv("ARC_RETRIES", "-1")
 
 	cmd := newConfigCmd()
 	buf := new(bytes.Buffer)
@@ -167,7 +167,7 @@ func TestConfigValidate_DetectsNegativeRetries(t *testing.T) {
 	err := cmd.Execute()
 
 	if err == nil {
-		t.Fatal("expected error for invalid ACR_RETRIES=-1, got nil")
+		t.Fatal("expected error for invalid ARC_RETRIES=-1, got nil")
 	}
 }
 
@@ -176,7 +176,7 @@ func TestConfigValidate_MalformedEnvVarIsError(t *testing.T) {
 	chdir(t, dir)
 	initGitRepo(t, dir)
 
-	t.Setenv("ACR_REVIEWERS", "not-a-number")
+	t.Setenv("ARC_REVIEWERS", "not-a-number")
 
 	cmd := newConfigCmd()
 	buf := new(bytes.Buffer)
@@ -186,7 +186,7 @@ func TestConfigValidate_MalformedEnvVarIsError(t *testing.T) {
 	err := cmd.Execute()
 
 	if err == nil {
-		t.Fatal("expected error for malformed ACR_REVIEWERS, got nil")
+		t.Fatal("expected error for malformed ARC_REVIEWERS, got nil")
 	}
 }
 
@@ -195,7 +195,7 @@ func TestConfigValidate_InvalidGuidanceFile(t *testing.T) {
 	chdir(t, dir)
 	initGitRepo(t, dir)
 
-	t.Setenv("ACR_GUIDANCE_FILE", "/nonexistent/guidance.md")
+	t.Setenv("ARC_GUIDANCE_FILE", "/nonexistent/guidance.md")
 
 	cmd := newConfigCmd()
 	buf := new(bytes.Buffer)
@@ -218,9 +218,9 @@ func TestConfigValidate_ValidGuidanceFile(t *testing.T) {
 	if err := os.WriteFile(guidancePath, []byte("review carefully"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("ACR_GUIDANCE_FILE", guidancePath)
+	t.Setenv("ARC_GUIDANCE_FILE", guidancePath)
 	// Round-9: cross-check guard requires a model when enabled (default on).
-	t.Setenv("ACR_CROSS_CHECK_MODEL", "test-cc-model")
+	t.Setenv("ARC_CROSS_CHECK_MODEL", "test-cc-model")
 
 	cmd := newConfigCmd()
 	buf := new(bytes.Buffer)
@@ -235,7 +235,7 @@ func TestConfigValidate_ValidGuidanceFile(t *testing.T) {
 }
 
 // TestConfigValidate_SemanticErrorDoesNotMaskRuntimeError verifies that when
-// .acr.yaml has semantic errors (e.g. reviewers: 0), ValidateRuntime still
+// .arc.yaml has semantic errors (e.g. reviewers: 0), ValidateRuntime still
 // runs so env-driven cross_check runtime issues are reported.
 //
 // Round-12 conflated "cfg syntax error" and "cfg semantic error" under a single
@@ -254,7 +254,7 @@ func TestConfigValidate_SemanticErrorDoesNotMaskRuntimeError(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Leave ACR_CROSS_CHECK_MODEL unset so ValidateRuntime fires the
+	// Leave ARC_CROSS_CHECK_MODEL unset so ValidateRuntime fires the
 	// cross_check.model-required error on top of the cfg semantic error.
 
 	cmd := newConfigCmd()
@@ -280,7 +280,7 @@ func TestConfigValidate_SemanticErrorDoesNotMaskRuntimeError(t *testing.T) {
 }
 
 // TestConfigValidate_SyntaxErrorSkipsRuntime verifies the complementary case:
-// when .acr.yaml fails to parse (syntax / regex / IO error), ValidateRuntime
+// when .arc.yaml fails to parse (syntax / regex / IO error), ValidateRuntime
 // is still skipped because cfg is unusable and running ValidateRuntime against
 // Defaults would false-positive on cross_check.model (Defaults leaves it
 // empty while cross_check.enabled=true). The user's intent is hidden behind
@@ -363,8 +363,8 @@ func TestConfigShow_EnvOverrideReflected(t *testing.T) {
 	chdir(t, dir)
 	initGitRepo(t, dir)
 
-	t.Setenv("ACR_STRICT", "true")
-	t.Setenv("ACR_LARGE_DIFF_REVIEWERS", "8")
+	t.Setenv("ARC_STRICT", "true")
+	t.Setenv("ARC_LARGE_DIFF_REVIEWERS", "8")
 
 	cmd := newConfigCmd()
 	buf := new(bytes.Buffer)
@@ -377,10 +377,10 @@ func TestConfigShow_EnvOverrideReflected(t *testing.T) {
 	output := buf.String()
 
 	if !strings.Contains(output, "strict:                          true") {
-		t.Errorf("expected output to contain 'strict: true' reflecting ACR_STRICT=true.\nOutput:\n%s", output)
+		t.Errorf("expected output to contain 'strict: true' reflecting ARC_STRICT=true.\nOutput:\n%s", output)
 	}
 	if !strings.Contains(output, "large_diff_reviewers:") || !strings.Contains(output, "8") {
-		t.Errorf("expected output to reflect ACR_LARGE_DIFF_REVIEWERS=8.\nOutput:\n%s", output)
+		t.Errorf("expected output to reflect ARC_LARGE_DIFF_REVIEWERS=8.\nOutput:\n%s", output)
 	}
 }
 

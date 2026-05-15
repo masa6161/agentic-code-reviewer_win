@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Demo recording script for ACR README.
+# Demo recording script for ARC README.
 #
 # Usage:
 #   1. Have a repo with an open PR that will produce findings
@@ -15,6 +15,6 @@
 export PS1="$ "
 
 # Review a PR (replace PR_NUMBER with an actual PR number)
-acr --pr PR_NUMBER
+arc --pr PR_NUMBER
 
 # When prompted, choose to post the review

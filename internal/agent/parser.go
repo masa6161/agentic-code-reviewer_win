@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/richhaase/agentic-code-reviewer/internal/domain"
+	"github.com/masa6161/arc-cli/internal/domain"
 )
 
 // RecoverableParseError indicates a parse error that allows continued parsing.

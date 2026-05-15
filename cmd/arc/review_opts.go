@@ -1,6 +1,6 @@
 package main
 
-import "github.com/richhaase/agentic-code-reviewer/internal/config"
+import "github.com/masa6161/arc-cli/internal/config"
 
 // ReviewOpts holds all resolved configuration and runtime flags needed to
 // execute a review. It bundles config.ResolvedConfig (from flag/env/file

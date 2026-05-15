@@ -1,25 +1,27 @@
-# ACR - Agentic Code Reviewer
+# ARC - Adaptive Review Coordinator
 
 A CLI tool that runs parallel AI-powered code reviews using LLM agents ([Codex](https://github.com/openai/codex), [Claude Code](https://github.com/anthropics/claude-code), or [Gemini CLI](https://github.com/google-gemini/gemini-cli)) and aggregates findings intelligently.
 
+ARC is a hard fork of Rich Haase's original Agentic Code Reviewer project, renamed and adapted as Adaptive Review Coordinator for the Windows-native path.
+
 <!-- Uncomment after recording the demo:
 <p align="center">
-  <img src="docs/assets/demo.svg" alt="ACR demo" width="800">
+  <img src="docs/assets/demo.svg" alt="ARC demo" width="800">
 </p>
 -->
 
 ## Quick Start
 
 ```bash
-# Install ACR
-brew install richhaase/tap/acr
+# Install ARC
+go install github.com/masa6161/arc-cli/cmd/arc@latest
 
 # Install at least one LLM CLI (Codex shown here)
 brew install codex
 
 # Run a review in your repo
 cd your-repo
-acr
+arc
 ```
 
 On Windows, use the source install or the release ZIP described below.
@@ -42,11 +44,11 @@ Optional:
 
 ## How It Works
 
-ACR spawns multiple parallel reviewers, each invoking your chosen LLM agent (Codex, Claude, or Gemini) independently. The parallel approach increases coverage: different reviewers may catch different issues. After all reviewers complete, ACR aggregates and clusters similar findings using an LLM summarizer, filters out likely false positives, then presents a consolidated report.
+ARC spawns multiple parallel reviewers, each invoking your chosen LLM agent (Codex, Claude, or Gemini) independently. The parallel approach increases coverage: different reviewers may catch different issues. After all reviewers complete, ARC aggregates and clusters similar findings using an LLM summarizer, filters out likely false positives, then presents a consolidated report.
 
 ```mermaid
 graph TD
-    A[acr] -->|spawns N reviewers| B
+    A[arc] -->|spawns N reviewers| B
     subgraph Parallel Review
         B[Reviewer 1]
         C[Reviewer 2]
@@ -67,32 +69,26 @@ graph TD
 
 ## Installation
 
-### Homebrew (macOS)
+### Source (macOS / Linux)
 
 ```bash
-brew install richhaase/tap/acr
+go install github.com/masa6161/arc-cli/cmd/arc@latest
 ```
 
 ### Windows
 
-ACR works on Windows native with `codex`, `claude`, or `gemini` as the review backend.
+ARC works on Windows native with `codex`, `claude`, or `gemini` as the review backend.
 
 #### From Source
 
 ```powershell
-go install github.com/richhaase/agentic-code-reviewer/cmd/acr@latest
-acr --help
+go install github.com/masa6161/arc-cli/cmd/arc@latest
+arc --help
 ```
 
 #### Direct Download
 
-Download the Windows release ZIP from GitHub Releases and extract `acr.exe`.
-
-### From Source (macOS / Linux)
-
-```bash
-go install github.com/richhaase/agentic-code-reviewer/cmd/acr@latest
-```
+Download the Windows release ZIP from GitHub Releases and extract `arc.exe`.
 
 ## Current status (Windows port)
 
@@ -104,42 +100,42 @@ go install github.com/richhaase/agentic-code-reviewer/cmd/acr@latest
 
 ```bash
 # Review current branch against main with 5 parallel reviewers
-acr
+arc
 
 # Review with custom settings
-acr --reviewers 10 --base develop --timeout 10m
+arc --reviewers 10 --base develop --timeout 10m
 
 # Review a PR by number
-acr --pr 123
+arc --pr 123
 
 # Review a specific branch in a temporary worktree
-acr --worktree-branch feature/my-branch
+arc --worktree-branch feature/my-branch
 
 # Review a PR from a forked repository
-acr --worktree-branch username:feature-branch
+arc --worktree-branch username:feature-branch
 
 # Local mode (don't post to PR)
-acr --local
+arc --local
 
 # Auto-approve without prompting
-acr --yes
+arc --yes
 
 # Verbose mode (show reviewer messages as they arrive)
-acr --verbose
+arc --verbose
 ```
 
 ### Auto-phase (default) vs flat review
 
-By default, ACR automatically selects review phases based on diff size ("auto-phase"). Large diffs are split into an architecture review plus per-file-group diff reviews; small diffs use a single flat diff pass.
+By default, ARC automatically selects review phases based on diff size ("auto-phase"). Large diffs are split into an architecture review plus per-file-group diff reviews; small diffs use a single flat diff pass.
 
 To run a flat (single big diff × N reviewers) review instead:
 
 | Method | How |
 |---|---|
-| Ad-hoc flag | `acr --phase small` |
-| Disable auto-phase for one run | `acr --no-auto-phase` |
-| Persistent opt-out in project | `.acr.yaml`: `auto_phase: false` |
-| Persistent opt-out via env | `ACR_AUTO_PHASE=false acr` |
+| Ad-hoc flag | `arc --phase small` |
+| Disable auto-phase for one run | `arc --no-auto-phase` |
+| Persistent opt-out in project | `.arc.yaml`: `auto_phase: false` |
+| Persistent opt-out via env | `ARC_AUTO_PHASE=false arc` |
 
 Using `--phase medium` forces both phases explicitly (arch + diff) without grouping, regardless of diff size.
 
@@ -164,18 +160,18 @@ The verdict field (`ok` / `advisory` / `blocking`) and exit-code policy apply on
 | `--no-pr-feedback`  |       | false   | Disable PR feedback summarization         |
 | `--pr-feedback-agent`|      |         | Agent for PR feedback summarization       |
 | `--pr`              |       |         | Review a PR by number (fetches into temp worktree) |
-| `--guidance`        |       |         | Steering context appended to review prompt (env: ACR_GUIDANCE) |
-| `--guidance-file`   |       |         | Path to file containing review guidance (env: ACR_GUIDANCE_FILE) |
+| `--guidance`        |       |         | Steering context appended to review prompt (env: ARC_GUIDANCE) |
+| `--guidance-file`   |       |         | Path to file containing review guidance (env: ARC_GUIDANCE_FILE) |
 | `--ref-file`        |       | false   | Write diff to temp file instead of embedding in prompt (auto for large diffs) |
 | `--exclude-pattern` |       |         | Exclude findings matching regex (repeat)  |
-| `--no-config`       |       | false   | Skip loading .acr.yaml config file        |
+| `--no-config`       |       | false   | Skip loading .arc.yaml config file        |
 | `--reviewer-agent`  | `-a`  | codex   | Agent(s) for reviews, comma-separated (codex, claude, gemini) |
 | `--arch-reviewer-agent`|    |         | Single agent for arch phase in auto-phase grouped diff (default: first --reviewer-agent) |
 | `--diff-reviewer-agents`|   |         | Agent(s) for diff phase in auto-phase grouped diff, comma-separated (default: same as --reviewer-agent) |
 | `--summarizer-agent`| `-s`  | codex   | Agent for summarization (codex, claude, gemini) |
-| `--reviewer-model`  |       |         | LLM model for review agents (env: ACR_REVIEWER_MODEL) |
-| `--summarizer-model`|       |         | LLM model for summarizer/FP filter agents (env: ACR_SUMMARIZER_MODEL) |
-| `--auto-phase`/`--no-auto-phase`| | true | Auto-select review phases based on diff size (env: ACR_AUTO_PHASE) |
+| `--reviewer-model`  |       |         | LLM model for review agents (env: ARC_REVIEWER_MODEL) |
+| `--summarizer-model`|       |         | LLM model for summarizer/FP filter agents (env: ARC_SUMMARIZER_MODEL) |
+| `--auto-phase`/`--no-auto-phase`| | true | Auto-select review phases based on diff size (env: ARC_AUTO_PHASE) |
 | `--phase`           |       |         | Override auto-phase: small, medium, large  |
 | `--large-diff-reviewers`|   | 4       | Number of diff reviewers in auto-phase grouped path (large diff) |
 | `--medium-diff-reviewers`|  | 2       | Number of diff reviewers for auto-phase medium and --phase medium |
@@ -196,10 +192,10 @@ The `--concurrency` flag limits how many reviewers run simultaneously, independe
 
 ```bash
 # Run 15 total reviewers, but only 5 at a time
-acr -r 15 -c 5
+arc -r 15 -c 5
 
 # With retries, -c prevents retry storms from overwhelming the API
-acr -r 10 -R 3 -c 3
+arc -r 10 -R 3 -c 3
 ```
 
 By default, concurrency equals the reviewer count (all run in parallel).
@@ -210,10 +206,10 @@ Review pull requests from forked repositories using GitHub's `username:branch` n
 
 ```bash
 # Review a PR from user "contributor" on branch "fix-bug"
-acr --worktree-branch contributor:fix-bug
+arc --worktree-branch contributor:fix-bug
 ```
 
-ACR will:
+ARC will:
 1. Query GitHub to find the open PR from that user's branch
 2. Add a temporary remote pointing to the fork
 3. Fetch the branch
@@ -224,7 +220,7 @@ This requires an open PR from the fork to the current repository. The `gh` CLI m
 
 ### Agent Selection
 
-ACR supports multiple AI backends for code review:
+ARC supports multiple AI backends for code review:
 
 | Agent | CLI | Description |
 |-------|-----|-------------|
@@ -234,22 +230,22 @@ ACR supports multiple AI backends for code review:
 
 ```bash
 # Use Claude instead of Codex for reviews
-acr --reviewer-agent claude
+arc --reviewer-agent claude
 
 # Use Gemini for reviews
-acr -a gemini
+arc -a gemini
 
 # Use different agents for review and summarization
-acr --reviewer-agent gemini --summarizer-agent claude
+arc --reviewer-agent gemini --summarizer-agent claude
 
 # Use multiple agents in round-robin (reviewers alternate between agents)
-acr -r 6 --reviewer-agent codex,claude,gemini
+arc -r 6 --reviewer-agent codex,claude,gemini
 
 # Override the model used by review agents
-acr --reviewer-agent claude --reviewer-model sonnet-4
+arc --reviewer-agent claude --reviewer-model sonnet-4
 
 # Use different models for review and summarization
-acr --reviewer-agent claude --reviewer-model opus-4 \
+arc --reviewer-agent claude --reviewer-model opus-4 \
     --summarizer-agent claude --summarizer-model haiku-4
 ```
 
@@ -261,17 +257,17 @@ Steer reviews with additional context without replacing the built-in prompts:
 
 ```bash
 # Inline guidance
-acr --guidance "Focus on security vulnerabilities and auth issues"
+arc --guidance "Focus on security vulnerabilities and auth issues"
 
 # Guidance from file
-acr --guidance-file .acr-guidance.md
+arc --guidance-file .arc-guidance.md
 ```
 
 Guidance is appended to the default review prompts, preserving the tuned output format and skip rules. Use it to provide domain context, focus areas, or project conventions.
 
 ### PR Feedback Summarization
 
-When reviewing a PR (via `--pr` flag or auto-detected from the current branch), ACR can summarize prior PR discussion to improve false positive filtering. This helps avoid re-surfacing issues that have already been discussed and dismissed.
+When reviewing a PR (via `--pr` flag or auto-detected from the current branch), ARC can summarize prior PR discussion to improve false positive filtering. This helps avoid re-surfacing issues that have already been discussed and dismissed.
 
 The summarizer fetches:
 - PR description
@@ -283,10 +279,10 @@ This context is passed to the false positive filter, which can then recognize fi
 
 ```bash
 # Disable PR feedback summarization
-acr --no-pr-feedback
+arc --no-pr-feedback
 
 # Use a specific agent for feedback summarization
-acr --pr-feedback-agent claude
+arc --pr-feedback-agent claude
 ```
 
 PR feedback summarization runs in parallel with the reviewers and is enabled by default. It only activates when:
@@ -297,48 +293,48 @@ PR feedback summarization runs in parallel with the reviewers and is enabled by 
 
 | Variable                  | Description                              |
 | ------------------------- | ---------------------------------------- |
-| `ACR_REVIEWERS`           | Default number of reviewers              |
-| `ACR_CONCURRENCY`         | Default max concurrent reviewers         |
-| `ACR_BASE_REF`            | Default base ref                         |
-| `ACR_TIMEOUT`             | Default timeout (e.g., "5m" or "300")    |
-| `ACR_RETRIES`             | Default retry count                      |
-| `ACR_FETCH`               | Fetch base ref from origin (true/false)  |
-| `ACR_FP_FILTER`           | Enable false positive filtering (true/false) |
-| `ACR_FP_THRESHOLD`        | False positive confidence threshold 1-100 |
-| `ACR_PR_FEEDBACK`         | Enable PR feedback summarization (true/false) |
-| `ACR_PR_FEEDBACK_AGENT`   | Agent for PR feedback summarization |
-| `ACR_REVIEWER_AGENT`      | Default reviewer agent(s), comma-separated |
-| `ACR_ARCH_REVIEWER_AGENT` | Single agent for arch phase in auto-phase grouped diff |
-| `ACR_DIFF_REVIEWER_AGENTS`| Agent(s) for diff phase in auto-phase grouped diff |
-| `ACR_SUMMARIZER_AGENT`    | Default summarizer agent  |
-| `ACR_CODEX_HOME`          | Codex home directory passed to `codex` subprocesses; set as a user environment variable, not in `.acr.yaml` |
-| `CODEX_HOME`              | Fallback Codex home directory when `ACR_CODEX_HOME` is unset |
-| `ACR_SUMMARIZER_TIMEOUT`  | Timeout for summarizer phase (e.g., "5m" or "300") |
-| `ACR_FP_FILTER_TIMEOUT`   | Timeout for false positive filter phase (e.g., "5m" or "300") |
-| `ACR_AUTO_PHASE`          | Enable auto-phase selection (true/false)   |
-| `ACR_LARGE_DIFF_REVIEWERS`| Number of diff reviewers for auto-phase large path |
-| `ACR_MEDIUM_DIFF_REVIEWERS`| Number of diff reviewers for auto-phase medium path |
-| `ACR_SMALL_DIFF_REVIEWERS`| Number of reviewers for auto-phase small path |
-| `ACR_ROLE_PROMPTS`        | Enable role-specific prompts (true/false)  |
-| `ACR_CROSS_CHECK`         | Enable cross-group consistency verification (true/false) |
-| `ACR_CROSS_CHECK_AGENT`   | Agent(s) for cross-check verification      |
-| `ACR_CROSS_CHECK_MODEL`   | LLM model(s) for cross-check               |
-| `ACR_CROSS_CHECK_TIMEOUT` | Timeout for cross-check phase (e.g., "5m" or "300") |
-| `ACR_STRICT`              | Exit 1 on any advisory verdict (true/false) |
-| `ACR_GUIDANCE`            | Steering context appended to review prompt |
-| `ACR_GUIDANCE_FILE`       | Path to file containing review guidance    |
+| `ARC_REVIEWERS`           | Default number of reviewers              |
+| `ARC_CONCURRENCY`         | Default max concurrent reviewers         |
+| `ARC_BASE_REF`            | Default base ref                         |
+| `ARC_TIMEOUT`             | Default timeout (e.g., "5m" or "300")    |
+| `ARC_RETRIES`             | Default retry count                      |
+| `ARC_FETCH`               | Fetch base ref from origin (true/false)  |
+| `ARC_FP_FILTER`           | Enable false positive filtering (true/false) |
+| `ARC_FP_THRESHOLD`        | False positive confidence threshold 1-100 |
+| `ARC_PR_FEEDBACK`         | Enable PR feedback summarization (true/false) |
+| `ARC_PR_FEEDBACK_AGENT`   | Agent for PR feedback summarization |
+| `ARC_REVIEWER_AGENT`      | Default reviewer agent(s), comma-separated |
+| `ARC_ARCH_REVIEWER_AGENT` | Single agent for arch phase in auto-phase grouped diff |
+| `ARC_DIFF_REVIEWER_AGENTS`| Agent(s) for diff phase in auto-phase grouped diff |
+| `ARC_SUMMARIZER_AGENT`    | Default summarizer agent  |
+| `ARC_CODEX_HOME`          | Codex home directory passed to `codex` subprocesses; set as a user environment variable, not in `.arc.yaml` |
+| `CODEX_HOME`              | Fallback Codex home directory when `ARC_CODEX_HOME` is unset |
+| `ARC_SUMMARIZER_TIMEOUT`  | Timeout for summarizer phase (e.g., "5m" or "300") |
+| `ARC_FP_FILTER_TIMEOUT`   | Timeout for false positive filter phase (e.g., "5m" or "300") |
+| `ARC_AUTO_PHASE`          | Enable auto-phase selection (true/false)   |
+| `ARC_LARGE_DIFF_REVIEWERS`| Number of diff reviewers for auto-phase large path |
+| `ARC_MEDIUM_DIFF_REVIEWERS`| Number of diff reviewers for auto-phase medium path |
+| `ARC_SMALL_DIFF_REVIEWERS`| Number of reviewers for auto-phase small path |
+| `ARC_ROLE_PROMPTS`        | Enable role-specific prompts (true/false)  |
+| `ARC_CROSS_CHECK`         | Enable cross-group consistency verification (true/false) |
+| `ARC_CROSS_CHECK_AGENT`   | Agent(s) for cross-check verification      |
+| `ARC_CROSS_CHECK_MODEL`   | LLM model(s) for cross-check               |
+| `ARC_CROSS_CHECK_TIMEOUT` | Timeout for cross-check phase (e.g., "5m" or "300") |
+| `ARC_STRICT`              | Exit 1 on any advisory verdict (true/false) |
+| `ARC_GUIDANCE`            | Steering context appended to review prompt |
+| `ARC_GUIDANCE_FILE`       | Path to file containing review guidance    |
 
 Codex auth home is intentionally operator-controlled. On Windows, prefer a User
 environment variable and restart the terminal/agent process so child `codex`
 processes inherit it:
 
 ```powershell
-[Environment]::SetEnvironmentVariable("ACR_CODEX_HOME", "C:\Users\<you>\.acr-codex-home", "User")
+[Environment]::SetEnvironmentVariable("ARC_CODEX_HOME", "C:\Users\<you>\.arc-codex-home", "User")
 ```
 
 ## Configuration
 
-Create `.acr.yaml` in your repository root to configure persistent settings:
+Create `.arc.yaml` in your repository root to configure persistent settings:
 
 ```yaml
 # All fields are optional - defaults shown in comments
@@ -356,16 +352,16 @@ fetch: true               # Fetch base ref from origin before diff
 #   - claude
 #   - gemini
 # summarizer_agent: codex # Agent for summarization (codex, claude, gemini)
-# Codex home is intentionally not configurable in .acr.yaml because repository
-# config is shared. Set ACR_CODEX_HOME as a user environment variable instead.
-# Precedence: ACR_CODEX_HOME > CODEX_HOME > USERPROFILE/HOME/.codex
+# Codex home is intentionally not configurable in .arc.yaml because repository
+# config is shared. Set ARC_CODEX_HOME as a user environment variable instead.
+# Precedence: ARC_CODEX_HOME > CODEX_HOME > USERPROFILE/HOME/.codex
 # reviewer_model: ""      # LLM model override for review agents
 # summarizer_model: ""    # LLM model override for summarizer/FP filter agents
 summarizer_timeout: 5m    # Timeout for summarizer phase
 fp_filter_timeout: 5m     # Timeout for false positive filter phase
 
 # Review guidance (appended to built-in prompts)
-# guidance_file: .acr-guidance.md
+# guidance_file: .arc-guidance.md
 
 filters:
   exclude_patterns:       # Regex patterns to exclude from findings
@@ -425,11 +421,11 @@ When `models:` is absent, the legacy flat fields (`reviewer_model`, `summarizer_
 
 Configuration is resolved with the following precedence (highest to lowest):
 1. CLI flags (e.g., `--reviewers 10`)
-2. Environment variables (e.g., `ACR_REVIEWERS=10`)
-3. `models.agents.<agent>.<role>` in `.acr.yaml`
-4. `models.sizes.<size>.<role>` in `.acr.yaml`
-5. `models.defaults.<role>` in `.acr.yaml`
-6. Legacy flat fields (`reviewer_model`, `summarizer_model`, etc.) in `.acr.yaml`
+2. Environment variables (e.g., `ARC_REVIEWERS=10`)
+3. `models.agents.<agent>.<role>` in `.arc.yaml`
+4. `models.sizes.<size>.<role>` in `.arc.yaml`
+5. `models.defaults.<role>` in `.arc.yaml`
+6. Legacy flat fields (`reviewer_model`, `summarizer_model`, etc.) in `.arc.yaml`
 7. Built-in defaults
 
 ### Behavior
@@ -452,7 +448,7 @@ Configuration is resolved with the following precedence (highest to lowest):
 
 ## GitHub Integration
 
-When not in `--local` mode, ACR posts results as **PR reviews** (not comments), so they appear in the PR's Reviews tab.
+When not in `--local` mode, ARC posts results as **PR reviews** (not comments), so they appear in the PR's Reviews tab.
 
 ### When findings are found
 
@@ -518,8 +514,8 @@ make clean
 
 ```powershell
 go test ./...
-go build ./cmd/acr
-go install ./cmd/acr
+go build ./cmd/arc
+go install ./cmd/arc
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines.

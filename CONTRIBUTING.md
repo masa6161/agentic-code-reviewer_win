@@ -1,4 +1,4 @@
-# Contributing to ACR
+# Contributing to ARC
 
 Contributions are greatly appreciated! Please note that all contributions
 are reviewed at the maintainer's discretion — submitting a PR does not
@@ -20,16 +20,16 @@ obligate acceptance.
 
 ## PR Requirements
 
-All PRs must include evidence of a successful ACR run against the
-contributed code using the repository's `.acr.yaml` configuration
+All PRs must include evidence of a successful ARC run against the
+contributed code using the repository's `.arc.yaml` configuration
 (which uses all three agent types with 6 reviewers):
 
-    acr --pr <your-pr-number>
+    arc --pr <your-pr-number>
 
 If you don't have access to all three agents (codex, claude, gemini),
 you must review with at least 2. Override with:
 
-    acr --pr <your-pr-number> --reviewer-agent codex,claude
+    arc --pr <your-pr-number> --reviewer-agent codex,claude
 
 ## Project Structure
 

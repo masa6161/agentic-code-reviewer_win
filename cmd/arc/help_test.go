@@ -99,7 +99,7 @@ func TestFlagGroupsCoverAllFlags(t *testing.T) {
 	}
 
 	// Build the real command's flag set
-	cmd := &cobra.Command{Use: "acr"}
+	cmd := &cobra.Command{Use: "arc"}
 	cmd.Flags().IntVarP(&reviewers, "reviewers", "r", 0, "")
 	cmd.Flags().IntVarP(&concurrency, "concurrency", "c", 0, "")
 	cmd.Flags().StringVarP(&baseRef, "base", "b", "", "")

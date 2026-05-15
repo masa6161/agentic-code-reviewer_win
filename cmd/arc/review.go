@@ -7,16 +7,16 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/richhaase/agentic-code-reviewer/internal/agent"
-	"github.com/richhaase/agentic-code-reviewer/internal/domain"
-	"github.com/richhaase/agentic-code-reviewer/internal/feedback"
-	"github.com/richhaase/agentic-code-reviewer/internal/filter"
-	"github.com/richhaase/agentic-code-reviewer/internal/fpfilter"
-	"github.com/richhaase/agentic-code-reviewer/internal/git"
-	"github.com/richhaase/agentic-code-reviewer/internal/modelconfig"
-	"github.com/richhaase/agentic-code-reviewer/internal/runner"
-	"github.com/richhaase/agentic-code-reviewer/internal/summarizer"
-	"github.com/richhaase/agentic-code-reviewer/internal/terminal"
+	"github.com/masa6161/arc-cli/internal/agent"
+	"github.com/masa6161/arc-cli/internal/domain"
+	"github.com/masa6161/arc-cli/internal/feedback"
+	"github.com/masa6161/arc-cli/internal/filter"
+	"github.com/masa6161/arc-cli/internal/fpfilter"
+	"github.com/masa6161/arc-cli/internal/git"
+	"github.com/masa6161/arc-cli/internal/modelconfig"
+	"github.com/masa6161/arc-cli/internal/runner"
+	"github.com/masa6161/arc-cli/internal/summarizer"
+	"github.com/masa6161/arc-cli/internal/terminal"
 )
 
 // cliOrLegacy returns (cliModel, legacyModel) based on whether the value came
@@ -1015,7 +1015,7 @@ func resolveCrossCheckAgents(opts ReviewOpts, sizeStr string) ([]string, []strin
 	if len(missing) > 0 {
 		return nil, nil, fmt.Errorf(
 			"cross_check.enabled=true requires cross_check.model for agent(s) %v "+
-				"(supply via --cross-check-model / ACR_CROSS_CHECK_MODEL as a "+
+				"(supply via --cross-check-model / ARC_CROSS_CHECK_MODEL as a "+
 				"comma-separated list paired 1:1 with --cross-check-agent, or via "+
 				"models.{agents.<name>,sizes.large,defaults}.cross_check.model "+
 				"— note: cross-check runs only at size=large, so sizes.small/medium "+
@@ -1398,7 +1398,7 @@ func logPerPhaseModelMatrix(logger *terminal.Logger, opts ReviewOpts, sizeStr st
 // selected agent uncovered by the models tree AND no top-level model), this
 // function emits a diagnostic line and returns rather than panicking. The
 // authoritative resolve happens in the same gate where this is called from
-// (cmd/acr/review.go grouped path), so a real failure surfaces there with a
+// (cmd/arc/review.go grouped path), so a real failure surfaces there with a
 // clear, actionable error.
 func logCrossCheckModelMatrix(logger *terminal.Logger, opts ReviewOpts, sizeStr string) {
 	ccAgentNames, ccModels, err := resolveCrossCheckAgents(opts, sizeStr)

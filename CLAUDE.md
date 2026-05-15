@@ -12,12 +12,12 @@ Claude Code 固有の補足ガイドです。
 以下はナビゲーション用の詳細ファイル一覧です。設計方針やコードパターンは AGENTS.md を参照してください。
 
 ```
-cmd/acr/                   # CLI エントリポイントとサブコマンド
+cmd/arc/                   # CLI エントリポイントとサブコマンド
   main.go                  # CLI エントリポイント、フラグ解析、cobra ルートコマンド
   review.go                # コアレビューオーケストレーション（executeReview）
   review_opts.go           # ReviewOpts 構造体（解決済み設定 + CLI フラグのバンドル）
   pr_submit.go             # PR 投稿フロー（コメント投稿、承認）
-  config_cmd.go            # `acr config` サブコマンド（.acr.yaml の初期化/表示）
+  config_cmd.go            # `arc config` サブコマンド（.arc.yaml の初期化/表示）
   help.go                  # カスタムヘルプフォーマット（フラググループ）
   helpers.go               # CLI ヘルパー関数（finding フィルタリング等）
   version.go               # バージョン情報（ldflags 経由で注入）
@@ -57,7 +57,7 @@ internal/
     *_test.go              # 包括的テストスイート
 
   config/                  # 設定ファイルサポート
-    config.go              # .acr.yaml の読み込み/解析、LoadEnvState()、Resolve() 優先順位
+    config.go              # .arc.yaml の読み込み/解析、LoadEnvState()、Resolve() 優先順位
 
   domain/                  # コア型: Finding, AggregatedFinding, GroupedFindings
     finding.go             # Finding 型、集約ロジック、disposition 追跡
@@ -110,4 +110,4 @@ internal/
 
 ## フォーク元ドキュメント
 
-フォーク元プロジェクト（richhaase/agentic-code-reviewer）の開発ガイドは [CLAUDE_upstream.md](CLAUDE_upstream.md) として保存しています。
+フォーク元プロジェクト（Rich Haase 版）の開発ガイドは [CLAUDE_upstream.md](CLAUDE_upstream.md) として保存しています。

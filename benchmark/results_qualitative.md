@@ -1,4 +1,4 @@
-# ACR Role-Prompts Benchmark: 定性評価
+# ARC Role-Prompts Benchmark: 定性評価
 
 **実施日**: 2026-04-29/30
 **評価ルーブリック**: 有用 / 冗長 / 的外れ (計画 Post-TDD セクション準拠)
@@ -19,7 +19,7 @@
 
 ### Theme 2: CLI flag precedence バグ (`--no-role-prompts=false`)
 
-- **内容**: `RolePrompts: rolePrompts && !noRolePrompts` + `RolePromptsSet = Changed("role-prompts") || Changed("no-role-prompts")` の組合せで、`--no-role-prompts=false` が `RolePromptsSet=true / RolePrompts=false` を流し込み、`ACR_ROLE_PROMPTS=true` や yaml 設定を黙って上書きする。
+- **内容**: `RolePrompts: rolePrompts && !noRolePrompts` + `RolePromptsSet = Changed("role-prompts") || Changed("no-role-prompts")` の組合せで、`--no-role-prompts=false` が `RolePromptsSet=true / RolePrompts=false` を流し込み、`ARC_ROLE_PROMPTS=true` や yaml 設定を黙って上書きする。
 - **出現**: Baseline 6/6, Treatment 6/6 (**全 trial で検出**)
 - **Severity**: blocking (全 trial)
 - **評価**: **有用** — 実バグ。`--no-role-prompts=false` は「否定フラグを明示的に false にする」edge case だが、フラグペアの合成ロジックが precedence 契約を破る。AutoPhase フラグと同パターンで `noRolePromptsSet` を分離すべき。

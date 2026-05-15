@@ -10,15 +10,15 @@ import (
 	"testing"
 )
 
-const integrationMockEnv = "ACR_INTEGRATION_TEST_HELPER"
-const integrationMockModeEnv = "ACR_INTEGRATION_TEST_HELPER_MODE"
+const integrationMockEnv = "ARC_INTEGRATION_TEST_HELPER"
+const integrationMockModeEnv = "ARC_INTEGRATION_TEST_HELPER_MODE"
 const (
-	integrationCodexReviewEnv   = "ACR_INTEGRATION_CODEX_REVIEW"
-	integrationCodexSummaryEnv  = "ACR_INTEGRATION_CODEX_SUMMARY"
-	integrationClaudeReviewEnv  = "ACR_INTEGRATION_CLAUDE_REVIEW"
-	integrationClaudeSummaryEnv = "ACR_INTEGRATION_CLAUDE_SUMMARY"
-	integrationGeminiReviewEnv  = "ACR_INTEGRATION_GEMINI_REVIEW"
-	integrationGeminiSummaryEnv = "ACR_INTEGRATION_GEMINI_SUMMARY"
+	integrationCodexReviewEnv   = "ARC_INTEGRATION_CODEX_REVIEW"
+	integrationCodexSummaryEnv  = "ARC_INTEGRATION_CODEX_SUMMARY"
+	integrationClaudeReviewEnv  = "ARC_INTEGRATION_CLAUDE_REVIEW"
+	integrationClaudeSummaryEnv = "ARC_INTEGRATION_CLAUDE_SUMMARY"
+	integrationGeminiReviewEnv  = "ARC_INTEGRATION_GEMINI_REVIEW"
+	integrationGeminiSummaryEnv = "ARC_INTEGRATION_GEMINI_SUMMARY"
 )
 
 func TestMain(m *testing.M) {

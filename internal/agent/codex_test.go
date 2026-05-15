@@ -318,7 +318,7 @@ func TestCodexAgent_ExecuteReview_PassesConfiguredCodexAuthEnv(t *testing.T) {
 	userProfile := filepath.Join(t.TempDir(), "profile")
 	appData := filepath.Join(t.TempDir(), "appdata")
 	localAppData := filepath.Join(t.TempDir(), "localappdata")
-	t.Setenv("ACR_CODEX_HOME", "")
+	t.Setenv("ARC_CODEX_HOME", "")
 	t.Setenv("CODEX_HOME", "")
 	t.Setenv("HOME", "")
 	t.Setenv("USERPROFILE", userProfile)
@@ -366,8 +366,8 @@ func TestCodexAgent_ExecuteReview_ConfiguredCodexHomeOverridesProcessEnv(t *test
 
 	configuredCodexHome := filepath.Join(t.TempDir(), "configured-codex")
 	codexHome := filepath.Join(t.TempDir(), "codex-home")
-	acrCodexHome := filepath.Join(t.TempDir(), "acr-codex-home")
-	t.Setenv("ACR_CODEX_HOME", acrCodexHome)
+	arcCodexHome := filepath.Join(t.TempDir(), "arc-codex-home")
+	t.Setenv("ARC_CODEX_HOME", arcCodexHome)
 	t.Setenv("CODEX_HOME", codexHome)
 
 	agent := NewCodexAgentWithOptions(AgentOptions{CodexHome: configuredCodexHome})
@@ -394,8 +394,8 @@ func TestCodexAgent_ExecuteReview_CodexHomeFallsBackToProcessEnv(t *testing.T) {
 	prepareMockCLI(t, "codex", "env")
 
 	codexHome := filepath.Join(t.TempDir(), "codex-home")
-	acrCodexHome := filepath.Join(t.TempDir(), "acr-codex-home")
-	t.Setenv("ACR_CODEX_HOME", acrCodexHome)
+	arcCodexHome := filepath.Join(t.TempDir(), "arc-codex-home")
+	t.Setenv("ARC_CODEX_HOME", arcCodexHome)
 	t.Setenv("CODEX_HOME", codexHome)
 
 	agent := NewCodexAgent("")
@@ -413,8 +413,8 @@ func TestCodexAgent_ExecuteReview_CodexHomeFallsBackToProcessEnv(t *testing.T) {
 		t.Fatalf("failed to read output: %v", err)
 	}
 	env := parseEnvOutput(string(output))
-	if got := env["CODEX_HOME"]; got != acrCodexHome {
-		t.Errorf("CODEX_HOME = %q, want %q", got, acrCodexHome)
+	if got := env["CODEX_HOME"]; got != arcCodexHome {
+		t.Errorf("CODEX_HOME = %q, want %q", got, arcCodexHome)
 	}
 }
 
@@ -422,7 +422,7 @@ func TestCodexAgent_ExecuteReview_DefaultCodexHomeFromUserProfile(t *testing.T) 
 	prepareMockCLI(t, "codex", "env")
 
 	userProfile := filepath.Join(t.TempDir(), "profile")
-	t.Setenv("ACR_CODEX_HOME", "")
+	t.Setenv("ARC_CODEX_HOME", "")
 	t.Setenv("CODEX_HOME", "")
 	t.Setenv("USERPROFILE", userProfile)
 

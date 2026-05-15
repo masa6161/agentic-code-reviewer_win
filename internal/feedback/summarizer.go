@@ -6,8 +6,8 @@ import (
 	"io"
 	"strings"
 
-	"github.com/richhaase/agentic-code-reviewer/internal/agent"
-	"github.com/richhaase/agentic-code-reviewer/internal/terminal"
+	"github.com/masa6161/arc-cli/internal/agent"
+	"github.com/masa6161/arc-cli/internal/terminal"
 )
 
 // Summarizer summarizes PR feedback for the FP filter.

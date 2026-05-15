@@ -1,4 +1,4 @@
-// Package config provides configuration file support for acr.
+// Package config provides configuration file support for arc.
 package config
 
 import (
@@ -13,13 +13,13 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/richhaase/agentic-code-reviewer/internal/agent"
-	"github.com/richhaase/agentic-code-reviewer/internal/domain"
-	"github.com/richhaase/agentic-code-reviewer/internal/git"
+	"github.com/masa6161/arc-cli/internal/agent"
+	"github.com/masa6161/arc-cli/internal/domain"
+	"github.com/masa6161/arc-cli/internal/git"
 )
 
 // ConfigFileName is the name of the config file.
-const ConfigFileName = ".acr.yaml"
+const ConfigFileName = ".arc.yaml"
 
 // FPFilterDeprecationSuffix is the shared deprecation message suffix for FP filter disable paths.
 const FPFilterDeprecationSuffix = "is deprecated; FP filter is now enabled by default with severity triage"
@@ -154,7 +154,7 @@ type FilterConfig struct {
 	ExcludePatterns []string `yaml:"exclude_patterns"`
 }
 
-// LoadWithWarnings reads .acr.yaml from the git repository root and returns warnings.
+// LoadWithWarnings reads .arc.yaml from the git repository root and returns warnings.
 // Returns an empty config (not error) if the file doesn't exist.
 // Returns an error if the file exists but is invalid YAML or contains invalid regex patterns.
 func LoadWithWarnings() (*LoadResult, error) {
@@ -168,7 +168,7 @@ func LoadWithWarnings() (*LoadResult, error) {
 	return LoadFromPathWithWarnings(configPath)
 }
 
-// LoadFromDirWithWarnings reads .acr.yaml from the specified directory and returns warnings.
+// LoadFromDirWithWarnings reads .arc.yaml from the specified directory and returns warnings.
 // Returns an empty config (not error) if the file doesn't exist.
 // Returns an error if the file exists but is invalid YAML or contains invalid regex patterns.
 func LoadFromDirWithWarnings(dir string) (*LoadResult, error) {
@@ -602,7 +602,7 @@ func (r *ResolvedConfig) ValidateRuntime() []string {
 		if len(missing) > 0 {
 			errs = append(errs, fmt.Sprintf(
 				"cross_check.enabled=true requires cross_check.model for agent(s) %v "+
-					"(supply via --cross-check-model / ACR_CROSS_CHECK_MODEL as a "+
+					"(supply via --cross-check-model / ARC_CROSS_CHECK_MODEL as a "+
 					"comma-separated list paired 1:1 with cross_check.agent, or via "+
 					"models.{agents.<name>,sizes.large,defaults}.cross_check.model "+
 					"— note: cross-check runs only at size=large, so sizes.small/medium "+
@@ -648,7 +648,7 @@ func (r *ResolvedConfig) ValidateRuntime() []string {
 // produce a non-empty cross_check.model for the given agentName.
 //
 // Round-14 F#1 (案 V): cross-check runs exclusively at size=large (gated by
-// `useGroupedSpecs && opts.CrossCheckEnabled` in cmd/acr/review.go, where
+// `useGroupedSpecs && opts.CrossCheckEnabled` in cmd/arc/review.go, where
 // useGroupedSpecs=true is only reachable via DiffSizeLarge in resolveAutoPhase).
 // Therefore non-large size layers (sizes.small / sizes.medium) are dead code
 // for the cross_check role: configuring them never affects runtime resolution.
@@ -883,7 +883,7 @@ type ResolvedConfig struct {
 	RolePrompts            bool
 	TriageEnabled          bool
 	ShowNoise              bool
-	// ReviewerModelFromCLI is true when --reviewer-model or ACR_REVIEWER_MODEL
+	// ReviewerModelFromCLI is true when --reviewer-model or ARC_REVIEWER_MODEL
 	// set the ReviewerModel field, making it a CLI/env override that should win
 	// over models.agents/sizes/defaults config.
 	ReviewerModelFromCLI   bool
@@ -1011,51 +1011,51 @@ func LoadEnvState() (EnvState, []string) {
 	var state EnvState
 	var warnings []string
 
-	if v := os.Getenv("ACR_REVIEWERS"); v != "" {
+	if v := os.Getenv("ARC_REVIEWERS"); v != "" {
 		if i, err := strconv.Atoi(v); err == nil {
 			state.Reviewers = i
 			state.ReviewersSet = true
 		} else {
-			warnings = append(warnings, fmt.Sprintf("ACR_REVIEWERS=%q is not a valid integer, ignoring", v))
+			warnings = append(warnings, fmt.Sprintf("ARC_REVIEWERS=%q is not a valid integer, ignoring", v))
 		}
 	}
-	if v := os.Getenv("ACR_LARGE_DIFF_REVIEWERS"); v != "" {
+	if v := os.Getenv("ARC_LARGE_DIFF_REVIEWERS"); v != "" {
 		if i, err := strconv.Atoi(v); err == nil {
 			state.LargeDiffReviewers = i
 			state.LargeDiffReviewersSet = true
 		} else {
-			warnings = append(warnings, fmt.Sprintf("ACR_LARGE_DIFF_REVIEWERS=%q is not a valid integer, ignoring", v))
+			warnings = append(warnings, fmt.Sprintf("ARC_LARGE_DIFF_REVIEWERS=%q is not a valid integer, ignoring", v))
 		}
 	}
-	if v := os.Getenv("ACR_MEDIUM_DIFF_REVIEWERS"); v != "" {
+	if v := os.Getenv("ARC_MEDIUM_DIFF_REVIEWERS"); v != "" {
 		if i, err := strconv.Atoi(v); err == nil {
 			state.MediumDiffReviewers = i
 			state.MediumDiffReviewersSet = true
 		} else {
-			warnings = append(warnings, fmt.Sprintf("ACR_MEDIUM_DIFF_REVIEWERS=%q is not a valid integer, ignoring", v))
+			warnings = append(warnings, fmt.Sprintf("ARC_MEDIUM_DIFF_REVIEWERS=%q is not a valid integer, ignoring", v))
 		}
 	}
-	if v := os.Getenv("ACR_SMALL_DIFF_REVIEWERS"); v != "" {
+	if v := os.Getenv("ARC_SMALL_DIFF_REVIEWERS"); v != "" {
 		if i, err := strconv.Atoi(v); err == nil {
 			state.SmallDiffReviewers = i
 			state.SmallDiffReviewersSet = true
 		} else {
-			warnings = append(warnings, fmt.Sprintf("ACR_SMALL_DIFF_REVIEWERS=%q is not a valid integer, ignoring", v))
+			warnings = append(warnings, fmt.Sprintf("ARC_SMALL_DIFF_REVIEWERS=%q is not a valid integer, ignoring", v))
 		}
 	}
-	if v := os.Getenv("ACR_CONCURRENCY"); v != "" {
+	if v := os.Getenv("ARC_CONCURRENCY"); v != "" {
 		if i, err := strconv.Atoi(v); err == nil {
 			state.Concurrency = i
 			state.ConcurrencySet = true
 		} else {
-			warnings = append(warnings, fmt.Sprintf("ACR_CONCURRENCY=%q is not a valid integer, ignoring", v))
+			warnings = append(warnings, fmt.Sprintf("ARC_CONCURRENCY=%q is not a valid integer, ignoring", v))
 		}
 	}
-	if v := os.Getenv("ACR_BASE_REF"); v != "" {
+	if v := os.Getenv("ARC_BASE_REF"); v != "" {
 		state.Base = v
 		state.BaseSet = true
 	}
-	if v := os.Getenv("ACR_TIMEOUT"); v != "" {
+	if v := os.Getenv("ARC_TIMEOUT"); v != "" {
 		if d, err := time.ParseDuration(v); err == nil {
 			state.Timeout = d
 			state.TimeoutSet = true
@@ -1063,18 +1063,18 @@ func LoadEnvState() (EnvState, []string) {
 			state.Timeout = time.Duration(secs) * time.Second
 			state.TimeoutSet = true
 		} else {
-			warnings = append(warnings, fmt.Sprintf("ACR_TIMEOUT=%q is not a valid duration or integer, ignoring", v))
+			warnings = append(warnings, fmt.Sprintf("ARC_TIMEOUT=%q is not a valid duration or integer, ignoring", v))
 		}
 	}
-	if v := os.Getenv("ACR_RETRIES"); v != "" {
+	if v := os.Getenv("ARC_RETRIES"); v != "" {
 		if i, err := strconv.Atoi(v); err == nil {
 			state.Retries = i
 			state.RetriesSet = true
 		} else {
-			warnings = append(warnings, fmt.Sprintf("ACR_RETRIES=%q is not a valid integer, ignoring", v))
+			warnings = append(warnings, fmt.Sprintf("ARC_RETRIES=%q is not a valid integer, ignoring", v))
 		}
 	}
-	if v := os.Getenv("ACR_FETCH"); v != "" {
+	if v := os.Getenv("ARC_FETCH"); v != "" {
 		switch strings.ToLower(v) {
 		case "true", "1", "yes":
 			state.Fetch = true
@@ -1083,45 +1083,45 @@ func LoadEnvState() (EnvState, []string) {
 			state.Fetch = false
 			state.FetchSet = true
 		default:
-			warnings = append(warnings, fmt.Sprintf("ACR_FETCH=%q is not a valid boolean (use true/false/1/0/yes/no), ignoring", v))
+			warnings = append(warnings, fmt.Sprintf("ARC_FETCH=%q is not a valid boolean (use true/false/1/0/yes/no), ignoring", v))
 		}
 	}
-	if v := os.Getenv("ACR_REVIEWER_AGENT"); v != "" {
+	if v := os.Getenv("ARC_REVIEWER_AGENT"); v != "" {
 		if agents := parseCommaSeparated(v); agents != nil {
 			state.ReviewerAgents = agents
 			state.ReviewerAgentsSet = true
 		}
 	}
-	if v := os.Getenv("ACR_ARCH_REVIEWER_AGENT"); v != "" {
+	if v := os.Getenv("ARC_ARCH_REVIEWER_AGENT"); v != "" {
 		state.ArchReviewerAgent = strings.TrimSpace(v)
 		state.ArchReviewerAgentSet = true
 	}
-	if v := os.Getenv("ACR_DIFF_REVIEWER_AGENTS"); v != "" {
+	if v := os.Getenv("ARC_DIFF_REVIEWER_AGENTS"); v != "" {
 		if agents := parseCommaSeparated(v); agents != nil {
 			state.DiffReviewerAgents = agents
 			state.DiffReviewerAgentsSet = true
 		}
 	}
-	if v := os.Getenv("ACR_SUMMARIZER_AGENT"); v != "" {
+	if v := os.Getenv("ARC_SUMMARIZER_AGENT"); v != "" {
 		state.SummarizerAgent = v
 		state.SummarizerAgentSet = true
 	}
-	if v := strings.TrimSpace(os.Getenv("ACR_CODEX_HOME")); v != "" {
+	if v := strings.TrimSpace(os.Getenv("ARC_CODEX_HOME")); v != "" {
 		state.CodexHome = v
 		state.CodexHomeSet = true
 	} else if v := strings.TrimSpace(os.Getenv("CODEX_HOME")); v != "" {
 		state.CodexHome = v
 		state.CodexHomeSet = true
 	}
-	if v := os.Getenv("ACR_REVIEWER_MODEL"); v != "" {
+	if v := os.Getenv("ARC_REVIEWER_MODEL"); v != "" {
 		state.ReviewerModel = v
 		state.ReviewerModelSet = true
 	}
-	if v := os.Getenv("ACR_SUMMARIZER_MODEL"); v != "" {
+	if v := os.Getenv("ARC_SUMMARIZER_MODEL"); v != "" {
 		state.SummarizerModel = v
 		state.SummarizerModelSet = true
 	}
-	if v := os.Getenv("ACR_SUMMARIZER_TIMEOUT"); v != "" {
+	if v := os.Getenv("ARC_SUMMARIZER_TIMEOUT"); v != "" {
 		if d, err := time.ParseDuration(v); err == nil {
 			state.SummarizerTimeout = d
 			state.SummarizerTimeoutSet = true
@@ -1129,10 +1129,10 @@ func LoadEnvState() (EnvState, []string) {
 			state.SummarizerTimeout = time.Duration(secs) * time.Second
 			state.SummarizerTimeoutSet = true
 		} else {
-			warnings = append(warnings, fmt.Sprintf("ACR_SUMMARIZER_TIMEOUT=%q is not a valid duration or integer, ignoring", v))
+			warnings = append(warnings, fmt.Sprintf("ARC_SUMMARIZER_TIMEOUT=%q is not a valid duration or integer, ignoring", v))
 		}
 	}
-	if v := os.Getenv("ACR_FP_FILTER_TIMEOUT"); v != "" {
+	if v := os.Getenv("ARC_FP_FILTER_TIMEOUT"); v != "" {
 		if d, err := time.ParseDuration(v); err == nil {
 			state.FPFilterTimeout = d
 			state.FPFilterTimeoutSet = true
@@ -1140,31 +1140,31 @@ func LoadEnvState() (EnvState, []string) {
 			state.FPFilterTimeout = time.Duration(secs) * time.Second
 			state.FPFilterTimeoutSet = true
 		} else {
-			warnings = append(warnings, fmt.Sprintf("ACR_FP_FILTER_TIMEOUT=%q is not a valid duration or integer, ignoring", v))
+			warnings = append(warnings, fmt.Sprintf("ARC_FP_FILTER_TIMEOUT=%q is not a valid duration or integer, ignoring", v))
 		}
 	}
-	if v := os.Getenv("ACR_FP_FILTER_AGENT"); v != "" {
+	if v := os.Getenv("ARC_FP_FILTER_AGENT"); v != "" {
 		state.FPFilterAgent = v
 		state.FPFilterAgentSet = true
 	}
-	if v := os.Getenv("ACR_FP_FILTER_MODEL"); v != "" {
+	if v := os.Getenv("ARC_FP_FILTER_MODEL"); v != "" {
 		state.FPFilterModel = v
 		state.FPFilterModelSet = true
 	}
-	if v := os.Getenv("ACR_FP_FILTER_EFFORT"); v != "" {
+	if v := os.Getenv("ARC_FP_FILTER_EFFORT"); v != "" {
 		state.FPFilterEffort = v
 		state.FPFilterEffortSet = true
 	}
-	if v := os.Getenv("ACR_GUIDANCE"); v != "" {
+	if v := os.Getenv("ARC_GUIDANCE"); v != "" {
 		state.Guidance = v
 		state.GuidanceSet = true
 	}
-	if v := os.Getenv("ACR_GUIDANCE_FILE"); v != "" {
+	if v := os.Getenv("ARC_GUIDANCE_FILE"); v != "" {
 		state.GuidanceFile = v
 		state.GuidanceFileSet = true
 	}
 
-	if v := os.Getenv("ACR_FP_FILTER"); v != "" {
+	if v := os.Getenv("ARC_FP_FILTER"); v != "" {
 		switch v {
 		case "true", "1":
 			state.FPFilterEnabled = true
@@ -1172,24 +1172,24 @@ func LoadEnvState() (EnvState, []string) {
 		case "false", "0":
 			state.FPFilterEnabled = false
 			state.FPFilterSet = true
-			warnings = append(warnings, fmt.Sprintf("ACR_FP_FILTER=%s %s", v, FPFilterDeprecationSuffix))
+			warnings = append(warnings, fmt.Sprintf("ARC_FP_FILTER=%s %s", v, FPFilterDeprecationSuffix))
 		default:
-			warnings = append(warnings, fmt.Sprintf("ACR_FP_FILTER=%q is not a valid boolean (use true/false/1/0), ignoring", v))
+			warnings = append(warnings, fmt.Sprintf("ARC_FP_FILTER=%q is not a valid boolean (use true/false/1/0), ignoring", v))
 		}
 	}
 
-	if v := os.Getenv("ACR_FP_THRESHOLD"); v != "" {
+	if v := os.Getenv("ARC_FP_THRESHOLD"); v != "" {
 		if i, err := strconv.Atoi(v); err == nil && i >= 1 && i <= 100 {
 			state.FPThreshold = i
 			state.FPThresholdSet = true
 		} else if err != nil {
-			warnings = append(warnings, fmt.Sprintf("ACR_FP_THRESHOLD=%q is not a valid integer, ignoring", v))
+			warnings = append(warnings, fmt.Sprintf("ARC_FP_THRESHOLD=%q is not a valid integer, ignoring", v))
 		} else {
-			warnings = append(warnings, fmt.Sprintf("ACR_FP_THRESHOLD=%q is out of range (must be 1-100), ignoring", v))
+			warnings = append(warnings, fmt.Sprintf("ARC_FP_THRESHOLD=%q is out of range (must be 1-100), ignoring", v))
 		}
 	}
 
-	if v := os.Getenv("ACR_PR_FEEDBACK"); v != "" {
+	if v := os.Getenv("ARC_PR_FEEDBACK"); v != "" {
 		switch v {
 		case "true", "1":
 			state.PRFeedbackEnabled = true
@@ -1198,16 +1198,16 @@ func LoadEnvState() (EnvState, []string) {
 			state.PRFeedbackEnabled = false
 			state.PRFeedbackEnabledSet = true
 		default:
-			warnings = append(warnings, fmt.Sprintf("ACR_PR_FEEDBACK=%q is not a valid boolean (use true/false/1/0), ignoring", v))
+			warnings = append(warnings, fmt.Sprintf("ARC_PR_FEEDBACK=%q is not a valid boolean (use true/false/1/0), ignoring", v))
 		}
 	}
 
-	if v := os.Getenv("ACR_PR_FEEDBACK_AGENT"); v != "" {
+	if v := os.Getenv("ARC_PR_FEEDBACK_AGENT"); v != "" {
 		state.PRFeedbackAgent = v
 		state.PRFeedbackAgentSet = true
 	}
 
-	if v := os.Getenv("ACR_CROSS_CHECK"); v != "" {
+	if v := os.Getenv("ARC_CROSS_CHECK"); v != "" {
 		switch v {
 		case "true", "1":
 			state.CrossCheckEnabled = true
@@ -1216,21 +1216,21 @@ func LoadEnvState() (EnvState, []string) {
 			state.CrossCheckEnabled = false
 			state.CrossCheckEnabledSet = true
 		default:
-			warnings = append(warnings, fmt.Sprintf("ACR_CROSS_CHECK=%q is not a valid boolean (use true/false/1/0), ignoring", v))
+			warnings = append(warnings, fmt.Sprintf("ARC_CROSS_CHECK=%q is not a valid boolean (use true/false/1/0), ignoring", v))
 		}
 	}
 
-	if v := os.Getenv("ACR_CROSS_CHECK_AGENT"); v != "" {
+	if v := os.Getenv("ARC_CROSS_CHECK_AGENT"); v != "" {
 		state.CrossCheckAgent = v
 		state.CrossCheckAgentSet = true
 	}
 
-	if v := os.Getenv("ACR_CROSS_CHECK_MODEL"); v != "" {
+	if v := os.Getenv("ARC_CROSS_CHECK_MODEL"); v != "" {
 		state.CrossCheckModel = v
 		state.CrossCheckModelSet = true
 	}
 
-	if v := os.Getenv("ACR_CROSS_CHECK_TIMEOUT"); v != "" {
+	if v := os.Getenv("ARC_CROSS_CHECK_TIMEOUT"); v != "" {
 		if d, err := time.ParseDuration(v); err == nil {
 			state.CrossCheckTimeout = d
 			state.CrossCheckTimeoutSet = true
@@ -1238,11 +1238,11 @@ func LoadEnvState() (EnvState, []string) {
 			state.CrossCheckTimeout = time.Duration(secs) * time.Second
 			state.CrossCheckTimeoutSet = true
 		} else {
-			warnings = append(warnings, fmt.Sprintf("ACR_CROSS_CHECK_TIMEOUT=%q is not a valid duration or integer, ignoring", v))
+			warnings = append(warnings, fmt.Sprintf("ARC_CROSS_CHECK_TIMEOUT=%q is not a valid duration or integer, ignoring", v))
 		}
 	}
 
-	if v := os.Getenv("ACR_AUTO_PHASE"); v != "" {
+	if v := os.Getenv("ARC_AUTO_PHASE"); v != "" {
 		switch strings.ToLower(v) {
 		case "true", "1", "yes":
 			state.AutoPhase = true
@@ -1251,11 +1251,11 @@ func LoadEnvState() (EnvState, []string) {
 			state.AutoPhase = false
 			state.AutoPhaseSet = true
 		default:
-			warnings = append(warnings, fmt.Sprintf("ACR_AUTO_PHASE=%q is not a valid boolean (use true/false/1/0/yes/no), ignoring", v))
+			warnings = append(warnings, fmt.Sprintf("ARC_AUTO_PHASE=%q is not a valid boolean (use true/false/1/0/yes/no), ignoring", v))
 		}
 	}
 
-	if v := os.Getenv("ACR_ROLE_PROMPTS"); v != "" {
+	if v := os.Getenv("ARC_ROLE_PROMPTS"); v != "" {
 		switch strings.ToLower(v) {
 		case "true", "1", "yes":
 			state.RolePrompts = true
@@ -1264,11 +1264,11 @@ func LoadEnvState() (EnvState, []string) {
 			state.RolePrompts = false
 			state.RolePromptsSet = true
 		default:
-			warnings = append(warnings, fmt.Sprintf("ACR_ROLE_PROMPTS=%q is not a valid boolean (use true/false/1/0/yes/no), ignoring", v))
+			warnings = append(warnings, fmt.Sprintf("ARC_ROLE_PROMPTS=%q is not a valid boolean (use true/false/1/0/yes/no), ignoring", v))
 		}
 	}
 
-	if v := os.Getenv("ACR_TRIAGE"); v != "" {
+	if v := os.Getenv("ARC_TRIAGE"); v != "" {
 		switch strings.ToLower(v) {
 		case "true", "1", "yes":
 			state.TriageEnabled = true
@@ -1277,11 +1277,11 @@ func LoadEnvState() (EnvState, []string) {
 			state.TriageEnabled = false
 			state.TriageEnabledSet = true
 		default:
-			warnings = append(warnings, fmt.Sprintf("ACR_TRIAGE=%q is not a valid boolean (use true/false/1/0/yes/no), ignoring", v))
+			warnings = append(warnings, fmt.Sprintf("ARC_TRIAGE=%q is not a valid boolean (use true/false/1/0/yes/no), ignoring", v))
 		}
 	}
 
-	if v := os.Getenv("ACR_SHOW_NOISE"); v != "" {
+	if v := os.Getenv("ARC_SHOW_NOISE"); v != "" {
 		switch strings.ToLower(v) {
 		case "true", "1", "yes":
 			state.ShowNoise = true
@@ -1290,11 +1290,11 @@ func LoadEnvState() (EnvState, []string) {
 			state.ShowNoise = false
 			state.ShowNoiseSet = true
 		default:
-			warnings = append(warnings, fmt.Sprintf("ACR_SHOW_NOISE=%q is not a valid boolean (use true/false/1/0/yes/no), ignoring", v))
+			warnings = append(warnings, fmt.Sprintf("ARC_SHOW_NOISE=%q is not a valid boolean (use true/false/1/0/yes/no), ignoring", v))
 		}
 	}
 
-	if v := os.Getenv("ACR_STRICT"); v != "" {
+	if v := os.Getenv("ARC_STRICT"); v != "" {
 		switch strings.ToLower(v) {
 		case "true", "1", "yes":
 			state.Strict = true
@@ -1303,7 +1303,7 @@ func LoadEnvState() (EnvState, []string) {
 			state.Strict = false
 			state.StrictSet = true
 		default:
-			warnings = append(warnings, fmt.Sprintf("ACR_STRICT=%q is not a valid boolean (use true/false/1/0/yes/no), ignoring", v))
+			warnings = append(warnings, fmt.Sprintf("ARC_STRICT=%q is not a valid boolean (use true/false/1/0/yes/no), ignoring", v))
 		}
 	}
 
@@ -1659,8 +1659,8 @@ func Resolve(cfg *Config, envState EnvState, flagState FlagState, flagValues Res
 // Precedence (highest to lowest):
 // 1. --guidance flag
 // 2. --guidance-file flag
-// 3. ACR_GUIDANCE env var
-// 4. ACR_GUIDANCE_FILE env var
+// 3. ARC_GUIDANCE env var
+// 4. ARC_GUIDANCE_FILE env var
 // 5. guidance_file config field
 // 6. Empty string (no guidance)
 func ResolveGuidance(cfg *Config, envState EnvState, flagState FlagState, flagValues ResolvedConfig, configDir string) (string, error) {

@@ -5,8 +5,8 @@ package modelconfig
 import (
 	"strings"
 
-	"github.com/richhaase/agentic-code-reviewer/internal/config"
-	"github.com/richhaase/agentic-code-reviewer/internal/domain"
+	"github.com/masa6161/arc-cli/internal/config"
+	"github.com/masa6161/arc-cli/internal/domain"
 )
 
 // Role constants for the supported agent roles.

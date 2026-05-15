@@ -1,4 +1,4 @@
-"""ACR Role-Prompts Benchmark Analyzer."""
+"""ARC Role-Prompts Benchmark Analyzer."""
 import json
 import glob
 import sys

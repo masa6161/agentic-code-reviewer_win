@@ -90,11 +90,11 @@ func ensureWorktreesExcluded(commonDir string) error {
 	return nil
 }
 
-// staleWorktreeAge is the minimum age before an ACR worktree is considered stale.
+// staleWorktreeAge is the minimum age before an ARC worktree is considered stale.
 // This ensures we never remove worktrees from a currently-running review.
 const staleWorktreeAge = 2 * time.Hour
 
-// PruneStaleWorktrees removes ACR-created worktrees older than staleWorktreeAge.
+// PruneStaleWorktrees removes ARC-created worktrees older than staleWorktreeAge.
 // Only removes directories matching the "review-*" naming convention under .worktrees/.
 // Also runs "git worktree prune" to clean up git's internal bookkeeping.
 func PruneStaleWorktrees() error {
@@ -118,7 +118,7 @@ func PruneStaleWorktrees() error {
 			continue
 		}
 		name := entry.Name()
-		// Only touch ACR-created worktrees (review-* prefix)
+		// Only touch ARC-created worktrees (review-* prefix)
 		if !strings.HasPrefix(name, "review-") {
 			continue
 		}
