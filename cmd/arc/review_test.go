@@ -1412,7 +1412,7 @@ func TestNoAutoPhase_ProducesFlatPath_WithVerdict(t *testing.T) {
 
 // computeVerdictWithCCSignals mirrors the boundary logic in executeReview that
 // folds IsDegraded into ccAdvisory before calling ComputeVerdict. Extracted
-// only for testing; the production path lives at cmd/acr/review.go:~420.
+// only for testing; the production path lives at cmd/arc/review.go:~420.
 func computeVerdictWithCCSignals(g *domain.GroupedFindings, cc *summarizer.CrossCheckResult) {
 	ccBlocking := cc.HasBlockingFindings()
 	ccAdvisory := cc != nil && !ccBlocking && (cc.HasAdvisoryFindings() || cc.IsDegraded())

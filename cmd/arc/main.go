@@ -98,8 +98,8 @@ func main() {
 
 func run() int {
 	rootCmd := &cobra.Command{
-		Use:   "acr",
-		Short: "Agentic code reviewer - run parallel code reviews",
+		Use:   "arc",
+		Short: "Adaptive Review Coordinator - run parallel code reviews",
 		Long: `Run parallel LLM-powered code reviews, deduplicate findings, and summarize results.
 
 Exit codes:
@@ -117,29 +117,29 @@ Exit codes:
 
 	// Configuration flags (defaults are resolved via config.Resolve with precedence: flag > env > config > default)
 	rootCmd.Flags().IntVarP(&reviewers, "reviewers", "r", 0,
-		"Number of parallel reviewers for flat review path (auto-phase OFF, no --phase). --phase small uses --small-diff-reviewers; --phase medium uses --medium-diff-reviewers. (default: 5, env: ACR_REVIEWERS)")
+		"Number of parallel reviewers for flat review path (auto-phase OFF, no --phase). --phase small uses --small-diff-reviewers; --phase medium uses --medium-diff-reviewers. (default: 5, env: ARC_REVIEWERS)")
 	rootCmd.Flags().IntVar(&largeDiffReviewers, "large-diff-reviewers", 0,
-		"Number of diff reviewers in auto-phase grouped path (large diff) (default: 4, env: ACR_LARGE_DIFF_REVIEWERS)")
+		"Number of diff reviewers in auto-phase grouped path (large diff) (default: 4, env: ARC_LARGE_DIFF_REVIEWERS)")
 	rootCmd.Flags().IntVar(&mediumDiffReviewers, "medium-diff-reviewers", 0,
-		"Number of diff reviewers for auto-phase medium and --phase medium (default: 2, env: ACR_MEDIUM_DIFF_REVIEWERS)")
+		"Number of diff reviewers for auto-phase medium and --phase medium (default: 2, env: ARC_MEDIUM_DIFF_REVIEWERS)")
 	rootCmd.Flags().IntVar(&smallDiffReviewers, "small-diff-reviewers", 0,
-		"Number of reviewers for auto-phase small and --phase small (default: 1, env: ACR_SMALL_DIFF_REVIEWERS)")
+		"Number of reviewers for auto-phase small and --phase small (default: 1, env: ARC_SMALL_DIFF_REVIEWERS)")
 	rootCmd.Flags().IntVarP(&concurrency, "concurrency", "c", 0,
-		"Max concurrent reviewers (default: same as --reviewers, env: ACR_CONCURRENCY)")
+		"Max concurrent reviewers (default: same as --reviewers, env: ARC_CONCURRENCY)")
 	rootCmd.Flags().StringVarP(&baseRef, "base", "b", "",
-		"Base ref for review command (default: main, env: ACR_BASE_REF)")
+		"Base ref for review command (default: main, env: ARC_BASE_REF)")
 	rootCmd.Flags().DurationVarP(&timeout, "timeout", "t", 0,
-		"Timeout per reviewer (default: 10m, env: ACR_TIMEOUT)")
+		"Timeout per reviewer (default: 10m, env: ARC_TIMEOUT)")
 	rootCmd.Flags().IntVarP(&retries, "retries", "R", 0,
-		"Retry failed reviewers N times (default: 1, env: ACR_RETRIES)")
+		"Retry failed reviewers N times (default: 1, env: ARC_RETRIES)")
 	rootCmd.Flags().BoolVar(&fetch, "fetch", true,
-		"Fetch latest base ref from origin before diff (default: true, env: ACR_FETCH)")
+		"Fetch latest base ref from origin before diff (default: true, env: ARC_FETCH)")
 	rootCmd.Flags().BoolVar(&noFetch, "no-fetch", false,
 		"Disable fetching base ref from origin (use local state)")
 	rootCmd.Flags().StringVar(&guidance, "guidance", "",
-		"Steering context appended to the review prompt (env: ACR_GUIDANCE)")
+		"Steering context appended to the review prompt (env: ARC_GUIDANCE)")
 	rootCmd.Flags().StringVar(&guidanceFile, "guidance-file", "",
-		"Path to file containing review guidance (env: ACR_GUIDANCE_FILE)")
+		"Path to file containing review guidance (env: ARC_GUIDANCE_FILE)")
 	rootCmd.Flags().BoolVarP(&verbose, "verbose", "v", false,
 		"Print agent messages as they arrive")
 	rootCmd.Flags().BoolVarP(&local, "local", "l", false,
@@ -156,65 +156,65 @@ Exit codes:
 	rootCmd.Flags().StringArrayVar(&excludePatterns, "exclude-pattern", nil,
 		"Exclude findings matching regex pattern (repeatable)")
 	rootCmd.Flags().BoolVar(&noConfig, "no-config", false,
-		"Skip loading .acr.yaml config file")
+		"Skip loading .arc.yaml config file")
 	rootCmd.Flags().StringVarP(&agentName, "reviewer-agent", "a", "codex",
-		"Agent(s) for reviews (comma-separated): codex, claude, gemini (env: ACR_REVIEWER_AGENT)")
+		"Agent(s) for reviews (comma-separated): codex, claude, gemini (env: ARC_REVIEWER_AGENT)")
 	rootCmd.Flags().StringVar(&archReviewerAgent, "arch-reviewer-agent", "",
-		"Single agent for arch phase in auto-phase grouped diff (default: same as first --reviewer-agent, env: ACR_ARCH_REVIEWER_AGENT)")
+		"Single agent for arch phase in auto-phase grouped diff (default: same as first --reviewer-agent, env: ARC_ARCH_REVIEWER_AGENT)")
 	rootCmd.Flags().StringVar(&diffReviewerAgents, "diff-reviewer-agents", "",
-		"Agent(s) for diff phase in auto-phase grouped diff, comma-separated (default: same as --reviewer-agent, env: ACR_DIFF_REVIEWER_AGENTS)")
+		"Agent(s) for diff phase in auto-phase grouped diff, comma-separated (default: same as --reviewer-agent, env: ARC_DIFF_REVIEWER_AGENTS)")
 	rootCmd.Flags().StringVarP(&summarizerAgentName, "summarizer-agent", "s", "codex",
-		"Agent to use for summarization: codex, claude, gemini (env: ACR_SUMMARIZER_AGENT)")
+		"Agent to use for summarization: codex, claude, gemini (env: ARC_SUMMARIZER_AGENT)")
 	rootCmd.Flags().StringVar(&reviewerModel, "reviewer-model", "",
-		"LLM model for review agents (env: ACR_REVIEWER_MODEL)")
+		"LLM model for review agents (env: ARC_REVIEWER_MODEL)")
 	rootCmd.Flags().StringVar(&summarizerModel, "summarizer-model", "",
-		"LLM model for summarizer/FP filter agents (env: ACR_SUMMARIZER_MODEL)")
+		"LLM model for summarizer/FP filter agents (env: ARC_SUMMARIZER_MODEL)")
 	rootCmd.Flags().BoolVar(&refFile, "ref-file", false,
 		"Write diff to a temp file instead of embedding in prompt (auto-enabled for large diffs)")
 	rootCmd.Flags().BoolVar(&noFPFilter, "no-fp-filter", false,
-		"Disable false positive filtering (env: ACR_FP_FILTER=false to disable)")
+		"Disable false positive filtering (env: ARC_FP_FILTER=false to disable)")
 	rootCmd.Flags().IntVar(&fpThreshold, "fp-threshold", 75,
-		"False positive confidence threshold 1-100 (default: 75, env: ACR_FP_THRESHOLD)")
+		"False positive confidence threshold 1-100 (default: 75, env: ARC_FP_THRESHOLD)")
 	rootCmd.Flags().DurationVar(&summarizerTimeout, "summarizer-timeout", 0,
-		"Timeout for summarizer phase (default: 5m, env: ACR_SUMMARIZER_TIMEOUT)")
+		"Timeout for summarizer phase (default: 5m, env: ARC_SUMMARIZER_TIMEOUT)")
 	rootCmd.Flags().DurationVar(&fpFilterTimeout, "fp-filter-timeout", 0,
-		"Timeout for false positive filter phase (default: 5m, env: ACR_FP_FILTER_TIMEOUT)")
+		"Timeout for false positive filter phase (default: 5m, env: ARC_FP_FILTER_TIMEOUT)")
 	rootCmd.Flags().StringVar(&fpFilterAgentName, "fp-filter-agent", "",
-		"LLM agent for FP filter/triage (default: same as --summarizer-agent, env: ACR_FP_FILTER_AGENT)")
+		"LLM agent for FP filter/triage (default: same as --summarizer-agent, env: ARC_FP_FILTER_AGENT)")
 	rootCmd.Flags().StringVar(&fpFilterModel, "fp-filter-model", "",
-		"LLM model for FP filter/triage (default: same as --summarizer-model, env: ACR_FP_FILTER_MODEL)")
+		"LLM model for FP filter/triage (default: same as --summarizer-model, env: ARC_FP_FILTER_MODEL)")
 	rootCmd.Flags().StringVar(&fpFilterEffort, "fp-filter-effort", "",
-		"Reasoning effort for FP filter/triage (default: same as summarizer, env: ACR_FP_FILTER_EFFORT)")
+		"Reasoning effort for FP filter/triage (default: same as summarizer, env: ARC_FP_FILTER_EFFORT)")
 	rootCmd.Flags().BoolVar(&noPRFeedback, "no-pr-feedback", false,
-		"Disable reading PR comments for feedback context (env: ACR_PR_FEEDBACK=false)")
+		"Disable reading PR comments for feedback context (env: ARC_PR_FEEDBACK=false)")
 	rootCmd.Flags().StringVar(&prFeedbackAgent, "pr-feedback-agent", "",
-		"Agent for PR feedback summarization (default: same as --summarizer-agent, env: ACR_PR_FEEDBACK_AGENT)")
+		"Agent for PR feedback summarization (default: same as --summarizer-agent, env: ARC_PR_FEEDBACK_AGENT)")
 	rootCmd.Flags().BoolVar(&noCrossCheck, "no-cross-check", false,
-		"Disable cross-group consistency verification (env: ACR_CROSS_CHECK=false)")
+		"Disable cross-group consistency verification (env: ARC_CROSS_CHECK=false)")
 	rootCmd.Flags().StringVar(&crossCheckAgent, "cross-check-agent", "",
-		"Agent(s) for cross-check verification, comma-separated (default: same as --summarizer-agent, env: ACR_CROSS_CHECK_AGENT)")
+		"Agent(s) for cross-check verification, comma-separated (default: same as --summarizer-agent, env: ARC_CROSS_CHECK_AGENT)")
 	rootCmd.Flags().StringVar(&crossCheckModel, "cross-check-model", "",
-		"LLM model(s) for cross-check, comma-separated, count must match --cross-check-agent (REQUIRED when cross-check enabled, env: ACR_CROSS_CHECK_MODEL)")
+		"LLM model(s) for cross-check, comma-separated, count must match --cross-check-agent (REQUIRED when cross-check enabled, env: ARC_CROSS_CHECK_MODEL)")
 	rootCmd.Flags().DurationVar(&crossCheckTimeout, "cross-check-timeout", 0,
-		"Timeout for cross-check phase (default: 5m, env: ACR_CROSS_CHECK_TIMEOUT)")
+		"Timeout for cross-check phase (default: 5m, env: ARC_CROSS_CHECK_TIMEOUT)")
 	rootCmd.Flags().StringVar(&phase, "phase", "",
 		"Override auto-phase: small, medium, large (large falls back to medium if <2 splittable groups)")
 	rootCmd.Flags().StringVar(&formatOutput, "format", "text",
 		"Output format: text or json")
 	rootCmd.Flags().BoolVar(&autoPhase, "auto-phase", true,
-		"Auto-select review phases based on diff size (default: true, env: ACR_AUTO_PHASE)")
+		"Auto-select review phases based on diff size (default: true, env: ARC_AUTO_PHASE)")
 	rootCmd.Flags().BoolVar(&noAutoPhase, "no-auto-phase", false,
-		"Disable auto-phase selection and use flat diff review (env: ACR_AUTO_PHASE=false)")
+		"Disable auto-phase selection and use flat diff review (env: ARC_AUTO_PHASE=false)")
 	rootCmd.Flags().BoolVar(&strict, "strict", false,
-		"Exit 1 on any advisory verdict (default: false, env: ACR_STRICT)")
+		"Exit 1 on any advisory verdict (default: false, env: ARC_STRICT)")
 	rootCmd.Flags().BoolVar(&rolePrompts, "role-prompts", true,
-		"Use role-specific prompts for auto-phase diff/arch reviewers (default: true, env: ACR_ROLE_PROMPTS)")
+		"Use role-specific prompts for auto-phase diff/arch reviewers (default: true, env: ARC_ROLE_PROMPTS)")
 	rootCmd.Flags().BoolVar(&noRolePrompts, "no-role-prompts", false,
-		"Disable role-specific prompts (env: ACR_ROLE_PROMPTS=false)")
+		"Disable role-specific prompts (env: ARC_ROLE_PROMPTS=false)")
 	rootCmd.Flags().BoolVar(&showNoise, "show-noise", false,
-		"Show noise-level findings that are normally hidden (env: ACR_SHOW_NOISE)")
+		"Show noise-level findings that are normally hidden (env: ARC_SHOW_NOISE)")
 	rootCmd.Flags().BoolVar(&noTriage, "no-triage", false,
-		"Disable severity triage (FP-only mode, env: ACR_TRIAGE=false)")
+		"Disable severity triage (FP-only mode, env: ARC_TRIAGE=false)")
 
 	rootCmd.AddCommand(newConfigCmd())
 
@@ -278,7 +278,7 @@ func setupWorktree(ctx context.Context, cmd *cobra.Command, logger *terminal.Log
 
 		// Auto-detect base ref only if not explicitly set via flag OR env var
 		// This respects user's intentional base configuration
-		explicitBaseSet := cmd.Flags().Changed("base") || os.Getenv("ACR_BASE_REF") != ""
+		explicitBaseSet := cmd.Flags().Changed("base") || os.Getenv("ARC_BASE_REF") != ""
 		if !explicitBaseSet {
 			if detectedBase, err := github.GetPRBaseRef(ctx, prNumber); err == nil && detectedBase != "" {
 				result.detectedBase = detectedBase
@@ -478,7 +478,7 @@ func loadAndResolveConfig(cmd *cobra.Command, wt worktreeResult, logger *termina
 
 	// Build flag values struct
 	// noFetch exists for shell alias ergonomics where --fetch=false is awkward.
-	// Example: alias acr-nofetch='acr --no-fetch'
+	// Example: alias arc-nofetch='arc --no-fetch'
 	// When both flags are set (unlikely), noFetch takes precedence.
 	fetchValue := fetch && !noFetch
 	// Use auto-detected base ref from PR if available, otherwise use the flag value
@@ -636,7 +636,7 @@ func runReview(cmd *cobra.Command, _ []string) error {
 
 	logger := terminal.NewLogger()
 
-	// Prune stale ACR worktrees from previous runs (only review-* dirs older than 2h)
+	// Prune stale ARC worktrees from previous runs (only review-* dirs older than 2h)
 	if err := git.PruneStaleWorktrees(); err != nil && verbose {
 		logger.Logf(terminal.StyleDim, "Worktree prune: %v", err)
 	}

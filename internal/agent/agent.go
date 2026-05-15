@@ -18,7 +18,7 @@ type AgentOptions struct {
 	Effort string
 	// CodexHome is the resolved Codex home for codex subprocesses.
 	// It is supplied by operator-controlled environment resolution, not by
-	// repository .acr.yaml content.
+	// repository .arc.yaml content.
 	CodexHome string
 }
 

@@ -66,8 +66,8 @@ func TestWriteDiffToTempFile(t *testing.T) {
 	}
 
 	// Verify file has correct naming pattern
-	if !strings.Contains(filepath.Base(absPath), ".acr-diff-") {
-		t.Errorf("WriteDiffToTempFile() filename = %s, want pattern .acr-diff-*", filepath.Base(absPath))
+	if !strings.Contains(filepath.Base(absPath), ".arc-diff-") {
+		t.Errorf("WriteDiffToTempFile() filename = %s, want pattern .arc-diff-*", filepath.Base(absPath))
 	}
 
 	// Verify path is absolute

@@ -16,8 +16,8 @@ import (
 func newConfigCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "config",
-		Short: "Manage acr configuration",
-		Long:  "View, initialize, and validate acr configuration files and environment variables.",
+		Short: "Manage arc configuration",
+		Long:  "View, initialize, and validate arc configuration files and environment variables.",
 	}
 
 	cmd.AddCommand(newConfigShowCmd())
@@ -99,7 +99,7 @@ func newConfigShowCmd() *cobra.Command {
 			if resolved.CodexHome != "" {
 				fmt.Fprintf(out, "  %-32s %s\n", "codex_home (env):", resolved.CodexHome)
 			} else {
-				fmt.Fprintf(out, "  %-32s %s\n", "codex_home (env):", "(ACR_CODEX_HOME/CODEX_HOME env or USERPROFILE/HOME/.codex)")
+				fmt.Fprintf(out, "  %-32s %s\n", "codex_home (env):", "(ARC_CODEX_HOME/CODEX_HOME env or USERPROFILE/HOME/.codex)")
 			}
 			fmt.Fprintln(out)
 
@@ -208,8 +208,8 @@ func newConfigShowCmd() *cobra.Command {
 func newConfigInitCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "init",
-		Short: "Generate a starter .acr.yaml file",
-		Long:  "Create a commented .acr.yaml configuration file in the git repository root.",
+		Short: "Generate a starter .arc.yaml file",
+		Long:  "Create a commented .arc.yaml configuration file in the git repository root.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Write to git repo root (same location runtime loading uses)
 			repoRoot, err := git.GetRoot()
@@ -222,7 +222,7 @@ func newConfigInitCmd() *cobra.Command {
 				return fmt.Errorf("%s already exists; remove it first or edit it directly", configPath)
 			}
 
-			starter := `# acr configuration file
+			starter := `# arc configuration file
 # See https://github.com/masa6161/arc-cli for documentation.
 
 # Number of parallel reviewers to run (default: 5)
@@ -250,9 +250,9 @@ func newConfigInitCmd() *cobra.Command {
 # Agent for summarization: codex, claude, gemini
 # summarizer_agent: codex
 
-# Codex CLI home is not read from .acr.yaml because repository config is shared.
-# Set ACR_CODEX_HOME as a Windows User environment variable instead.
-# Precedence: ACR_CODEX_HOME > CODEX_HOME > USERPROFILE/HOME/.codex
+# Codex CLI home is not read from .arc.yaml because repository config is shared.
+# Set ARC_CODEX_HOME as a Windows User environment variable instead.
+# Precedence: ARC_CODEX_HOME > CODEX_HOME > USERPROFILE/HOME/.codex
 
 # Timeout for summarizer phase (default: 5m)
 # summarizer_timeout: 5m

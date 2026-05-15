@@ -14,10 +14,10 @@ import (
 )
 
 const (
-	agentTestHelperEnv      = "ACR_AGENT_TEST_HELPER"
-	agentTestHelperModeEnv  = "ACR_AGENT_TEST_HELPER_MODE"
-	agentTestHelperExitEnv  = "ACR_AGENT_TEST_HELPER_EXIT_CODE"
-	agentTestHelperSleepEnv = "ACR_AGENT_TEST_HELPER_SLEEP"
+	agentTestHelperEnv      = "ARC_AGENT_TEST_HELPER"
+	agentTestHelperModeEnv  = "ARC_AGENT_TEST_HELPER_MODE"
+	agentTestHelperExitEnv  = "ARC_AGENT_TEST_HELPER_EXIT_CODE"
+	agentTestHelperSleepEnv = "ARC_AGENT_TEST_HELPER_SLEEP"
 )
 
 func TestMain(m *testing.M) {

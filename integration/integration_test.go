@@ -1,4 +1,4 @@
-// Package integration provides end-to-end tests for the acr binary using mock agent CLIs.
+// Package integration provides end-to-end tests for the arc binary using mock agent CLIs.
 //
 // These tests replace the BATS integration tests with Go tests that:
 //   - Use mock CLI binaries instead of real LLM backends (zero cost, fast, deterministic)
@@ -24,48 +24,48 @@ import (
 
 // testEnv holds paths and state for integration test execution.
 type testEnv struct {
-	acrBin   string // Path to built acr binary
+	arcBin   string // Path to built arc binary
 	mockDir  string // Directory containing mock CLI scripts
 	repoDir  string // Temporary git repo for test execution
 	origPath string // Original PATH to restore
 }
 
-// buildOnce ensures the acr binary is built exactly once across all tests.
+// buildOnce ensures the arc binary is built exactly once across all tests.
 var (
 	buildOnce    sync.Once
-	builtAcrBin  string
-	builtAcrRoot string
+	builtArcBin  string
+	builtArcRoot string
 	buildErr     error
 )
 
 func ensureBinary(t *testing.T) string {
 	t.Helper()
 	buildOnce.Do(func() {
-		builtAcrRoot = findRepoRoot(t)
+		builtArcRoot = findRepoRoot(t)
 		// Use a stable path under the build dir so it persists across tests
-		name := "acr-test"
+		name := "arc-test"
 		if runtime.GOOS == "windows" {
 			name += ".exe"
 		}
-		builtAcrBin = filepath.Join(builtAcrRoot, "bin", name)
-		build := exec.Command("go", "build", "-o", builtAcrBin, "./cmd/acr")
-		build.Dir = builtAcrRoot
+		builtArcBin = filepath.Join(builtArcRoot, "bin", name)
+		build := exec.Command("go", "build", "-o", builtArcBin, "./cmd/arc")
+		build.Dir = builtArcRoot
 		out, err := build.CombinedOutput()
 		if err != nil {
-			buildErr = fmt.Errorf("failed to build acr: %v\n%s", err, out)
+			buildErr = fmt.Errorf("failed to build arc: %v\n%s", err, out)
 		}
 	})
 	if buildErr != nil {
 		t.Fatal(buildErr)
 	}
-	return builtAcrBin
+	return builtArcBin
 }
 
-// setupTestEnv builds the acr binary (once) and creates a temporary git repo with a diff.
+// setupTestEnv builds the arc binary (once) and creates a temporary git repo with a diff.
 func setupTestEnv(t *testing.T) *testEnv {
 	t.Helper()
 
-	acrBin := ensureBinary(t)
+	arcBin := ensureBinary(t)
 
 	// Create mock CLI directory
 	mockDir := filepath.Join(t.TempDir(), "mocks")
@@ -77,7 +77,7 @@ func setupTestEnv(t *testing.T) *testEnv {
 	repoDir := createTestRepo(t)
 
 	return &testEnv{
-		acrBin:   acrBin,
+		arcBin:   arcBin,
 		mockDir:  mockDir,
 		repoDir:  repoDir,
 		origPath: os.Getenv("PATH"),
@@ -160,7 +160,7 @@ func hasCrossCheckOverride(args []string) bool {
 	return false
 }
 
-// run executes acr with the given args and returns stdout, stderr, and exit code.
+// run executes arc with the given args and returns stdout, stderr, and exit code.
 //
 // Cross-check is auto-disabled unless the caller already configured it via
 // --cross-check-* flags. Round-9 made --cross-check-model required when
@@ -171,7 +171,7 @@ func (e *testEnv) run(args ...string) (stdout, stderr string, exitCode int) {
 	if isReviewInvocation(args) && !hasCrossCheckOverride(args) {
 		args = append([]string{"--no-cross-check"}, args...)
 	}
-	cmd := exec.Command(e.acrBin, args...)
+	cmd := exec.Command(e.arcBin, args...)
 	cmd.Dir = e.repoDir
 	cmd.Env = e.withMockAgents()
 
@@ -351,8 +351,8 @@ func TestVersion(t *testing.T) {
 	if exitCode != 0 {
 		t.Errorf("exit code = %d, want 0", exitCode)
 	}
-	if !strings.Contains(stdout, "acr v") {
-		t.Errorf("expected 'acr v' in output, got: %s", stdout)
+	if !strings.Contains(stdout, "arc v") {
+		t.Errorf("expected 'arc v' in output, got: %s", stdout)
 	}
 }
 
@@ -417,7 +417,7 @@ func TestConfigSubcommands(t *testing.T) {
 		// Round-9: cross_check.enabled defaults true and now requires a
 		// model. Supply via env so this test exercises the happy path it
 		// claims to cover, not the cross-check guard.
-		t.Setenv("ACR_CROSS_CHECK_MODEL", "test-cc-model")
+		t.Setenv("ARC_CROSS_CHECK_MODEL", "test-cc-model")
 		_, _, exitCode := env.run("config", "validate")
 		if exitCode != 0 {
 			t.Errorf("exit code = %d, want 0", exitCode)
@@ -429,9 +429,9 @@ func TestConfigSubcommands(t *testing.T) {
 		if exitCode != 0 {
 			t.Errorf("exit code = %d, want 0", exitCode)
 		}
-		configPath := filepath.Join(env.repoDir, ".acr.yaml")
+		configPath := filepath.Join(env.repoDir, ".arc.yaml")
 		if _, err := os.Stat(configPath); os.IsNotExist(err) {
-			t.Error("config init did not create .acr.yaml")
+			t.Error("config init did not create .arc.yaml")
 		}
 	})
 }
@@ -715,7 +715,7 @@ func TestMissingAgentCLI(t *testing.T) {
 	copyIntegrationHelperBinary(t, noAgentDir, "gemini")
 	copyIntegrationHelperBinary(t, noAgentDir, "gh")
 
-	cmd := exec.Command(env.acrBin, "--local", "--no-cross-check", "--reviewer-agent", "codex",
+	cmd := exec.Command(env.arcBin, "--local", "--no-cross-check", "--reviewer-agent", "codex",
 		"--summarizer-agent", "codex", "--base", "HEAD~1")
 	cmd.Dir = env.repoDir
 	// Prepend noAgentDir to PATH so the helper binaries shadow any real CLIs.

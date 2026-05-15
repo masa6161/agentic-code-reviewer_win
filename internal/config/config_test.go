@@ -14,7 +14,7 @@ import (
 
 func TestLoadFromDirWithWarnings_ValidConfig(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, ".acr.yaml")
+	configPath := filepath.Join(dir, ".arc.yaml")
 
 	content := `filters:
   exclude_patterns:
@@ -50,7 +50,7 @@ func TestLoadFromDirWithWarnings_NoConfig(t *testing.T) {
 }
 
 func TestLoadFromPathWithWarnings_FileNotFound(t *testing.T) {
-	result, err := LoadFromPathWithWarnings("/nonexistent/path/.acr.yaml")
+	result, err := LoadFromPathWithWarnings("/nonexistent/path/.arc.yaml")
 	if err != nil {
 		t.Fatalf("expected no error for missing file, got: %v", err)
 	}
@@ -67,7 +67,7 @@ func TestLoadFromPathWithWarnings_FileNotFound(t *testing.T) {
 
 func TestLoadFromPathWithWarnings_ValidYAML(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, ".acr.yaml")
+	configPath := filepath.Join(dir, ".arc.yaml")
 
 	content := `filters:
   exclude_patterns:
@@ -97,7 +97,7 @@ func TestLoadFromPathWithWarnings_ValidYAML(t *testing.T) {
 
 func TestLoadFromPathWithWarnings_EmptyFile(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, ".acr.yaml")
+	configPath := filepath.Join(dir, ".arc.yaml")
 
 	if err := os.WriteFile(configPath, []byte(""), 0644); err != nil {
 		t.Fatal(err)
@@ -114,7 +114,7 @@ func TestLoadFromPathWithWarnings_EmptyFile(t *testing.T) {
 
 func TestLoadFromPathWithWarnings_InvalidYAML(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, ".acr.yaml")
+	configPath := filepath.Join(dir, ".arc.yaml")
 
 	content := `filters:
   exclude_patterns:
@@ -133,7 +133,7 @@ func TestLoadFromPathWithWarnings_InvalidYAML(t *testing.T) {
 
 func TestLoadFromPathWithWarnings_InvalidRegex(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, ".acr.yaml")
+	configPath := filepath.Join(dir, ".arc.yaml")
 
 	content := `filters:
   exclude_patterns:
@@ -152,7 +152,7 @@ func TestLoadFromPathWithWarnings_InvalidRegex(t *testing.T) {
 
 func TestLoadFromPathWithWarnings_EmptyPatterns(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, ".acr.yaml")
+	configPath := filepath.Join(dir, ".arc.yaml")
 
 	content := `filters:
   exclude_patterns: []
@@ -239,7 +239,7 @@ func TestMerge_BothEmpty(t *testing.T) {
 
 func TestLoadFromPathWithWarnings_FullConfig(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, ".acr.yaml")
+	configPath := filepath.Join(dir, ".arc.yaml")
 
 	content := `reviewers: 10
 concurrency: 5
@@ -282,7 +282,7 @@ filters:
 
 func TestLoadFromPathWithWarnings_PartialConfig(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, ".acr.yaml")
+	configPath := filepath.Join(dir, ".arc.yaml")
 
 	content := `reviewers: 3
 base: feature-branch
@@ -429,7 +429,7 @@ func TestResolve_CodexHomeFromEnvOnly(t *testing.T) {
 }
 
 func TestLoadEnvState_CodexHomePrecedence(t *testing.T) {
-	t.Setenv("ACR_CODEX_HOME", "acr-codex-home")
+	t.Setenv("ARC_CODEX_HOME", "arc-codex-home")
 	t.Setenv("CODEX_HOME", "codex-home")
 
 	state, warnings := LoadEnvState()
@@ -439,13 +439,13 @@ func TestLoadEnvState_CodexHomePrecedence(t *testing.T) {
 	if !state.CodexHomeSet {
 		t.Fatal("expected CodexHomeSet=true")
 	}
-	if state.CodexHome != "acr-codex-home" {
-		t.Errorf("expected ACR_CODEX_HOME to win, got %q", state.CodexHome)
+	if state.CodexHome != "arc-codex-home" {
+		t.Errorf("expected ARC_CODEX_HOME to win, got %q", state.CodexHome)
 	}
 }
 
 func TestLoadEnvState_CodexHomeFallsBackToCodexHome(t *testing.T) {
-	t.Setenv("ACR_CODEX_HOME", "")
+	t.Setenv("ARC_CODEX_HOME", "")
 	t.Setenv("CODEX_HOME", "codex-home")
 
 	state, warnings := LoadEnvState()
@@ -461,7 +461,7 @@ func TestLoadEnvState_CodexHomeFallsBackToCodexHome(t *testing.T) {
 }
 
 func TestLoadEnvState_CodexHomeTrimsWhitespaceAndFallsBack(t *testing.T) {
-	t.Setenv("ACR_CODEX_HOME", "   ")
+	t.Setenv("ARC_CODEX_HOME", "   ")
 	t.Setenv("CODEX_HOME", " codex-home ")
 
 	state, warnings := LoadEnvState()
@@ -567,7 +567,7 @@ func TestResolve_PhaseTimeoutPrecedence(t *testing.T) {
 
 func TestLoadFromPathWithWarnings_InvalidReviewers(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, ".acr.yaml")
+	configPath := filepath.Join(dir, ".arc.yaml")
 
 	content := `reviewers: 0
 `
@@ -583,7 +583,7 @@ func TestLoadFromPathWithWarnings_InvalidReviewers(t *testing.T) {
 
 func TestLoadFromPathWithWarnings_InvalidTimeout(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, ".acr.yaml")
+	configPath := filepath.Join(dir, ".arc.yaml")
 
 	content := `timeout: -5m
 `
@@ -599,7 +599,7 @@ func TestLoadFromPathWithWarnings_InvalidTimeout(t *testing.T) {
 
 func TestLoadFromPathWithWarnings_PreservesWarningsOnValidationError(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, ".acr.yaml")
+	configPath := filepath.Join(dir, ".arc.yaml")
 
 	// Config with both an unknown key (produces warning) and invalid value (produces error)
 	content := `reviewers: 0
@@ -631,7 +631,7 @@ unknown_field: true
 
 func TestLoadFromPathWithWarnings_UnknownTopLevelKey(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, ".acr.yaml")
+	configPath := filepath.Join(dir, ".arc.yaml")
 
 	content := `reviewers: 5
 unknownkey: value
@@ -648,7 +648,7 @@ unknownkey: value
 	if len(result.Warnings) != 1 {
 		t.Fatalf("expected 1 warning, got %d: %v", len(result.Warnings), result.Warnings)
 	}
-	if result.Warnings[0] != `unknown key "unknownkey" in .acr.yaml` {
+	if result.Warnings[0] != `unknown key "unknownkey" in .arc.yaml` {
 		t.Errorf("unexpected warning: %s", result.Warnings[0])
 	}
 	// Config should still be parsed
@@ -659,7 +659,7 @@ unknownkey: value
 
 func TestLoadFromPathWithWarnings_UnknownKeyWithSuggestion(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, ".acr.yaml")
+	configPath := filepath.Join(dir, ".arc.yaml")
 
 	content := `filtrs:
   exclude_patterns:
@@ -677,7 +677,7 @@ func TestLoadFromPathWithWarnings_UnknownKeyWithSuggestion(t *testing.T) {
 	if len(result.Warnings) != 1 {
 		t.Fatalf("expected 1 warning, got %d: %v", len(result.Warnings), result.Warnings)
 	}
-	expected := `unknown key "filtrs" in .acr.yaml (did you mean "filters"?)`
+	expected := `unknown key "filtrs" in .arc.yaml (did you mean "filters"?)`
 	if result.Warnings[0] != expected {
 		t.Errorf("expected warning %q, got %q", expected, result.Warnings[0])
 	}
@@ -685,7 +685,7 @@ func TestLoadFromPathWithWarnings_UnknownKeyWithSuggestion(t *testing.T) {
 
 func TestLoadFromPathWithWarnings_UnknownFilterKey(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, ".acr.yaml")
+	configPath := filepath.Join(dir, ".arc.yaml")
 
 	content := `filters:
   exclude_paterns:
@@ -703,7 +703,7 @@ func TestLoadFromPathWithWarnings_UnknownFilterKey(t *testing.T) {
 	if len(result.Warnings) != 1 {
 		t.Fatalf("expected 1 warning, got %d: %v", len(result.Warnings), result.Warnings)
 	}
-	expected := `unknown key "exclude_paterns" in filters section of .acr.yaml (did you mean "exclude_patterns"?)`
+	expected := `unknown key "exclude_paterns" in filters section of .arc.yaml (did you mean "exclude_patterns"?)`
 	if result.Warnings[0] != expected {
 		t.Errorf("expected warning %q, got %q", expected, result.Warnings[0])
 	}
@@ -711,7 +711,7 @@ func TestLoadFromPathWithWarnings_UnknownFilterKey(t *testing.T) {
 
 func TestLoadFromPathWithWarnings_MultipleUnknownKeys(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, ".acr.yaml")
+	configPath := filepath.Join(dir, ".arc.yaml")
 
 	content := `reviewrs: 5
 tiemout: 10m
@@ -732,7 +732,7 @@ tiemout: 10m
 
 func TestLoadFromPathWithWarnings_NoWarningsForValidConfig(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, ".acr.yaml")
+	configPath := filepath.Join(dir, ".arc.yaml")
 
 	content := `reviewers: 5
 concurrency: 3
@@ -762,7 +762,7 @@ filters:
 
 func TestLoadFromPathWithWarnings_NoWarningsForEmptyConfig(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, ".acr.yaml")
+	configPath := filepath.Join(dir, ".arc.yaml")
 
 	if err := os.WriteFile(configPath, []byte(""), 0644); err != nil {
 		t.Fatal(err)
@@ -907,7 +907,7 @@ func TestResolveGuidance(t *testing.T) {
 			want: "guidance from flag file",
 		},
 		{
-			name: "env ACR_GUIDANCE wins over config",
+			name: "env ARC_GUIDANCE wins over config",
 			cfg: &Config{
 				GuidanceFile: strPtr(configGuidanceFile),
 			},
@@ -920,7 +920,7 @@ func TestResolveGuidance(t *testing.T) {
 			want: "env guidance",
 		},
 		{
-			name: "env ACR_GUIDANCE_FILE wins over config",
+			name: "env ARC_GUIDANCE_FILE wins over config",
 			cfg: &Config{
 				GuidanceFile: strPtr(configGuidanceFile),
 			},
@@ -1009,7 +1009,7 @@ func TestResolveGuidance(t *testing.T) {
 
 func TestLoadFromPathWithWarnings_ReviewerAgentConfig(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, ".acr.yaml")
+	configPath := filepath.Join(dir, ".arc.yaml")
 
 	content := `reviewer_agent: claude
 reviewers: 5
@@ -1107,16 +1107,16 @@ func TestResolve_ReviewerAgents_DefaultsToCodex(t *testing.T) {
 
 func TestLoadEnvState_ReviewerAgents(t *testing.T) {
 	// Save and restore original env
-	original := os.Getenv("ACR_REVIEWER_AGENT")
+	original := os.Getenv("ARC_REVIEWER_AGENT")
 	defer func() {
 		if original != "" {
-			os.Setenv("ACR_REVIEWER_AGENT", original)
+			os.Setenv("ARC_REVIEWER_AGENT", original)
 		} else {
-			os.Unsetenv("ACR_REVIEWER_AGENT")
+			os.Unsetenv("ARC_REVIEWER_AGENT")
 		}
 	}()
 
-	os.Setenv("ACR_REVIEWER_AGENT", "claude")
+	os.Setenv("ARC_REVIEWER_AGENT", "claude")
 	state, warnings := LoadEnvState()
 
 	if len(warnings) != 0 {
@@ -1132,16 +1132,16 @@ func TestLoadEnvState_ReviewerAgents(t *testing.T) {
 
 func TestLoadEnvState_ReviewerAgents_NotSet(t *testing.T) {
 	// Save and restore original env
-	original := os.Getenv("ACR_REVIEWER_AGENT")
+	original := os.Getenv("ARC_REVIEWER_AGENT")
 	defer func() {
 		if original != "" {
-			os.Setenv("ACR_REVIEWER_AGENT", original)
+			os.Setenv("ARC_REVIEWER_AGENT", original)
 		} else {
-			os.Unsetenv("ACR_REVIEWER_AGENT")
+			os.Unsetenv("ARC_REVIEWER_AGENT")
 		}
 	}()
 
-	os.Unsetenv("ACR_REVIEWER_AGENT")
+	os.Unsetenv("ARC_REVIEWER_AGENT")
 	state, warnings := LoadEnvState()
 
 	if len(warnings) != 0 {
@@ -1255,18 +1255,18 @@ func TestResolveGuidance_ConfigFileAbsolutePath(t *testing.T) {
 
 // Tests for malformed environment variable warnings
 
-// clearACREnv unsets all ACR_* env vars to isolate tests from ambient environment.
+// clearARCEnv unsets all ARC_* env vars to isolate tests from ambient environment.
 // Uses t.Setenv("VAR", "") then os.Unsetenv to get automatic restore on test cleanup.
-func clearACREnv(t *testing.T) {
+func clearARCEnv(t *testing.T) {
 	t.Helper()
 	for _, key := range []string{
-		"ACR_REVIEWERS", "ACR_LARGE_DIFF_REVIEWERS", "ACR_MEDIUM_DIFF_REVIEWERS", "ACR_SMALL_DIFF_REVIEWERS",
-		"ACR_CONCURRENCY", "ACR_BASE_REF", "ACR_TIMEOUT",
-		"ACR_RETRIES", "ACR_FETCH", "ACR_REVIEWER_AGENT", "ACR_SUMMARIZER_AGENT",
-		"ACR_ARCH_REVIEWER_AGENT", "ACR_DIFF_REVIEWER_AGENTS",
-		"ACR_SUMMARIZER_TIMEOUT", "ACR_FP_FILTER_TIMEOUT",
-		"ACR_GUIDANCE", "ACR_GUIDANCE_FILE", "ACR_FP_FILTER", "ACR_FP_THRESHOLD",
-		"ACR_PR_FEEDBACK", "ACR_PR_FEEDBACK_AGENT",
+		"ARC_REVIEWERS", "ARC_LARGE_DIFF_REVIEWERS", "ARC_MEDIUM_DIFF_REVIEWERS", "ARC_SMALL_DIFF_REVIEWERS",
+		"ARC_CONCURRENCY", "ARC_BASE_REF", "ARC_TIMEOUT",
+		"ARC_RETRIES", "ARC_FETCH", "ARC_REVIEWER_AGENT", "ARC_SUMMARIZER_AGENT",
+		"ARC_ARCH_REVIEWER_AGENT", "ARC_DIFF_REVIEWER_AGENTS",
+		"ARC_SUMMARIZER_TIMEOUT", "ARC_FP_FILTER_TIMEOUT",
+		"ARC_GUIDANCE", "ARC_GUIDANCE_FILE", "ARC_FP_FILTER", "ARC_FP_THRESHOLD",
+		"ARC_PR_FEEDBACK", "ARC_PR_FEEDBACK_AGENT",
 	} {
 		t.Setenv(key, os.Getenv(key)) // register for restore
 		os.Unsetenv(key)
@@ -1284,80 +1284,80 @@ func hasWarningContaining(warnings []string, substr string) bool {
 }
 
 func TestLoadEnvState_MalformedReviewers(t *testing.T) {
-	clearACREnv(t)
-	t.Setenv("ACR_REVIEWERS", "abc")
+	clearARCEnv(t)
+	t.Setenv("ARC_REVIEWERS", "abc")
 	state, warnings := LoadEnvState()
 	if state.ReviewersSet {
 		t.Error("expected ReviewersSet to be false for invalid value")
 	}
-	if !hasWarningContaining(warnings, "ACR_REVIEWERS") {
-		t.Errorf("expected warning about ACR_REVIEWERS, got %v", warnings)
+	if !hasWarningContaining(warnings, "ARC_REVIEWERS") {
+		t.Errorf("expected warning about ARC_REVIEWERS, got %v", warnings)
 	}
 }
 
 func TestLoadEnvState_MalformedConcurrency(t *testing.T) {
-	clearACREnv(t)
-	t.Setenv("ACR_CONCURRENCY", "xyz")
+	clearARCEnv(t)
+	t.Setenv("ARC_CONCURRENCY", "xyz")
 	state, warnings := LoadEnvState()
 	if state.ConcurrencySet {
 		t.Error("expected ConcurrencySet to be false for invalid value")
 	}
-	if !hasWarningContaining(warnings, "ACR_CONCURRENCY") {
-		t.Errorf("expected warning about ACR_CONCURRENCY, got %v", warnings)
+	if !hasWarningContaining(warnings, "ARC_CONCURRENCY") {
+		t.Errorf("expected warning about ARC_CONCURRENCY, got %v", warnings)
 	}
 }
 
 func TestLoadEnvState_MalformedTimeout(t *testing.T) {
-	clearACREnv(t)
-	t.Setenv("ACR_TIMEOUT", "notaduration")
+	clearARCEnv(t)
+	t.Setenv("ARC_TIMEOUT", "notaduration")
 	state, warnings := LoadEnvState()
 	if state.TimeoutSet {
 		t.Error("expected TimeoutSet to be false for invalid value")
 	}
-	if !hasWarningContaining(warnings, "ACR_TIMEOUT") {
-		t.Errorf("expected warning about ACR_TIMEOUT, got %v", warnings)
+	if !hasWarningContaining(warnings, "ARC_TIMEOUT") {
+		t.Errorf("expected warning about ARC_TIMEOUT, got %v", warnings)
 	}
 }
 
 func TestLoadEnvState_MalformedRetries(t *testing.T) {
-	clearACREnv(t)
-	t.Setenv("ACR_RETRIES", "nope")
+	clearARCEnv(t)
+	t.Setenv("ARC_RETRIES", "nope")
 	state, warnings := LoadEnvState()
 	if state.RetriesSet {
 		t.Error("expected RetriesSet to be false for invalid value")
 	}
-	if !hasWarningContaining(warnings, "ACR_RETRIES") {
-		t.Errorf("expected warning about ACR_RETRIES, got %v", warnings)
+	if !hasWarningContaining(warnings, "ARC_RETRIES") {
+		t.Errorf("expected warning about ARC_RETRIES, got %v", warnings)
 	}
 }
 
 func TestLoadEnvState_MalformedFetch(t *testing.T) {
-	clearACREnv(t)
-	t.Setenv("ACR_FETCH", "maybe")
+	clearARCEnv(t)
+	t.Setenv("ARC_FETCH", "maybe")
 	state, warnings := LoadEnvState()
 	if state.FetchSet {
 		t.Error("expected FetchSet to be false for invalid value")
 	}
-	if !hasWarningContaining(warnings, "ACR_FETCH") {
-		t.Errorf("expected warning about ACR_FETCH, got %v", warnings)
+	if !hasWarningContaining(warnings, "ARC_FETCH") {
+		t.Errorf("expected warning about ARC_FETCH, got %v", warnings)
 	}
 }
 
 func TestLoadEnvState_MalformedFPFilter(t *testing.T) {
-	clearACREnv(t)
-	t.Setenv("ACR_FP_FILTER", "maybe")
+	clearARCEnv(t)
+	t.Setenv("ARC_FP_FILTER", "maybe")
 	state, warnings := LoadEnvState()
 	if state.FPFilterSet {
 		t.Error("expected FPFilterSet to be false for invalid value")
 	}
-	if !hasWarningContaining(warnings, "ACR_FP_FILTER") {
-		t.Errorf("expected warning about ACR_FP_FILTER, got %v", warnings)
+	if !hasWarningContaining(warnings, "ARC_FP_FILTER") {
+		t.Errorf("expected warning about ARC_FP_FILTER, got %v", warnings)
 	}
 }
 
 func TestLoadEnvState_FPFilterFalse_DeprecatedWarning(t *testing.T) {
-	clearACREnv(t)
-	t.Setenv("ACR_FP_FILTER", "false")
+	clearARCEnv(t)
+	t.Setenv("ARC_FP_FILTER", "false")
 	state, warnings := LoadEnvState()
 	if !state.FPFilterSet {
 		t.Error("expected FPFilterSet to be true")
@@ -1366,13 +1366,13 @@ func TestLoadEnvState_FPFilterFalse_DeprecatedWarning(t *testing.T) {
 		t.Error("expected FPFilterEnabled to be false")
 	}
 	if !hasWarningContaining(warnings, "deprecated") {
-		t.Errorf("expected deprecated warning for ACR_FP_FILTER=false, got %v", warnings)
+		t.Errorf("expected deprecated warning for ARC_FP_FILTER=false, got %v", warnings)
 	}
 }
 
 func TestLoadEnvState_FPFilterZero_DeprecatedWarning(t *testing.T) {
-	clearACREnv(t)
-	t.Setenv("ACR_FP_FILTER", "0")
+	clearARCEnv(t)
+	t.Setenv("ARC_FP_FILTER", "0")
 	state, warnings := LoadEnvState()
 	if !state.FPFilterSet {
 		t.Error("expected FPFilterSet to be true")
@@ -1381,48 +1381,48 @@ func TestLoadEnvState_FPFilterZero_DeprecatedWarning(t *testing.T) {
 		t.Error("expected FPFilterEnabled to be false")
 	}
 	if !hasWarningContaining(warnings, "deprecated") {
-		t.Errorf("expected deprecated warning for ACR_FP_FILTER=0, got %v", warnings)
+		t.Errorf("expected deprecated warning for ARC_FP_FILTER=0, got %v", warnings)
 	}
 }
 
 func TestLoadEnvState_FPFilterTrue_NoDeprecatedWarning(t *testing.T) {
-	clearACREnv(t)
-	t.Setenv("ACR_FP_FILTER", "true")
+	clearARCEnv(t)
+	t.Setenv("ARC_FP_FILTER", "true")
 	_, warnings := LoadEnvState()
 	for _, w := range warnings {
 		if strings.Contains(w, "deprecated") {
-			t.Errorf("unexpected deprecated warning for ACR_FP_FILTER=true: %s", w)
+			t.Errorf("unexpected deprecated warning for ARC_FP_FILTER=true: %s", w)
 		}
 	}
 }
 
 func TestLoadEnvState_MalformedPRFeedback(t *testing.T) {
-	clearACREnv(t)
-	t.Setenv("ACR_PR_FEEDBACK", "maybe")
+	clearARCEnv(t)
+	t.Setenv("ARC_PR_FEEDBACK", "maybe")
 	state, warnings := LoadEnvState()
 	if state.PRFeedbackEnabledSet {
 		t.Error("expected PRFeedbackEnabledSet to be false for invalid value")
 	}
-	if !hasWarningContaining(warnings, "ACR_PR_FEEDBACK") {
-		t.Errorf("expected warning about ACR_PR_FEEDBACK, got %v", warnings)
+	if !hasWarningContaining(warnings, "ARC_PR_FEEDBACK") {
+		t.Errorf("expected warning about ARC_PR_FEEDBACK, got %v", warnings)
 	}
 }
 
 func TestLoadEnvState_MalformedFPThreshold_NotInt(t *testing.T) {
-	clearACREnv(t)
-	t.Setenv("ACR_FP_THRESHOLD", "abc")
+	clearARCEnv(t)
+	t.Setenv("ARC_FP_THRESHOLD", "abc")
 	state, warnings := LoadEnvState()
 	if state.FPThresholdSet {
 		t.Error("expected FPThresholdSet to be false for invalid value")
 	}
-	if !hasWarningContaining(warnings, "ACR_FP_THRESHOLD") {
-		t.Errorf("expected warning about ACR_FP_THRESHOLD, got %v", warnings)
+	if !hasWarningContaining(warnings, "ARC_FP_THRESHOLD") {
+		t.Errorf("expected warning about ARC_FP_THRESHOLD, got %v", warnings)
 	}
 }
 
 func TestLoadEnvState_MalformedFPThreshold_OutOfRange(t *testing.T) {
-	clearACREnv(t)
-	t.Setenv("ACR_FP_THRESHOLD", "200")
+	clearARCEnv(t)
+	t.Setenv("ARC_FP_THRESHOLD", "200")
 	state, warnings := LoadEnvState()
 	if state.FPThresholdSet {
 		t.Error("expected FPThresholdSet to be false for out-of-range value")
@@ -1433,12 +1433,12 @@ func TestLoadEnvState_MalformedFPThreshold_OutOfRange(t *testing.T) {
 }
 
 func TestLoadEnvState_NoWarningsForValidValues(t *testing.T) {
-	clearACREnv(t)
-	t.Setenv("ACR_REVIEWERS", "5")
-	t.Setenv("ACR_TIMEOUT", "10m")
-	t.Setenv("ACR_SUMMARIZER_TIMEOUT", "6m")
-	t.Setenv("ACR_FP_FILTER_TIMEOUT", "7m")
-	t.Setenv("ACR_FETCH", "true")
+	clearARCEnv(t)
+	t.Setenv("ARC_REVIEWERS", "5")
+	t.Setenv("ARC_TIMEOUT", "10m")
+	t.Setenv("ARC_SUMMARIZER_TIMEOUT", "6m")
+	t.Setenv("ARC_FP_FILTER_TIMEOUT", "7m")
+	t.Setenv("ARC_FETCH", "true")
 	_, warnings := LoadEnvState()
 	if len(warnings) != 0 {
 		t.Errorf("expected no warnings for valid values, got %v", warnings)
@@ -1446,9 +1446,9 @@ func TestLoadEnvState_NoWarningsForValidValues(t *testing.T) {
 }
 
 func TestLoadEnvState_PhaseTimeouts(t *testing.T) {
-	clearACREnv(t)
-	t.Setenv("ACR_SUMMARIZER_TIMEOUT", "360") // integer seconds
-	t.Setenv("ACR_FP_FILTER_TIMEOUT", "7m")
+	clearARCEnv(t)
+	t.Setenv("ARC_SUMMARIZER_TIMEOUT", "360") // integer seconds
+	t.Setenv("ARC_FP_FILTER_TIMEOUT", "7m")
 
 	state, warnings := LoadEnvState()
 	if len(warnings) != 0 {
@@ -1463,9 +1463,9 @@ func TestLoadEnvState_PhaseTimeouts(t *testing.T) {
 }
 
 func TestLoadEnvState_InvalidPhaseTimeouts(t *testing.T) {
-	clearACREnv(t)
-	t.Setenv("ACR_SUMMARIZER_TIMEOUT", "bad")
-	t.Setenv("ACR_FP_FILTER_TIMEOUT", "still-bad")
+	clearARCEnv(t)
+	t.Setenv("ARC_SUMMARIZER_TIMEOUT", "bad")
+	t.Setenv("ARC_FP_FILTER_TIMEOUT", "still-bad")
 
 	_, warnings := LoadEnvState()
 	if len(warnings) != 2 {
@@ -1477,7 +1477,7 @@ func TestLoadEnvState_InvalidPhaseTimeouts(t *testing.T) {
 
 func TestLoadFromPathWithWarnings_DeprecatedReviewerAgent(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, ".acr.yaml")
+	configPath := filepath.Join(dir, ".arc.yaml")
 
 	content := `reviewer_agent: claude
 `
@@ -1504,7 +1504,7 @@ func TestLoadFromPathWithWarnings_DeprecatedReviewerAgent(t *testing.T) {
 
 func TestLoadFromPathWithWarnings_DeprecatedReviewerAgentWithReviewerAgents(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, ".acr.yaml")
+	configPath := filepath.Join(dir, ".arc.yaml")
 
 	content := `reviewer_agent: claude
 reviewer_agents:
@@ -1540,7 +1540,7 @@ reviewer_agents:
 
 func TestLoadFromPathWithWarnings_NoDeprecationWithoutReviewerAgent(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, ".acr.yaml")
+	configPath := filepath.Join(dir, ".arc.yaml")
 
 	content := `reviewer_agents:
   - codex
@@ -1750,7 +1750,7 @@ func TestResolve_RejectsCrossCheckEnabledWithoutModel(t *testing.T) {
 		env := EnvState{CrossCheckModel: "env-model", CrossCheckModelSet: true}
 		resolved := Resolve(&Config{}, env, FlagState{}, Defaults)
 		if errs := resolved.ValidateRuntime(); containsSubstr(errs, wantSubstr) {
-			t.Fatalf("did not expect cross-check error when ACR_CROSS_CHECK_MODEL set, got: %v", errs)
+			t.Fatalf("did not expect cross-check error when ARC_CROSS_CHECK_MODEL set, got: %v", errs)
 		}
 	})
 
@@ -1832,10 +1832,10 @@ func TestResolve_CrossCheckDefaultsWhenUnset(t *testing.T) {
 }
 
 func TestLoadEnvState_CrossCheck(t *testing.T) {
-	t.Setenv("ACR_CROSS_CHECK", "false")
-	t.Setenv("ACR_CROSS_CHECK_AGENT", "gemini")
-	t.Setenv("ACR_CROSS_CHECK_MODEL", "env-model")
-	t.Setenv("ACR_CROSS_CHECK_TIMEOUT", "7m")
+	t.Setenv("ARC_CROSS_CHECK", "false")
+	t.Setenv("ARC_CROSS_CHECK_AGENT", "gemini")
+	t.Setenv("ARC_CROSS_CHECK_MODEL", "env-model")
+	t.Setenv("ARC_CROSS_CHECK_TIMEOUT", "7m")
 
 	state, warnings := LoadEnvState()
 	if len(warnings) != 0 {
@@ -1975,8 +1975,8 @@ func TestResolve_AutoPhaseDefaultsToTrue(t *testing.T) {
 }
 
 func TestResolve_AutoPhaseEnvFalse(t *testing.T) {
-	// ACR_AUTO_PHASE=false → AutoPhase=false.
-	t.Setenv("ACR_AUTO_PHASE", "false")
+	// ARC_AUTO_PHASE=false → AutoPhase=false.
+	t.Setenv("ARC_AUTO_PHASE", "false")
 	env, warnings := LoadEnvState()
 	if len(warnings) != 0 {
 		t.Errorf("unexpected warnings: %v", warnings)
@@ -2022,7 +2022,7 @@ func TestResolve_StrictDefaultsToFalse(t *testing.T) {
 }
 
 func TestResolve_StrictEnv(t *testing.T) {
-	t.Setenv("ACR_STRICT", "true")
+	t.Setenv("ARC_STRICT", "true")
 	env, warnings := LoadEnvState()
 	if len(warnings) != 0 {
 		t.Errorf("unexpected warnings: %v", warnings)
@@ -2035,7 +2035,7 @@ func TestResolve_StrictEnv(t *testing.T) {
 
 func TestResolve_StrictFlag(t *testing.T) {
 	// Flag overrides env.
-	t.Setenv("ACR_STRICT", "true")
+	t.Setenv("ARC_STRICT", "true")
 	env, _ := LoadEnvState()
 	result := Resolve(&Config{}, env, FlagState{StrictSet: true}, ResolvedConfig{Strict: false})
 	if result.Strict {
@@ -2069,18 +2069,18 @@ func TestLoadEnvState_AutoPhaseParsing(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.envVal != "" {
-				t.Setenv("ACR_AUTO_PHASE", tt.envVal)
+				t.Setenv("ARC_AUTO_PHASE", tt.envVal)
 			} else {
-				t.Setenv("ACR_AUTO_PHASE", "")
+				t.Setenv("ARC_AUTO_PHASE", "")
 			}
 			state, warnings := LoadEnvState()
 			if tt.wantWarn {
 				if len(warnings) == 0 {
-					t.Errorf("expected warning for ACR_AUTO_PHASE=%q, got none", tt.envVal)
+					t.Errorf("expected warning for ARC_AUTO_PHASE=%q, got none", tt.envVal)
 				}
 			} else {
 				if len(warnings) != 0 {
-					t.Errorf("unexpected warnings for ACR_AUTO_PHASE=%q: %v", tt.envVal, warnings)
+					t.Errorf("unexpected warnings for ARC_AUTO_PHASE=%q: %v", tt.envVal, warnings)
 				}
 			}
 			if state.AutoPhaseSet != tt.wantSet {
@@ -2095,7 +2095,7 @@ func TestLoadEnvState_AutoPhaseParsing(t *testing.T) {
 
 func TestConfig_ModelsSection_Parses(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, ".acr.yaml")
+	configPath := filepath.Join(dir, ".arc.yaml")
 
 	content := `models:
   defaults:
@@ -2232,7 +2232,7 @@ func TestConfig_ModelsSection_Parses(t *testing.T) {
 
 func TestConfig_ModelsSection_UnknownKey_Warns(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, ".acr.yaml")
+	configPath := filepath.Join(dir, ".arc.yaml")
 
 	content := `models:
   defaults:
@@ -2263,7 +2263,7 @@ func TestConfig_ModelsSection_UnknownKey_Warns(t *testing.T) {
 
 func TestConfig_ModelsSection_AgentsMustBeSupported(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, ".acr.yaml")
+	configPath := filepath.Join(dir, ".arc.yaml")
 
 	content := `models:
   agents:
@@ -2285,7 +2285,7 @@ func TestConfig_ModelsSection_AgentsMustBeSupported(t *testing.T) {
 
 func TestConfig_ModelsSection_EmptySectionOK(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, ".acr.yaml")
+	configPath := filepath.Join(dir, ".arc.yaml")
 
 	content := `reviewers: 3
 `
@@ -2361,7 +2361,7 @@ func TestResolve_CrossCheckModelFromCLI(t *testing.T) {
 
 func TestConfig_ModelsSizes_UnknownSizeKeyRejected(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, ".acr.yaml")
+	configPath := filepath.Join(dir, ".arc.yaml")
 
 	content := `models:
   sizes:
@@ -2386,7 +2386,7 @@ func TestConfig_ModelsSizes_UnknownSizeKeyRejected(t *testing.T) {
 
 func TestConfig_ModelsEffort_CodexXhighRejected(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, ".acr.yaml")
+	configPath := filepath.Join(dir, ".arc.yaml")
 
 	content := `models:
   agents:
@@ -2408,7 +2408,7 @@ func TestConfig_ModelsEffort_CodexXhighRejected(t *testing.T) {
 
 func TestConfig_ModelsEffort_GeminiEffortRejected(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, ".acr.yaml")
+	configPath := filepath.Join(dir, ".arc.yaml")
 
 	content := `models:
   agents:
@@ -2430,7 +2430,7 @@ func TestConfig_ModelsEffort_GeminiEffortRejected(t *testing.T) {
 
 func TestConfig_ModelsEffort_DefaultsXhighAccepted(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, ".acr.yaml")
+	configPath := filepath.Join(dir, ".arc.yaml")
 
 	content := `models:
   defaults:
@@ -2451,7 +2451,7 @@ func TestConfig_ModelsEffort_DefaultsXhighAccepted(t *testing.T) {
 
 func TestConfig_ModelsEffort_ClaudeMaxAccepted(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, ".acr.yaml")
+	configPath := filepath.Join(dir, ".arc.yaml")
 
 	content := `models:
   agents:
@@ -2470,7 +2470,7 @@ func TestConfig_ModelsEffort_ClaudeMaxAccepted(t *testing.T) {
 
 func TestConfig_ModelsEffort_CaseInsensitive_Defaults(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, ".acr.yaml")
+	configPath := filepath.Join(dir, ".arc.yaml")
 
 	content := `models:
   defaults:
@@ -2496,7 +2496,7 @@ func TestConfig_ModelsEffort_CaseInsensitive_Defaults(t *testing.T) {
 
 func TestConfig_ModelsEffort_CaseInsensitive_Sizes(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, ".acr.yaml")
+	configPath := filepath.Join(dir, ".arc.yaml")
 
 	content := `models:
   sizes:
@@ -2525,7 +2525,7 @@ func TestConfig_ModelsEffort_CaseInsensitive_Sizes(t *testing.T) {
 
 func TestConfig_ModelsEffort_CaseInsensitive_Agents(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, ".acr.yaml")
+	configPath := filepath.Join(dir, ".arc.yaml")
 
 	content := `models:
   agents:
@@ -2554,7 +2554,7 @@ func TestConfig_ModelsEffort_CaseInsensitive_Agents(t *testing.T) {
 
 func TestConfig_ModelsEffort_CaseInsensitive_StillRejectsInvalid(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, ".acr.yaml")
+	configPath := filepath.Join(dir, ".arc.yaml")
 
 	content := `models:
   defaults:
@@ -2674,16 +2674,16 @@ func TestResolve_DiffReviewerAgents_RejectsUnsupportedAgent(t *testing.T) {
 }
 
 func TestLoadEnvState_ArchReviewerAgent(t *testing.T) {
-	original := os.Getenv("ACR_ARCH_REVIEWER_AGENT")
+	original := os.Getenv("ARC_ARCH_REVIEWER_AGENT")
 	defer func() {
 		if original != "" {
-			os.Setenv("ACR_ARCH_REVIEWER_AGENT", original)
+			os.Setenv("ARC_ARCH_REVIEWER_AGENT", original)
 		} else {
-			os.Unsetenv("ACR_ARCH_REVIEWER_AGENT")
+			os.Unsetenv("ARC_ARCH_REVIEWER_AGENT")
 		}
 	}()
 
-	os.Setenv("ACR_ARCH_REVIEWER_AGENT", "claude")
+	os.Setenv("ARC_ARCH_REVIEWER_AGENT", "claude")
 	state, warnings := LoadEnvState()
 	if len(warnings) != 0 {
 		t.Errorf("expected no warnings, got %v", warnings)
@@ -2697,16 +2697,16 @@ func TestLoadEnvState_ArchReviewerAgent(t *testing.T) {
 }
 
 func TestLoadEnvState_DiffReviewerAgents(t *testing.T) {
-	original := os.Getenv("ACR_DIFF_REVIEWER_AGENTS")
+	original := os.Getenv("ARC_DIFF_REVIEWER_AGENTS")
 	defer func() {
 		if original != "" {
-			os.Setenv("ACR_DIFF_REVIEWER_AGENTS", original)
+			os.Setenv("ARC_DIFF_REVIEWER_AGENTS", original)
 		} else {
-			os.Unsetenv("ACR_DIFF_REVIEWER_AGENTS")
+			os.Unsetenv("ARC_DIFF_REVIEWER_AGENTS")
 		}
 	}()
 
-	os.Setenv("ACR_DIFF_REVIEWER_AGENTS", "codex, claude")
+	os.Setenv("ARC_DIFF_REVIEWER_AGENTS", "codex, claude")
 	state, warnings := LoadEnvState()
 	if len(warnings) != 0 {
 		t.Errorf("expected no warnings, got %v", warnings)
@@ -2824,8 +2824,8 @@ func TestValidate_RejectsZeroMediumDiffReviewers(t *testing.T) {
 }
 
 func TestLoadEnvState_LargeDiffReviewers(t *testing.T) {
-	clearACREnv(t)
-	t.Setenv("ACR_LARGE_DIFF_REVIEWERS", "6")
+	clearARCEnv(t)
+	t.Setenv("ARC_LARGE_DIFF_REVIEWERS", "6")
 	state, warnings := LoadEnvState()
 	if len(warnings) != 0 {
 		t.Errorf("expected no warnings, got %v", warnings)
@@ -2839,20 +2839,20 @@ func TestLoadEnvState_LargeDiffReviewers(t *testing.T) {
 }
 
 func TestLoadEnvState_LargeDiffReviewers_Malformed(t *testing.T) {
-	clearACREnv(t)
-	t.Setenv("ACR_LARGE_DIFF_REVIEWERS", "abc")
+	clearARCEnv(t)
+	t.Setenv("ARC_LARGE_DIFF_REVIEWERS", "abc")
 	state, warnings := LoadEnvState()
 	if state.LargeDiffReviewersSet {
 		t.Error("expected LargeDiffReviewersSet=false for invalid value")
 	}
-	if !hasWarningContaining(warnings, "ACR_LARGE_DIFF_REVIEWERS") {
-		t.Errorf("expected warning about ACR_LARGE_DIFF_REVIEWERS, got %v", warnings)
+	if !hasWarningContaining(warnings, "ARC_LARGE_DIFF_REVIEWERS") {
+		t.Errorf("expected warning about ARC_LARGE_DIFF_REVIEWERS, got %v", warnings)
 	}
 }
 
 func TestLoadEnvState_MediumDiffReviewers(t *testing.T) {
-	clearACREnv(t)
-	t.Setenv("ACR_MEDIUM_DIFF_REVIEWERS", "3")
+	clearARCEnv(t)
+	t.Setenv("ARC_MEDIUM_DIFF_REVIEWERS", "3")
 	state, warnings := LoadEnvState()
 	if len(warnings) != 0 {
 		t.Errorf("expected no warnings, got %v", warnings)
@@ -2866,14 +2866,14 @@ func TestLoadEnvState_MediumDiffReviewers(t *testing.T) {
 }
 
 func TestLoadEnvState_MediumDiffReviewers_Malformed(t *testing.T) {
-	clearACREnv(t)
-	t.Setenv("ACR_MEDIUM_DIFF_REVIEWERS", "xyz")
+	clearARCEnv(t)
+	t.Setenv("ARC_MEDIUM_DIFF_REVIEWERS", "xyz")
 	state, warnings := LoadEnvState()
 	if state.MediumDiffReviewersSet {
 		t.Error("expected MediumDiffReviewersSet=false for invalid value")
 	}
-	if !hasWarningContaining(warnings, "ACR_MEDIUM_DIFF_REVIEWERS") {
-		t.Errorf("expected warning about ACR_MEDIUM_DIFF_REVIEWERS, got %v", warnings)
+	if !hasWarningContaining(warnings, "ARC_MEDIUM_DIFF_REVIEWERS") {
+		t.Errorf("expected warning about ARC_MEDIUM_DIFF_REVIEWERS, got %v", warnings)
 	}
 }
 
@@ -2992,8 +2992,8 @@ func TestValidate_RejectsMinMediumDiffReviewersBelow2(t *testing.T) {
 }
 
 func TestLoadEnvState_SmallDiffReviewers(t *testing.T) {
-	clearACREnv(t)
-	t.Setenv("ACR_SMALL_DIFF_REVIEWERS", "4")
+	clearARCEnv(t)
+	t.Setenv("ARC_SMALL_DIFF_REVIEWERS", "4")
 	state, warnings := LoadEnvState()
 	if len(warnings) != 0 {
 		t.Errorf("expected no warnings, got %v", warnings)
@@ -3007,14 +3007,14 @@ func TestLoadEnvState_SmallDiffReviewers(t *testing.T) {
 }
 
 func TestLoadEnvState_SmallDiffReviewers_Malformed(t *testing.T) {
-	clearACREnv(t)
-	t.Setenv("ACR_SMALL_DIFF_REVIEWERS", "bad")
+	clearARCEnv(t)
+	t.Setenv("ARC_SMALL_DIFF_REVIEWERS", "bad")
 	state, warnings := LoadEnvState()
 	if state.SmallDiffReviewersSet {
 		t.Error("expected SmallDiffReviewersSet=false for invalid value")
 	}
-	if !hasWarningContaining(warnings, "ACR_SMALL_DIFF_REVIEWERS") {
-		t.Errorf("expected warning about ACR_SMALL_DIFF_REVIEWERS, got %v", warnings)
+	if !hasWarningContaining(warnings, "ARC_SMALL_DIFF_REVIEWERS") {
+		t.Errorf("expected warning about ARC_SMALL_DIFF_REVIEWERS, got %v", warnings)
 	}
 }
 
@@ -3334,7 +3334,7 @@ func TestResolve_RolePromptsFromYAML(t *testing.T) {
 }
 
 func TestResolve_RolePromptsFromEnv(t *testing.T) {
-	t.Setenv("ACR_ROLE_PROMPTS", "true")
+	t.Setenv("ARC_ROLE_PROMPTS", "true")
 	env, warnings := LoadEnvState()
 	if len(warnings) != 0 {
 		t.Errorf("unexpected warnings: %v", warnings)
@@ -3369,7 +3369,7 @@ func TestResolve_RolePromptsFlagOverridesYAML(t *testing.T) {
 
 // TestResolve_RolePrompts_NeitherFlagSet_EnvTrue verifies that when neither
 // --role-prompts nor --no-role-prompts is set (RolePromptsSet=false), the env
-// var ACR_ROLE_PROMPTS=true is respected. This guards against the bug where
+// var ARC_ROLE_PROMPTS=true is respected. This guards against the bug where
 // main.go collapsed both flags into a single boolean that defaulted to false,
 // causing RolePromptsSet=true + RolePrompts=false even when no flag was passed.
 func TestResolve_RolePrompts_NeitherFlagSet_EnvTrue(t *testing.T) {
@@ -3387,7 +3387,7 @@ func TestResolve_RolePrompts_NeitherFlagSet_EnvTrue(t *testing.T) {
 
 func TestCheckUnknownKeys_RolePromptsIsKnown(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, ".acr.yaml")
+	configPath := filepath.Join(dir, ".arc.yaml")
 
 	content := "role_prompts: true\n"
 	if err := os.WriteFile(configPath, []byte(content), 0644); err != nil {
@@ -3408,7 +3408,7 @@ func TestCheckUnknownKeys_RolePromptsIsKnown(t *testing.T) {
 
 func TestLoadFromPathWithWarnings_CodexHomeIsUnknown(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, ".acr.yaml")
+	configPath := filepath.Join(dir, ".arc.yaml")
 
 	content := "codex_home: C:/Users/example/.codex\n"
 	if err := os.WriteFile(configPath, []byte(content), 0644); err != nil {
@@ -3448,7 +3448,7 @@ func TestResolve_TriageEnabled_ThreeTierPrecedence(t *testing.T) {
 	env := EnvState{TriageEnabled: false, TriageEnabledSet: true}
 	resolved := Resolve(cfg, env, FlagState{}, Defaults)
 	if resolved.TriageEnabled {
-		t.Error("env ACR_TRIAGE=false should override config triage=true")
+		t.Error("env ARC_TRIAGE=false should override config triage=true")
 	}
 	// Flag overrides env
 	flag := FlagState{NoTriageSet: true}
@@ -3456,7 +3456,7 @@ func TestResolve_TriageEnabled_ThreeTierPrecedence(t *testing.T) {
 	flagVals.TriageEnabled = true
 	resolved = Resolve(cfg, env, flag, flagVals)
 	if !resolved.TriageEnabled {
-		t.Error("flag --triage should override env ACR_TRIAGE=false")
+		t.Error("flag --triage should override env ARC_TRIAGE=false")
 	}
 }
 
@@ -3471,7 +3471,7 @@ func TestResolve_ShowNoise_ThreeTierPrecedence(t *testing.T) {
 	env := EnvState{ShowNoise: false, ShowNoiseSet: true}
 	resolved = Resolve(cfg, env, FlagState{}, Defaults)
 	if resolved.ShowNoise {
-		t.Error("env ACR_SHOW_NOISE=false should override config")
+		t.Error("env ARC_SHOW_NOISE=false should override config")
 	}
 }
 

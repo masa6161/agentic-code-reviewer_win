@@ -566,9 +566,9 @@ func RenderJSON(grouped *domain.GroupedFindings, ccResult *summarizer.CrossCheck
 // renderFooter returns a small attribution line for GitHub comments.
 func renderFooter(version string) string {
 	if version == "" {
-		return "_Posted by [acr](https://github.com/masa6161/arc-cli)_"
+		return "_Posted by [arc](https://github.com/masa6161/arc-cli)_"
 	}
-	return fmt.Sprintf("_Posted by [acr](https://github.com/masa6161/arc-cli) %s_", version)
+	return fmt.Sprintf("_Posted by [arc](https://github.com/masa6161/arc-cli) %s_", version)
 }
 
 func collectSourceIndices(groups []domain.FindingGroup) []int {

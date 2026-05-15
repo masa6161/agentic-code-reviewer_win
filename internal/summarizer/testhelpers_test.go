@@ -11,10 +11,10 @@ import (
 )
 
 const (
-	summarizerHelperEnv       = "ACR_SUMMARIZER_TEST_HELPER"
-	summarizerHelperStdoutEnv = "ACR_SUMMARIZER_TEST_STDOUT"
-	summarizerHelperStderrEnv = "ACR_SUMMARIZER_TEST_STDERR"
-	summarizerHelperExitEnv   = "ACR_SUMMARIZER_TEST_EXIT_CODE"
+	summarizerHelperEnv       = "ARC_SUMMARIZER_TEST_HELPER"
+	summarizerHelperStdoutEnv = "ARC_SUMMARIZER_TEST_STDOUT"
+	summarizerHelperStderrEnv = "ARC_SUMMARIZER_TEST_STDERR"
+	summarizerHelperExitEnv   = "ARC_SUMMARIZER_TEST_EXIT_CODE"
 )
 
 func TestMain(m *testing.M) {

@@ -158,7 +158,7 @@ func (c *CodexAgent) codexEnv() map[string]string {
 
 	codexHome := strings.TrimSpace(c.codexHome)
 	if codexHome == "" {
-		codexHome = strings.TrimSpace(os.Getenv("ACR_CODEX_HOME"))
+		codexHome = strings.TrimSpace(os.Getenv("ARC_CODEX_HOME"))
 	}
 	if codexHome == "" {
 		codexHome = strings.TrimSpace(os.Getenv("CODEX_HOME"))
