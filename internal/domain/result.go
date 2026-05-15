@@ -13,6 +13,7 @@ type ReviewerResult struct {
 	TimedOut    bool
 	AuthFailed  bool
 	Duration    time.Duration
+	Stderr      string
 }
 
 type ReviewStats struct {

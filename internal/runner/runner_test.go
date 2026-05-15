@@ -670,3 +670,45 @@ func TestRunReviewer_HasArchReviewerDefaultsFalse(t *testing.T) {
 		t.Errorf("expected HasArchReviewer=false by default, got true")
 	}
 }
+
+func TestRunReviewer_PopulatesStderrOnFailure(t *testing.T) {
+	mock := &mockAuthFailAgent{name: "codex", exitCode: 1, stderr: "something went wrong"}
+
+	r := &Runner{
+		config:    Config{Reviewers: 1, Timeout: 10 * time.Second},
+		agents:    []agent.Agent{mock},
+		specs:     []ReviewerSpec{{ReviewerID: 1, Agent: mock}},
+		logger:    terminal.NewLogger(),
+		completed: new(atomic.Int32),
+	}
+
+	result := r.runReviewer(context.Background(), 1)
+
+	if result.ExitCode != 1 {
+		t.Errorf("expected exit code 1, got %d", result.ExitCode)
+	}
+	if result.Stderr != "something went wrong" {
+		t.Errorf("expected Stderr=%q, got %q", "something went wrong", result.Stderr)
+	}
+}
+
+func TestRunReviewer_NoStderrOnSuccess(t *testing.T) {
+	mock := &mockAuthFailAgent{name: "codex", exitCode: 0, stderr: ""}
+
+	r := &Runner{
+		config:    Config{Reviewers: 1, Timeout: 10 * time.Second},
+		agents:    []agent.Agent{mock},
+		specs:     []ReviewerSpec{{ReviewerID: 1, Agent: mock}},
+		logger:    terminal.NewLogger(),
+		completed: new(atomic.Int32),
+	}
+
+	result := r.runReviewer(context.Background(), 1)
+
+	if result.ExitCode != 0 {
+		t.Errorf("expected exit code 0, got %d", result.ExitCode)
+	}
+	if result.Stderr != "" {
+		t.Errorf("expected empty Stderr on success, got %q", result.Stderr)
+	}
+}
