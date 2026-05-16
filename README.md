@@ -1,4 +1,4 @@
-# ARC - Adaptive Review Coordinator
+# ARC - Adaptive code-Review Coordinator
 
 A CLI tool that runs parallel AI-powered code reviews using LLM agents ([Codex](https://github.com/openai/codex), [Claude Code](https://github.com/anthropics/claude-code), or [Gemini CLI](https://github.com/google-gemini/gemini-cli)) and aggregates findings intelligently.
 
