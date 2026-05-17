@@ -16,14 +16,13 @@ cmd/arc/                   # CLI エントリポイントとサブコマンド
   main.go                  # CLI エントリポイント、フラグ解析、cobra ルートコマンド
   review.go                # コアレビューオーケストレーション（executeReview）
   review_opts.go           # ReviewOpts 構造体（解決済み設定 + CLI フラグのバンドル）
-  pr_submit.go             # PR 投稿フロー（コメント投稿、承認）
   config_cmd.go            # `arc config` サブコマンド（.arc.yaml の初期化/表示）
   help.go                  # カスタムヘルプフォーマット（フラググループ）
-  helpers.go               # CLI ヘルパー関数（finding フィルタリング等）
+  helpers.go               # CLI ヘルパー関数（exit code ラッパー、stderr フォーマット）
   version.go               # バージョン情報（ldflags 経由で注入）
   signals_unix.go          # Unix シグナル処理（ビルドタグ付き）
   signals_windows.go       # Windows シグナル処理（ビルドタグ付き）
-  *_test.go                # review, helpers, config_cmd, pr_submit, help のテスト
+  *_test.go                # review, helpers, config_cmd, help のテスト
 
 internal/
   agent/                   # LLM エージェント抽象化レイヤー
@@ -88,7 +87,7 @@ internal/
     crosscheck.go          # サマライザー出力のクロスチェック検証
 
   github/                  # gh CLI 経由の GitHub PR 操作
-    pr.go                  # コメント投稿、PR 承認、CI ステータス確認
+    pr.go                  # PR 番号取得、ベースブランチ解決、gh CLI 可用性チェック
     fork.go                # フォーク参照解決
 
   git/                     # Git 操作
@@ -102,7 +101,6 @@ internal/
     logger.go              # スタイル付きロギング
     colors.go              # ANSI カラーコード
     format.go              # テキストフォーマットユーティリティ
-    selector.go            # インタラクティブ TUI セレクター（bubbletea ベース）
 
   modelconfig/             # モデル設定解決
     resolver.go            # (サイズ, 役割, エージェント) タプルに対するモデル + effort の解決

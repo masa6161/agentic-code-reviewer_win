@@ -441,7 +441,7 @@ func TestCodexReview_WithFindings(t *testing.T) {
 	writeMockCodex(t, env.mockDir, codexReviewerResponse, codexSummarizerResponse)
 	writeMockGH(t, env.mockDir)
 
-	stdout, stderr, exitCode := env.run("--local", "--reviewers", "1",
+	stdout, stderr, exitCode := env.run("--reviewers", "1",
 		"--reviewer-agent", "codex", "--summarizer-agent", "codex",
 		"--base", "HEAD~1", "--no-fp-filter", "--strict")
 
@@ -458,7 +458,7 @@ func TestClaudeReview_WithFindings(t *testing.T) {
 	writeMockClaude(t, env.mockDir, claudeReviewerResponse, claudeSummarizerJSON())
 	writeMockGH(t, env.mockDir)
 
-	stdout, stderr, exitCode := env.run("--local", "--reviewers", "1",
+	stdout, stderr, exitCode := env.run("--reviewers", "1",
 		"--reviewer-agent", "claude", "--summarizer-agent", "claude",
 		"--base", "HEAD~1", "--no-fp-filter", "--strict")
 
@@ -475,7 +475,7 @@ func TestGeminiReview_WithFindings(t *testing.T) {
 	writeMockGemini(t, env.mockDir, geminiReviewerResponse, geminiSummarizerJSON())
 	writeMockGH(t, env.mockDir)
 
-	stdout, stderr, exitCode := env.run("--local", "--reviewers", "1",
+	stdout, stderr, exitCode := env.run("--reviewers", "1",
 		"--reviewer-agent", "gemini", "--summarizer-agent", "gemini",
 		"--base", "HEAD~1", "--no-fp-filter", "--strict")
 
@@ -492,7 +492,7 @@ func TestCodexReview_LGTM(t *testing.T) {
 	writeMockCodex(t, env.mockDir, codexLGTMReview, codexLGTMSummary)
 	writeMockGH(t, env.mockDir)
 
-	stdout, stderr, exitCode := env.run("--local", "--reviewers", "1",
+	stdout, stderr, exitCode := env.run("--reviewers", "1",
 		"--reviewer-agent", "codex", "--summarizer-agent", "codex",
 		"--base", "HEAD~1")
 
@@ -511,7 +511,7 @@ func TestClaudeReview_LGTM(t *testing.T) {
 	writeMockClaude(t, env.mockDir, claudeLGTMReview, claudeLGTMSummary())
 	writeMockGH(t, env.mockDir)
 
-	stdout, stderr, exitCode := env.run("--local", "--reviewers", "1",
+	stdout, stderr, exitCode := env.run("--reviewers", "1",
 		"--reviewer-agent", "claude", "--summarizer-agent", "claude",
 		"--base", "HEAD~1")
 
@@ -529,7 +529,7 @@ func TestGeminiReview_LGTM(t *testing.T) {
 	writeMockGemini(t, env.mockDir, geminiLGTMReview, geminiLGTMSummary())
 	writeMockGH(t, env.mockDir)
 
-	stdout, stderr, exitCode := env.run("--local", "--reviewers", "1",
+	stdout, stderr, exitCode := env.run("--reviewers", "1",
 		"--reviewer-agent", "gemini", "--summarizer-agent", "gemini",
 		"--base", "HEAD~1")
 
@@ -547,7 +547,7 @@ func TestFPFilter_ClaudeAgent(t *testing.T) {
 	writeMockClaude(t, env.mockDir, claudeReviewerResponse, claudeSummarizerJSON())
 	writeMockGH(t, env.mockDir)
 
-	_, stderr, exitCode := env.run("--local", "--reviewers", "1",
+	_, stderr, exitCode := env.run("--reviewers", "1",
 		"--reviewer-agent", "claude", "--summarizer-agent", "claude",
 		"--base", "HEAD~1")
 
@@ -564,7 +564,7 @@ func TestFPFilter_GeminiAgent(t *testing.T) {
 	writeMockGemini(t, env.mockDir, geminiReviewerResponse, geminiSummarizerJSON())
 	writeMockGH(t, env.mockDir)
 
-	_, stderr, exitCode := env.run("--local", "--reviewers", "1",
+	_, stderr, exitCode := env.run("--reviewers", "1",
 		"--reviewer-agent", "gemini", "--summarizer-agent", "gemini",
 		"--base", "HEAD~1")
 
@@ -581,7 +581,7 @@ func TestMultipleReviewers(t *testing.T) {
 	writeMockCodex(t, env.mockDir, codexReviewerResponse, codexSummarizerResponse)
 	writeMockGH(t, env.mockDir)
 
-	stdout, stderr, exitCode := env.run("--local", "--reviewers", "3",
+	stdout, stderr, exitCode := env.run("--reviewers", "3",
 		"--reviewer-agent", "codex", "--summarizer-agent", "codex",
 		"--base", "HEAD~1", "--no-fp-filter", "--strict")
 
@@ -601,7 +601,7 @@ func TestMixedAgents(t *testing.T) {
 	writeMockGH(t, env.mockDir)
 
 	// Use codex as summarizer since all mock agents are available
-	stdout, stderr, exitCode := env.run("--local", "--reviewers", "3",
+	stdout, stderr, exitCode := env.run("--reviewers", "3",
 		"--reviewer-agent", "codex,claude,gemini", "--summarizer-agent", "codex",
 		"--base", "HEAD~1", "--no-fp-filter", "--strict")
 
@@ -619,7 +619,7 @@ func TestFPFilter_CodexAgent(t *testing.T) {
 	writeMockCodex(t, env.mockDir, codexReviewerResponse, codexSummarizerResponse)
 	writeMockGH(t, env.mockDir)
 
-	stdout, stderr, exitCode := env.run("--local", "--reviewers", "1",
+	stdout, stderr, exitCode := env.run("--reviewers", "1",
 		"--reviewer-agent", "codex", "--summarizer-agent", "codex",
 		"--base", "HEAD~1")
 
@@ -643,7 +643,7 @@ func TestOutputFormat_FindingsReport(t *testing.T) {
 	writeMockCodex(t, env.mockDir, codexReviewerResponse, codexSummarizerResponse)
 	writeMockGH(t, env.mockDir)
 
-	stdout, _, exitCode := env.run("--local", "--reviewers", "1",
+	stdout, _, exitCode := env.run("--reviewers", "1",
 		"--reviewer-agent", "codex", "--summarizer-agent", "codex",
 		"--base", "HEAD~1", "--no-fp-filter", "--strict")
 
@@ -674,7 +674,7 @@ func TestOutputFormat_TimingSection(t *testing.T) {
 	writeMockCodex(t, env.mockDir, codexReviewerResponse, codexSummarizerResponse)
 	writeMockGH(t, env.mockDir)
 
-	stdout, _, exitCode := env.run("--local", "--reviewers", "2",
+	stdout, _, exitCode := env.run("--reviewers", "2",
 		"--reviewer-agent", "codex", "--summarizer-agent", "codex",
 		"--base", "HEAD~1", "--no-fp-filter", "--strict")
 
@@ -700,7 +700,7 @@ func TestInvalidAgentName(t *testing.T) {
 	env := setupTestEnv(t)
 	writeMockGH(t, env.mockDir)
 
-	_, stderr, exitCode := env.run("--local", "--reviewer-agent", "invalid-agent", "--base", "HEAD~1")
+	_, stderr, exitCode := env.run("--reviewer-agent", "invalid-agent", "--base", "HEAD~1")
 
 	if exitCode != 2 {
 		t.Errorf("exit code = %d, want 2 (error)\nstderr: %s", exitCode, stderr)
@@ -715,7 +715,7 @@ func TestMissingAgentCLI(t *testing.T) {
 	copyIntegrationHelperBinary(t, noAgentDir, "gemini")
 	copyIntegrationHelperBinary(t, noAgentDir, "gh")
 
-	cmd := exec.Command(env.arcBin, "--local", "--no-cross-check", "--reviewer-agent", "codex",
+	cmd := exec.Command(env.arcBin, "--no-cross-check", "--reviewer-agent", "codex",
 		"--summarizer-agent", "codex", "--base", "HEAD~1")
 	cmd.Dir = env.repoDir
 	// Prepend noAgentDir to PATH so the helper binaries shadow any real CLIs.
@@ -750,7 +750,7 @@ func TestEmptyDiff(t *testing.T) {
 	writeMockGH(t, env.mockDir)
 
 	// HEAD~0 = no diff
-	_, stderr, exitCode := env.run("--local", "--reviewers", "1",
+	_, stderr, exitCode := env.run("--reviewers", "1",
 		"--reviewer-agent", "codex", "--summarizer-agent", "codex",
 		"--base", "HEAD")
 
@@ -767,7 +767,7 @@ func TestVerboseOutput(t *testing.T) {
 	writeMockCodex(t, env.mockDir, codexReviewerResponse, codexSummarizerResponse)
 	writeMockGH(t, env.mockDir)
 
-	_, stderr, _ := env.run("--local", "--reviewers", "1",
+	_, stderr, _ := env.run("--reviewers", "1",
 		"--reviewer-agent", "codex", "--summarizer-agent", "codex",
 		"--base", "HEAD~1", "--no-fp-filter", "--verbose")
 
@@ -787,7 +787,7 @@ func TestGuidanceFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	stdout, stderr, exitCode := env.run("--local", "--reviewers", "1",
+	stdout, stderr, exitCode := env.run("--reviewers", "1",
 		"--reviewer-agent", "codex", "--summarizer-agent", "codex",
 		"--base", "HEAD~1", "--no-fp-filter", "--guidance-file", guidanceFile)
 
@@ -806,7 +806,7 @@ func TestNoFetchFlag(t *testing.T) {
 	writeMockGH(t, env.mockDir)
 
 	// --no-fetch should work without a remote
-	_, stderr, exitCode := env.run("--local", "--no-fetch", "--reviewers", "1",
+	_, stderr, exitCode := env.run("--no-fetch", "--reviewers", "1",
 		"--reviewer-agent", "codex", "--summarizer-agent", "codex",
 		"--base", "HEAD~1")
 
