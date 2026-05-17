@@ -59,12 +59,8 @@ graph TD
     B & C & D --> E[Summarizer]
     E -->|clusters & deduplicates| F[FP Filter]
     F -->|removes false positives| G[Consolidated Report]
-    G --> H{Post to PR?}
-    H -->|--local| I[Done]
-    H -->|findings| J[Request Changes / Comment]
-    H -->|no findings| K[Approve / Comment]
-    J --> I
-    K --> I
+    G --> H[Terminal Report]
+    H --> I[Done]
 ```
 
 ## Installation
@@ -90,12 +86,6 @@ arc --help
 
 Download the Windows release ZIP from GitHub Releases and extract `arc.exe`.
 
-## Current status (Windows port)
-
-- PR posting (auto-request-changes / auto-approve) is **beta** on the Windows port.
-  Behavior may change between releases while the end-to-end flow is validated.
-  Consider `--local` for purely local review workflows.
-
 ## Usage
 
 ```bash
@@ -113,12 +103,6 @@ arc --worktree-branch feature/my-branch
 
 # Review a PR from a forked repository
 arc --worktree-branch username:feature-branch
-
-# Local mode (don't post to PR)
-arc --local
-
-# Auto-approve without prompting
-arc --yes
 
 # Verbose mode (show reviewer messages as they arrive)
 arc --verbose
@@ -151,9 +135,7 @@ The verdict field (`ok` / `advisory` / `blocking`) and exit-code policy apply on
 | `--timeout`         | `-t`  | 10m     | Timeout per reviewer                     |
 | `--retries`         | `-R`  | 1       | Retry failed reviewers N times           |
 | `--verbose`         | `-v`  | false   | Print agent messages in real-time        |
-| `--local`           | `-l`  | false   | Skip posting to GitHub PR                |
 | `--worktree-branch` | `-B`  |         | Review a branch in a temp worktree (supports `user:branch` for forks) |
-| `--yes`             | `-y`  | false   | Auto-submit without prompting            |
 | `--fetch/--no-fetch`|       | true    | Fetch base ref from origin before diff   |
 | `--no-fp-filter`    |       | false   | Disable false positive filtering          |
 | `--fp-threshold`    |       | 75      | False positive confidence threshold 1-100 |
@@ -445,40 +427,6 @@ Configuration is resolved with the following precedence (highest to lowest):
 | 1    | Findings found               |
 | 2    | Error                        |
 | 130  | Interrupted (SIGINT/SIGTERM) |
-
-## GitHub Integration
-
-When not in `--local` mode, ARC posts results as **PR reviews** (not comments), so they appear in the PR's Reviews tab.
-
-### When findings are found
-
-You'll be prompted to choose how to post the review:
-
-```
-? Post review to PR #123? [R]equest changes / [C]omment / [S]kip:
-```
-
-- **R** (default): Post as a "request changes" review
-- **C**: Post as a comment-only review
-- **S**: Skip posting
-
-### When no findings (LGTM)
-
-You'll be prompted to choose how to post the approval:
-
-```
-? Post LGTM to PR #123? [A]pprove / [C]omment / [S]kip:
-```
-
-- **A** (default): Approve the PR (checks CI status first)
-- **C**: Post as a comment-only review
-- **S**: Skip posting
-
-Self-reviews (reviewing your own PR) only show Comment/Skip options since GitHub doesn't allow self-approval.
-
-Use `--yes` to auto-submit with defaults (request-changes for findings, approve for LGTM).
-
-Requires the `gh` CLI to be authenticated.
 
 ## Development
 
