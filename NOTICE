@@ -1,0 +1,10 @@
+ARC - Adaptive Review Coordinator
+Copyright 2025 masa6161
+
+This project is a hard fork of Agentic Code Reviewer,
+originally created by Rich Haase (richhaase).
+  Original repository: https://github.com/richhaase/agentic-code-reviewer
+  License: Apache License 2.0
+
+Significant modifications have been made from the original work,
+including renaming, Windows-native porting, and feature additions.
