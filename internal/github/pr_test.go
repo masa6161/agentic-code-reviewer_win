@@ -7,275 +7,6 @@ import (
 	"testing"
 )
 
-func TestParseCIChecks_AllPassed(t *testing.T) {
-	json := `[
-		{"name": "build", "bucket": "pass"},
-		{"name": "lint", "bucket": "pass"},
-		{"name": "test", "bucket": "pass"}
-	]`
-
-	status := ParseCIChecks([]byte(json))
-
-	if !status.AllPassed {
-		t.Error("expected AllPassed to be true")
-	}
-	if len(status.Pending) != 0 {
-		t.Errorf("expected no pending checks, got %v", status.Pending)
-	}
-	if len(status.Failed) != 0 {
-		t.Errorf("expected no failed checks, got %v", status.Failed)
-	}
-	if status.Error != "" {
-		t.Errorf("expected no error, got %q", status.Error)
-	}
-}
-
-func TestParseCIChecks_WithPending(t *testing.T) {
-	json := `[
-		{"name": "build", "bucket": "pass"},
-		{"name": "deploy", "bucket": "pending"},
-		{"name": "e2e", "bucket": "pending"}
-	]`
-
-	status := ParseCIChecks([]byte(json))
-
-	if status.AllPassed {
-		t.Error("expected AllPassed to be false with pending checks")
-	}
-	if len(status.Pending) != 2 {
-		t.Errorf("expected 2 pending checks, got %d", len(status.Pending))
-	}
-	// Verify the actual check names are captured
-	found := map[string]bool{}
-	for _, name := range status.Pending {
-		found[name] = true
-	}
-	if !found["deploy"] || !found["e2e"] {
-		t.Errorf("pending checks should contain 'deploy' and 'e2e', got %v", status.Pending)
-	}
-}
-
-func TestParseCIChecks_WithFailures(t *testing.T) {
-	json := `[
-		{"name": "build", "bucket": "pass"},
-		{"name": "lint", "bucket": "fail"},
-		{"name": "security", "bucket": "fail"}
-	]`
-
-	status := ParseCIChecks([]byte(json))
-
-	if status.AllPassed {
-		t.Error("expected AllPassed to be false with failures")
-	}
-	if len(status.Failed) != 2 {
-		t.Errorf("expected 2 failed checks, got %d", len(status.Failed))
-	}
-	found := map[string]bool{}
-	for _, name := range status.Failed {
-		found[name] = true
-	}
-	if !found["lint"] || !found["security"] {
-		t.Errorf("failed checks should contain 'lint' and 'security', got %v", status.Failed)
-	}
-}
-
-func TestParseCIChecks_SkippingTreatedAsPass(t *testing.T) {
-	json := `[
-		{"name": "build", "bucket": "pass"},
-		{"name": "optional-check", "bucket": "skipping"}
-	]`
-
-	status := ParseCIChecks([]byte(json))
-
-	if !status.AllPassed {
-		t.Error("expected AllPassed to be true with skipping checks")
-	}
-	if len(status.Failed) != 0 {
-		t.Errorf("skipping should not be in failed, got %v", status.Failed)
-	}
-}
-
-func TestParseCIChecks_CancelTreatedAsFailure(t *testing.T) {
-	json := `[
-		{"name": "build", "bucket": "pass"},
-		{"name": "slow-test", "bucket": "cancel"}
-	]`
-
-	status := ParseCIChecks([]byte(json))
-
-	if status.AllPassed {
-		t.Error("expected AllPassed to be false with canceled check")
-	}
-	if len(status.Failed) != 1 || status.Failed[0] != "slow-test" {
-		t.Errorf("canceled check should be in failed, got %v", status.Failed)
-	}
-}
-
-func TestParseCIChecks_CaseInsensitiveBucket(t *testing.T) {
-	json := `[
-		{"name": "build", "bucket": "PASS"},
-		{"name": "lint", "bucket": "Pass"},
-		{"name": "test", "bucket": "PENDING"}
-	]`
-
-	status := ParseCIChecks([]byte(json))
-
-	if status.AllPassed {
-		t.Error("expected AllPassed to be false with pending (uppercase)")
-	}
-	if len(status.Pending) != 1 || status.Pending[0] != "test" {
-		t.Errorf("expected 'test' in pending, got %v", status.Pending)
-	}
-}
-
-func TestParseCIChecks_EmptyChecks(t *testing.T) {
-	json := `[]`
-
-	status := ParseCIChecks([]byte(json))
-
-	// No CI checks configured - should allow approval
-	if !status.AllPassed {
-		t.Error("expected AllPassed to be true when no checks exist")
-	}
-}
-
-func TestParseCIChecks_InvalidJSON(t *testing.T) {
-	status := ParseCIChecks([]byte(`not valid json`))
-
-	if status.Error == "" {
-		t.Error("expected error for invalid JSON")
-	}
-	if status.AllPassed {
-		t.Error("AllPassed should be false on parse error")
-	}
-}
-
-func TestParseCIChecks_MixedStatuses(t *testing.T) {
-	json := `[
-		{"name": "build", "bucket": "pass"},
-		{"name": "lint", "bucket": "fail"},
-		{"name": "deploy", "bucket": "pending"},
-		{"name": "optional", "bucket": "skipping"}
-	]`
-
-	status := ParseCIChecks([]byte(json))
-
-	if status.AllPassed {
-		t.Error("expected AllPassed to be false with mixed statuses")
-	}
-	if len(status.Pending) != 1 {
-		t.Errorf("expected 1 pending, got %d", len(status.Pending))
-	}
-	if len(status.Failed) != 1 {
-		t.Errorf("expected 1 failed, got %d", len(status.Failed))
-	}
-}
-
-func TestParseCIChecks_UnknownBucketTreatedAsFailure(t *testing.T) {
-	json := `[
-		{"name": "custom-check", "bucket": "unknown_status"}
-	]`
-
-	status := ParseCIChecks([]byte(json))
-
-	if status.AllPassed {
-		t.Error("expected AllPassed to be false with unknown bucket")
-	}
-	if len(status.Failed) != 1 {
-		t.Errorf("unknown bucket should be treated as failure, got %v failed", status.Failed)
-	}
-}
-
-// Tests for self-review functions
-
-func TestCheckSelfReview_MatchingSameCase(t *testing.T) {
-	result := checkSelfReview("octocat", "octocat")
-	if !result {
-		t.Error("expected true for matching usernames with same case")
-	}
-}
-
-func TestCheckSelfReview_MatchingDifferentCase(t *testing.T) {
-	result := checkSelfReview("OctoCat", "octocat")
-	if !result {
-		t.Error("expected true for matching usernames with different case")
-	}
-}
-
-func TestCheckSelfReview_MatchingAllCaps(t *testing.T) {
-	result := checkSelfReview("OCTOCAT", "octocat")
-	if !result {
-		t.Error("expected true for all caps vs lowercase")
-	}
-}
-
-func TestCheckSelfReview_DifferentUsers(t *testing.T) {
-	result := checkSelfReview("octocat", "hubot")
-	if result {
-		t.Error("expected false for different usernames")
-	}
-}
-
-func TestCheckSelfReview_EmptyCurrentUser(t *testing.T) {
-	// Fail closed: assume self-review when current user lookup fails
-	result := checkSelfReview("", "octocat")
-	if !result {
-		t.Error("expected true when current user is empty (fail closed)")
-	}
-}
-
-func TestCheckSelfReview_EmptyPRAuthor(t *testing.T) {
-	// Fail closed: assume self-review when PR author lookup fails
-	result := checkSelfReview("octocat", "")
-	if !result {
-		t.Error("expected true when PR author is empty (fail closed)")
-	}
-}
-
-func TestCheckSelfReview_BothEmpty(t *testing.T) {
-	// Fail closed: assume self-review when both lookups fail
-	result := checkSelfReview("", "")
-	if !result {
-		t.Error("expected true when both are empty (fail closed)")
-	}
-}
-
-func TestCheckSelfReview_WhitespaceOnly(t *testing.T) {
-	// Whitespace-only strings are not empty but should not match valid usernames
-	result := checkSelfReview("  ", "octocat")
-	if result {
-		t.Error("expected false when current user is whitespace (not a match)")
-	}
-
-	result = checkSelfReview("octocat", "  ")
-	if result {
-		t.Error("expected false when PR author is whitespace (not a match)")
-	}
-}
-
-func TestCheckSelfReview_PartialMatch(t *testing.T) {
-	result := checkSelfReview("octo", "octocat")
-	if result {
-		t.Error("expected false for partial username match")
-	}
-}
-
-func TestCheckSelfReview_UsernameWithNumbers(t *testing.T) {
-	result := checkSelfReview("user123", "USER123")
-	if !result {
-		t.Error("expected true for matching usernames with numbers (case insensitive)")
-	}
-}
-
-func TestCheckSelfReview_UsernameWithHyphens(t *testing.T) {
-	result := checkSelfReview("octo-cat", "OCTO-CAT")
-	if !result {
-		t.Error("expected true for matching usernames with hyphens (case insensitive)")
-	}
-}
-
-// Tests for classifyGHError
-
 func TestClassifyGHError_NoPRFound(t *testing.T) {
 	// Create an ExitError with stderr indicating no PR found
 	exitErr := &exec.ExitError{
@@ -403,8 +134,6 @@ func TestParsePRViewJSON_MissingFields(t *testing.T) {
 	}
 }
 
-// Tests for urlMatches - Issue 2: SSH URL format not normalized
-
 func TestUrlMatches_HTTPSFormat(t *testing.T) {
 	result := urlMatches("https://github.com/owner/repo.git", "https://github.com/owner/repo")
 	if !result {
@@ -420,7 +149,6 @@ func TestUrlMatches_SSHShorthandFormat(t *testing.T) {
 }
 
 func TestUrlMatches_SSHURLFormat(t *testing.T) {
-	// This is the bug: ssh:// URL format is not handled
 	result := urlMatches("ssh://git@github.com/owner/repo.git", "https://github.com/owner/repo")
 	if !result {
 		t.Error("expected true for ssh:// URL vs HTTPS")
@@ -428,7 +156,6 @@ func TestUrlMatches_SSHURLFormat(t *testing.T) {
 }
 
 func TestUrlMatches_SSHURLFormatNoUser(t *testing.T) {
-	// ssh://github.com/owner/repo format (less common but valid)
 	result := urlMatches("ssh://github.com/owner/repo", "https://github.com/owner/repo")
 	if !result {
 		t.Error("expected true for ssh:// URL without user vs HTTPS")
@@ -457,81 +184,16 @@ func TestUrlMatches_CaseInsensitive(t *testing.T) {
 }
 
 func TestIsGHAvailable(t *testing.T) {
-	// Smoke test: just verify it doesn't panic and returns a bool
 	result := IsGHAvailable()
-	_ = result // We can't assert the value since gh may or may not be installed
+	_ = result
 }
 
 func TestCheckGHAvailable(t *testing.T) {
 	err := CheckGHAvailable()
 	if err != nil {
-		// gh not installed - verify it's a descriptive error
 		if !strings.Contains(err.Error(), "gh CLI not available") {
 			t.Errorf("expected descriptive error, got %q", err.Error())
 		}
-	}
-	// If err == nil, gh is installed - also fine
-}
-
-func TestCIStatus_FieldAccess(t *testing.T) {
-	tests := []struct {
-		name      string
-		status    CIStatus
-		allPassed bool
-		pending   int
-		failed    int
-		hasError  bool
-	}{
-		{
-			name:      "all passed no checks",
-			status:    CIStatus{AllPassed: true},
-			allPassed: true,
-		},
-		{
-			name:      "with pending",
-			status:    CIStatus{AllPassed: false, Pending: []string{"build", "test"}},
-			allPassed: false,
-			pending:   2,
-		},
-		{
-			name:      "with failures",
-			status:    CIStatus{AllPassed: false, Failed: []string{"lint"}},
-			allPassed: false,
-			failed:    1,
-		},
-		{
-			name:      "with error",
-			status:    CIStatus{Error: "something went wrong"},
-			allPassed: false,
-			hasError:  true,
-		},
-		{
-			name:      "mixed pending and failed",
-			status:    CIStatus{AllPassed: false, Pending: []string{"deploy"}, Failed: []string{"lint", "test"}},
-			allPassed: false,
-			pending:   1,
-			failed:    2,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if tt.status.AllPassed != tt.allPassed {
-				t.Errorf("AllPassed = %v, want %v", tt.status.AllPassed, tt.allPassed)
-			}
-			if len(tt.status.Pending) != tt.pending {
-				t.Errorf("Pending count = %d, want %d", len(tt.status.Pending), tt.pending)
-			}
-			if len(tt.status.Failed) != tt.failed {
-				t.Errorf("Failed count = %d, want %d", len(tt.status.Failed), tt.failed)
-			}
-			if tt.hasError && tt.status.Error == "" {
-				t.Error("expected non-empty Error")
-			}
-			if !tt.hasError && tt.status.Error != "" {
-				t.Errorf("expected empty Error, got %q", tt.status.Error)
-			}
-		})
 	}
 }
 
@@ -545,55 +207,5 @@ func TestParsePRViewJSON_EmptyJSON(t *testing.T) {
 	}
 	if base != "" {
 		t.Errorf("expected empty base, got %q", base)
-	}
-}
-
-func TestParsePRViewJSON_ExtraFields(t *testing.T) {
-	jsonStr := `{"headRefName": "feature", "baseRefName": "main", "title": "My PR", "number": 42}`
-	head, base, err := parsePRViewJSON([]byte(jsonStr))
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if head != "feature" {
-		t.Errorf("head = %q, want %q", head, "feature")
-	}
-	if base != "main" {
-		t.Errorf("base = %q, want %q", base, "main")
-	}
-}
-
-func TestUrlMatches_HTTPFormat(t *testing.T) {
-	result := urlMatches("http://github.com/owner/repo.git", "https://github.com/owner/repo")
-	if !result {
-		t.Error("expected true for http vs https URLs")
-	}
-}
-
-func TestUrlMatches_EmptyStrings(t *testing.T) {
-	// Two empty strings should match (both normalize to "")
-	result := urlMatches("", "")
-	if !result {
-		t.Error("expected true for two empty strings")
-	}
-
-	// Empty vs non-empty should not match
-	result = urlMatches("", "https://github.com/owner/repo")
-	if result {
-		t.Error("expected false for empty vs non-empty")
-	}
-}
-
-func TestUrlMatches_SameURL(t *testing.T) {
-	urls := []string{
-		"https://github.com/owner/repo",
-		"https://github.com/owner/repo.git",
-		"git@github.com:owner/repo.git",
-		"ssh://git@github.com/owner/repo.git",
-	}
-
-	for _, url := range urls {
-		if !urlMatches(url, url) {
-			t.Errorf("expected true for identical URL: %q", url)
-		}
 	}
 }

@@ -2,7 +2,6 @@
 package github
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -16,14 +15,6 @@ var ErrNoPRFound = errors.New("no pull request found")
 
 // ErrAuthFailed indicates GitHub authentication failed.
 var ErrAuthFailed = errors.New("GitHub authentication failed")
-
-// CIStatus represents the CI check status for a PR.
-type CIStatus struct {
-	AllPassed bool
-	Pending   []string
-	Failed    []string
-	Error     string
-}
 
 // GetCurrentPRNumber returns the PR number for the given branch (or current branch).
 // Returns ErrNoPRFound if no PR exists, ErrAuthFailed if authentication failed,
@@ -196,107 +187,6 @@ func classifyGHError(err error) error {
 	return fmt.Errorf("gh command failed: %w", err)
 }
 
-// ApprovePR approves a PR with the given body.
-func ApprovePR(ctx context.Context, prNumber, body string) error {
-	cmd := exec.CommandContext(ctx, "gh", "pr", "review", prNumber, "--approve", "--body-file", "-")
-	cmd.Stdin = strings.NewReader(body)
-
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-
-	if err := cmd.Run(); err != nil {
-		errMsg := strings.TrimSpace(stderr.String())
-		if errMsg != "" {
-			return fmt.Errorf("failed to approve PR (%s): %w", errMsg, err)
-		}
-		return fmt.Errorf("failed to approve PR: %w", err)
-	}
-	return nil
-}
-
-// SubmitPRReview submits a PR review with the given body.
-// If requestChanges is true, uses --request-changes; otherwise uses --comment.
-func SubmitPRReview(ctx context.Context, prNumber, body string, requestChanges bool) error {
-	flag := "--comment"
-	if requestChanges {
-		flag = "--request-changes"
-	}
-
-	cmd := exec.CommandContext(ctx, "gh", "pr", "review", prNumber, flag, "--body-file", "-")
-	cmd.Stdin = strings.NewReader(body)
-
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-
-	if err := cmd.Run(); err != nil {
-		errMsg := strings.TrimSpace(stderr.String())
-		if errMsg != "" {
-			return fmt.Errorf("failed to submit PR review (%s): %w", errMsg, err)
-		}
-		return fmt.Errorf("failed to submit PR review: %w", err)
-	}
-	return nil
-}
-
-// CheckCIStatus checks the CI status for a PR.
-func CheckCIStatus(ctx context.Context, prNumber string) CIStatus {
-	cmd := exec.CommandContext(ctx, "gh", "pr", "checks", prNumber, "--json", "name,bucket")
-	out, err := cmd.Output()
-	if err != nil {
-		var stderr bytes.Buffer
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) {
-			stderr.Write(exitErr.Stderr)
-		}
-		errMsg := strings.TrimSpace(stderr.String())
-		if errMsg == "" {
-			errMsg = "unknown error"
-		}
-		return CIStatus{Error: errMsg}
-	}
-
-	return ParseCIChecks(out)
-}
-
-// CICheck represents a single CI check from the GitHub API.
-type CICheck struct {
-	Name   string `json:"name"`
-	Bucket string `json:"bucket"`
-}
-
-// ParseCIChecks parses CI check JSON output and categorizes results.
-func ParseCIChecks(data []byte) CIStatus {
-	var checks []CICheck
-	if err := json.Unmarshal(data, &checks); err != nil {
-		return CIStatus{Error: "failed to parse CI status"}
-	}
-
-	if len(checks) == 0 {
-		// No CI checks configured - allow approval
-		return CIStatus{AllPassed: true}
-	}
-
-	var pending, failed []string
-	for _, check := range checks {
-		bucket := strings.ToLower(check.Bucket)
-		switch bucket {
-		case "pending":
-			pending = append(pending, check.Name)
-		case "pass", "skipping":
-			// OK
-		default:
-			// fail, cancel, or unknown
-			failed = append(failed, check.Name)
-		}
-	}
-
-	return CIStatus{
-		AllPassed: len(pending) == 0 && len(failed) == 0,
-		Pending:   pending,
-		Failed:    failed,
-	}
-}
-
 // IsGHAvailable checks if the gh CLI is available.
 func IsGHAvailable() bool {
 	_, err := exec.LookPath("gh")
@@ -312,44 +202,3 @@ func CheckGHAvailable() error {
 	return nil
 }
 
-// GetCurrentUser returns the username of the authenticated gh user.
-// Returns empty string on error.
-func GetCurrentUser(ctx context.Context) string {
-	cmd := exec.CommandContext(ctx, "gh", "api", "user", "--jq", ".login")
-	out, err := cmd.Output()
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(out))
-}
-
-// GetPRAuthor returns the username of the PR author.
-// Returns empty string on error.
-func GetPRAuthor(ctx context.Context, prNumber string) string {
-	cmd := exec.CommandContext(ctx, "gh", "pr", "view", prNumber, "--json", "author", "--jq", ".author.login")
-	out, err := cmd.Output()
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(out))
-}
-
-// IsSelfReview checks if the current user is the author of the PR.
-func IsSelfReview(ctx context.Context, prNumber string) bool {
-	currentUser := GetCurrentUser(ctx)
-	prAuthor := GetPRAuthor(ctx, prNumber)
-	return checkSelfReview(currentUser, prAuthor)
-}
-
-// checkSelfReview compares usernames to determine if this is a self-review.
-// Returns true if:
-// - Both usernames are non-empty and match (case-insensitive), OR
-// - Either username is empty (fail closed: assume self-review when uncertain)
-func checkSelfReview(currentUser, prAuthor string) bool {
-	if currentUser == "" || prAuthor == "" {
-		// Fail closed: if we can't determine users, assume self-review
-		// to prevent accidental self-approvals
-		return true
-	}
-	return strings.EqualFold(currentUser, prAuthor)
-}
