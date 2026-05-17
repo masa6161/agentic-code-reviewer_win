@@ -7,22 +7,6 @@ import (
 	"github.com/masa6161/arc-cli/internal/domain"
 )
 
-// filterFindingsByIndices returns findings at the specified indices.
-func filterFindingsByIndices(findings []domain.FindingGroup, indices []int) []domain.FindingGroup {
-	indexSet := make(map[int]bool, len(indices))
-	for _, i := range indices {
-		indexSet[i] = true
-	}
-
-	result := make([]domain.FindingGroup, 0, len(indices))
-	for i, f := range findings {
-		if indexSet[i] {
-			result = append(result, f)
-		}
-	}
-	return result
-}
-
 // exitCodeError is a wrapper type for returning exit codes via error interface.
 type exitCodeError struct {
 	code domain.ExitCode
